@@ -58,6 +58,13 @@ var _torch_wear_accum := 0.0
 var _noise_burst := 0.0
 var _move_noise := 0.05
 var aiming := false
+## Melee: charge (hold LMB) for a heavy blow; RMB raises a guard (block / perfect parry).
+var blocking := false
+var _block_started := 0.0
+var _charging := false
+var _charge_t := 0.0
+const HEAVY_CHARGE := 0.4
+const PARRY_WINDOW := 0.25
 var _gesture_t := 0.0
 var _shake := 0.0
 ## Footprint under the crosshair (read by the HUD): {species, age, yaw} or {}.
@@ -150,7 +157,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif aiming:
 			throw_spear()
 		else:
-			swing()
+			_begin_charge()
 	if event.is_action_pressed("secondary_action"):
 		if build.active:
 			build.cancel()
@@ -158,8 +165,13 @@ func _unhandled_input(event: InputEvent) -> void:
 			placement.cancel()
 		elif inventory.hand != null and inventory.hand.id == &"spear":
 			aiming = true
+		else:
+			_set_blocking(true)
 	if event.is_action_released("secondary_action"):
 		aiming = false
+		_set_blocking(false)
+	if event.is_action_released("primary_action") and _charging:
+		_release_charge()
 
 
 func _look(rel: Vector2) -> void:
@@ -205,6 +217,12 @@ func _physics_process(delta: float) -> void:
 	_move_noise = 0.05 if not moving else (1.0 if sprinting else (0.12 if _crouching else 0.45))
 	_noise_burst = maxf(_noise_burst - delta, 0.0)
 	_gesture_t = maxf(_gesture_t - delta, 0.0)
+	if _charging:
+		_charge_t += delta
+		if _charge_t > 1.4:
+			_release_charge()
+	if blocking and stats.stamina <= 0.5:
+		_set_blocking(false)
 	if inventory.hand == null or inventory.hand.id != &"spear":
 		aiming = false
 	var was_on_floor := is_on_floor()
@@ -234,6 +252,43 @@ func survival_env(sleeping: bool = false, sprinting: bool = false) -> Dictionary
 		"rain": world.weather.rain_at(pos) if world.weather else 0.0,
 		"sleeping": sleeping, "sprinting": sprinting,
 	}
+
+
+func _begin_charge() -> void:
+	if _swing_cd > 0.0 or _swinging or dead or blocking:
+		return
+	_charging = true
+	_charge_t = 0.0
+	# Draw the weapon back while charging.
+	var st: Array = SWING_STYLES[_swing_style()]
+	var v := _hand_visual if _hand_visual else hand_root
+	var tw := create_tween()
+	tw.tween_property(v, "rotation_degrees", (st[0] as Vector3) * 0.6, HEAVY_CHARGE).set_trans(Tween.TRANS_SINE)
+
+
+func _release_charge() -> void:
+	if not _charging:
+		return
+	_charging = false
+	swing(_charge_t >= HEAVY_CHARGE)
+
+
+## True while the player is visibly preparing a blow (NPCs may raise their guard).
+func is_winding_up() -> bool:
+	return _charging or (_swinging and _swing_cd > 0.3)
+
+
+func _set_blocking(on: bool) -> void:
+	if on == blocking:
+		return
+	if on and (dead or stats.stamina < 5.0 or _swinging):
+		return
+	blocking = on
+	if on:
+		_block_started = Time.get_ticks_msec() / 1000.0
+	var tw := create_tween()
+	tw.tween_property(hand_root, "position", Vector3(0.08, -0.28, -0.5) if on else Vector3(0.36, -0.42, -0.62), 0.12)
+	tw.parallel().tween_property(hand_root, "rotation_degrees", Vector3(-8, -12, 70) if on else Vector3(-8, -12, 0), 0.12)
 
 
 ## Open-palm gesture (GDD §7: diplomacy without a shared language).
@@ -271,9 +326,30 @@ func visibility_factor() -> float:
 
 
 ## Damage from a creature (wolf bite): may cause bleeding.
-func take_hit(amount: float, cause: StringName, bleed_chance: float = 0.0, from_pos: Vector3 = Vector3.ZERO) -> void:
+func take_hit(amount: float, cause: StringName, bleed_chance: float = 0.0, from_pos: Vector3 = Vector3.ZERO,
+		attacker: Node = null) -> void:
 	if dead:
 		return
+	if blocking and from_pos != Vector3.ZERO:
+		var to_att := from_pos - global_position
+		to_att.y = 0.0
+		if (-global_transform.basis.z).dot(to_att.normalized()) > 0.3:
+			var now := Time.get_ticks_msec() / 1000.0
+			if now - _block_started <= PARRY_WINDOW:
+				# Perfect parry: no damage, attacker knocked off balance.
+				Sfx.play(&"stone_knock", null, 0.0, 0.05)
+				Events.toast(Loc.t("MSG_PARRY"), &"good")
+				if attacker and attacker.has_method("stagger"):
+					attacker.stagger(1.2)
+				_hit_stop(0.06)
+				return
+			stats.use_stamina(minf(15.0, stats.stamina))
+			amount *= 0.25
+			bleed_chance = 0.0
+			Sfx.play(&"stone_knock", null, -4.0, 0.1)
+			if stats.stamina <= 0.5:
+				_set_blocking(false)
+				Events.toast(Loc.t("MSG_GUARD_BROKEN"), &"warn")
 	stats.damage(amount, cause)
 	if randf() < bleed_chance:
 		stats.add_condition(&"bleeding")
@@ -441,6 +517,7 @@ const SWING_STYLES := {
 }
 
 var _swinging := false
+var _heavy := false
 
 
 func _swing_style() -> StringName:
@@ -453,16 +530,17 @@ func _swing_style() -> StringName:
 
 
 ## Phased swing: wind-up → fast strike → impact (hit resolved NOW, not on click) → recoil → recover.
-func swing() -> void:
+func swing(heavy: bool = false) -> void:
 	if _swing_cd > 0.0 or dead or _swinging:
 		return
-	if not stats.use_stamina(SWING_COST):
+	_heavy = heavy
+	if not stats.use_stamina(SWING_COST * (1.8 if heavy else 1.0)):
 		Events.toast(Loc.t("MSG_NO_STAMINA"), &"warn")
 		return
 	var st: Array = SWING_STYLES[_swing_style()]
-	var windup: float = st[4]
-	var strike: float = st[5]
-	var recover: float = st[6]
+	var windup: float = st[4] * (0.6 if heavy else 1.0)  # already drawn back while charging
+	var strike: float = st[5] * (1.15 if heavy else 1.0)
+	var recover: float = st[6] * (1.3 if heavy else 1.0)
 	_swing_cd = windup + strike + recover + 0.05
 	_swinging = true
 	_noise_burst = maxf(_noise_burst, 0.7)
@@ -505,10 +583,12 @@ func _resolve_swing() -> bool:
 		return false
 	var item := inventory.hand.get_data() if inventory.hand else null
 	var hit := ray.get_collider()
-	if hit is Animal and not (hit as Animal).is_dead():
-		var dmg := item.damage if item and item.damage > 0.0 else 3.0
-		(hit as Animal).take_damage(dmg, self)
-		Sfx.play(&"chop", ray.get_collision_point(), -6.0)
+	var creature := (hit is Animal and not (hit as Animal).is_dead()) or hit is HumanNPC
+	if creature:
+		var dmg := (item.damage if item and item.damage > 0.0 else 3.0) * (1.8 if _heavy else 1.0)
+		hit.take_damage(dmg, self, ray.get_collision_point(), item, _heavy)
+		Sfx.play(&"axe_chop" if item and item.has_tag(&"tool_axe") else &"chop", ray.get_collision_point(), -4.0)
+		_hit_stop(0.07 if _heavy else 0.04)
 		if item and inventory.wear_hand(1):
 			Events.toast(Loc.t("MSG_TOOL_BROKE", {"item": item.display_name()}), &"danger")
 		return true
@@ -519,6 +599,14 @@ func _resolve_swing() -> bool:
 			Sfx.play(&"tool_break", null)
 		return true
 	return hit is StaticBody3D
+
+
+## Brief freeze on impact — sells the weight of a blow.
+func _hit_stop(seconds: float) -> void:
+	if not is_inside_tree() or Engine.time_scale < 1.0:
+		return
+	Engine.time_scale = 0.08
+	get_tree().create_timer(seconds, true, false, true).timeout.connect(func() -> void: Engine.time_scale = 1.0)
 
 
 func shake(strength: float) -> void:

@@ -10,6 +10,20 @@ const NAMES := [
 	&"tool_break", &"hurt", &"ui_click", &"axe_chop", &"axe_glance", &"fire_loop", &"wind_loop", &"birds_loop", &"crickets_loop", &"rain_loop",
 ]
 const FILES := {
+	&"step_grass": [
+		"res://assets/audio/SFX_Step_Grass_000.wav",
+		"res://assets/audio/SFX_Step_Grass_001.wav",
+		"res://assets/audio/SFX_Step_Grass_002.wav",
+		"res://assets/audio/SFX_Step_Grass_003.wav",
+		"res://assets/audio/SFX_Step_Grass_004.wav",
+	],
+	&"step_wood": [
+		"res://assets/audio/SFX_Step_Wood_000.wav",
+		"res://assets/audio/SFX_Step_Wood_001.wav",
+		"res://assets/audio/SFX_Step_Wood_002.wav",
+		"res://assets/audio/SFX_Step_Wood_003.wav",
+		"res://assets/audio/SFX_Step_Wood_004.wav",
+	],
 	&"axe_chop": ["res://assets/audio/SFX_Axe_Chop_09.wav"],
 	&"axe_glance": ["res://assets/audio/SFX_Axe_Chop_05.wav"],
 	&"fire_loop": ["res://assets/audio/AMB_Campfire_Crackle.wav"],
@@ -23,6 +37,7 @@ const POOL_2D := 6
 
 var streams: Dictionary = {}
 var _variants: Dictionary = {}
+var _last_variant: Dictionary = {}
 var _pool3d: Array[AudioStreamPlayer3D] = []
 var _pool2d: Array[AudioStreamPlayer] = []
 var _next3d := 0
@@ -75,7 +90,13 @@ func play(name: StringName, pos: Variant = null, volume_db: float = 0.0, pitch_v
 		return
 	var choices: Array = _variants.get(name, [])
 	if choices.size() > 1:
-		s = choices[randi_range(0, choices.size() - 1)]
+		var variant := randi_range(0, choices.size() - 1)
+		if variant == int(_last_variant.get(name, -1)):
+			variant = (variant + 1) % choices.size()
+		_last_variant[name] = variant
+		s = choices[variant]
+	if name == &"step_grass":
+		volume_db += 8.0
 	var pitch := 1.0 + randf_range(-pitch_var, pitch_var)
 	if pos is Vector3:
 		var p := _pool3d[_next3d]

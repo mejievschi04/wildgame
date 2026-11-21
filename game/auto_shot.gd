@@ -9,6 +9,7 @@ var out_path := ""
 var frames := 120
 var shot_list: Array[int] = []
 var _chop_tree: TreeNode
+var _gore_pending := false
 var hour := -1.0
 var scenario := ""
 var bench_off := PackedStringArray()
@@ -121,6 +122,18 @@ func _ready() -> void:
 		p.head.rotation.x = -0.16
 		session.world.wildlife.enabled = false
 		session.world.factions.change(StringName(fname), 60.0)  # friendly for a calm screenshot
+	if scenario == "gore":
+		session.world.wildlife.enabled = false
+		var c := Camps.site(session.world.factions.def_of(&"hunters"))
+		var center := session.world.ground_point(c.x, c.y)
+		var at := center + Vector3(cos(-1.25), 0, sin(-1.25)) * 4.0
+		p.global_position = session.world.ground_point(at.x, at.z) + Vector3.UP * 0.3
+		p.look_at(Vector3(center.x, p.global_position.y, center.z))
+		p.rotation = Vector3(0, p.rotation.y, 0)
+		p.head.rotation.x = -0.2
+		p.inventory.add_item(&"stone_axe")
+		p.inventory.equip_slot(p.inventory.first_slot_of(&"stone_axe"))
+		_gore_pending = true
 	if scenario == "kit":
 		session.world.add_journal("JOURNAL_WATER")
 
@@ -191,6 +204,32 @@ func _process(delta: float) -> void:
 			"journal": session.open_inventory(1)
 			"pause": session.open_pause()
 			"buildmenu": session.open_build_menu()
+	if _gore_pending and _n == 30:
+		_gore_pending = false
+		var gs := get_parent() as GameSession
+		var axe := ItemDB.get_item(&"stone_axe")
+		var a: HumanNPC = gs.world.camps.npcs["npc_hunters_0"]
+		var b: HumanNPC = gs.world.camps.npcs["npc_hunters_1"]
+		for id: String in gs.world.camps.npcs.keys():
+			(gs.world.camps.npcs[id] as HumanNPC).set_physics_process(false)
+		var pl := gs.player
+		var fwd := -pl.global_transform.basis.z
+		var right := pl.global_transform.basis.x
+		for k in 2:
+			var n: HumanNPC = [a, b][k]
+			var pos := pl.global_position + fwd * 2.2 + right * (-0.7 if k == 0 else 0.7)
+			n.global_position = gs.world.ground_point(pos.x, pos.z)
+			n.rotation.y = pl.rotation.y + PI + (0.5 if k == 0 else -0.4)  # face the camera
+			n._play("idle")
+		await get_tree().process_frame
+		await get_tree().process_frame
+		var sk := a._skel
+		var arm := sk.global_transform * sk.get_bone_global_pose(sk.find_bone("hand_r")).origin
+		a.take_damage(40.0, null, arm, axe)
+		a.take_damage(40.0, null, arm, axe)
+		var sk2 := b._skel
+		var head := sk2.global_transform * sk2.get_bone_global_pose(sk2.find_bone("head")).origin + Vector3.UP * 0.08
+		b.take_damage(40.0, null, head, axe)
 	if scenario == "chop" and _chop_tree and _chop_tree.stage == TreeNode.Stage.STANDING and _n > 30 and _n % 45 == 0:
 		var pl := (get_parent() as GameSession).player
 		pl.stats.stamina = 100.0

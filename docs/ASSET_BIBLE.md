@@ -54,6 +54,7 @@ Most sounds remain **procedural placeholders** (`core/sound_synth.gd`); the sele
 - Every imported sound lists its source and licence in this file (CC0 or own recordings only).
 
 ### Integrated CC0 sound files
+- `assets/audio/SFX_Step_Grass_000.wav`–`SFX_Step_Grass_004.wav` and `SFX_Step_Wood_000.wav`–`SFX_Step_Wood_004.wav` — Kenney, Material Impacts & Footsteps, CC0 1.0; randomized across grass and wood footfalls. Official pack: https://kenney.nl/assets/impact-sounds. Samples retrieved via https://instrictlogic.com/AssetLibrary/sounds/banks/material-impacts-footsteps-kenney-2362a2f7/
 - `assets/audio/SFX_Axe_Chop_09.wav` — SFXMint, “Stump Block Axe Chopping Wood 09”, AI-generated, CC0 1.0; used on tree impacts. Source: https://sfxmint.com/sounds/axe-chopping-wood-09
 - `assets/audio/SFX_Axe_Chop_05.wav` — SFXMint, “Glancing Axe Chopping Wood 05”, AI-generated, CC0 1.0; used when an axe swing misses. Source: https://sfxmint.com/sounds/axe-chopping-wood-05
 - `assets/audio/AMB_Campfire_Crackle.wav` — SFXMint, “Steady Burning Fireplace Crackling 50”, AI-generated, CC0 1.0; prepared loop used by campfires. Source: https://sfxmint.com/sounds/ambience-fireplace-50

@@ -128,6 +128,7 @@ func _gameplay_tab() -> Control:
 	_row(p, "SET_TOGGLE_SPRINT", _check("gameplay", "toggle_sprint"))
 	_row(p, "SET_TOGGLE_CROUCH", _check("gameplay", "toggle_crouch"))
 	_row(p, "SET_DAY_LENGTH", _slider("gameplay", "day_length_min", 12, 60, 2, "%.0f"))
+	_row(p, "SET_GORE", _check("gameplay", "gore"))
 	return p
 
 

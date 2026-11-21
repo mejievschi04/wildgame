@@ -44,6 +44,8 @@ var _anim: AnimationPlayer
 var _cur_anim := ""
 var _gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity", 9.8)
 var rng := RandomNumberGenerator.new()
+var _bleed_t := 0.0
+var _drip_accum := 0.0
 
 
 func setup(p_species: StringName, p_world: ForestWorld, pos: Vector3, seed: int, p_id: String = "") -> void:
@@ -162,10 +164,19 @@ func _player() -> Node3D:
 
 # ---------------------------------------------------------------- damage & death
 
-func take_damage(amount: float, source: Node3D = null) -> void:
+func take_damage(amount: float, source: Node3D = null, hit_pos: Vector3 = Vector3.INF,
+		_weapon: ItemData = null, heavy: bool = false) -> void:
 	if is_dead():
 		return
-	health -= amount
+	var skels := _model.find_children("*", "Skeleton3D", true, false) if _model else []
+	var region: StringName = BodyRegions.region_at(skels[0], hit_pos) if hit_pos != Vector3.INF and not skels.is_empty() else &"torso"
+	var mult := 2.2 if region == &"head" else (0.75 if region != &"torso" else 1.0)
+	if heavy:
+		mult *= 1.0
+	health -= amount * mult
+	var at := hit_pos if hit_pos != Vector3.INF else global_position + Vector3.UP * float(def.get("height", 1.0)) * 0.6
+	Gore.burst(world, at, Vector3.UP, 14)
+	_bleed_t = 120.0  # leaves a blood trail for a while (tracking)
 	_flinch()
 	if health <= 0.0:
 		die(&"player" if source and source.is_in_group("player") else &"other")
@@ -203,6 +214,8 @@ func die(cause: StringName) -> void:
 	add_to_group("interactable")
 	add_to_group("carcass")
 	_play("death", false)
+	if world:
+		Gore.decal(world, global_position, 0.9)
 	died.emit(self)
 
 
@@ -436,7 +449,7 @@ func _update_attack(delta: float) -> void:
 			if p and threat == p and p.global_position.distance_to(global_position) <= float(def.attack_range) + 0.5:
 				var dir := (p.global_position - global_position).normalized()
 				if (-global_transform.basis.z).dot(dir) > 0.4 and p.has_method("take_hit"):
-					p.take_hit(float(def.damage), &"wolf", float(def.get("bleed_chance", 0.0)), global_position)
+					p.take_hit(float(def.damage), &"wolf", float(def.get("bleed_chance", 0.0)), global_position, self)
 
 
 # ---------------------------------------------------------------- locomotion
@@ -562,7 +575,18 @@ func _play(name: String, blend: bool = true) -> void:
 	_anim.play(name, 0.25 if blend else 0.1)
 
 
+func _blood_trail(delta: float) -> void:
+	if _bleed_t <= 0.0 or world == null:
+		return
+	_bleed_t -= delta
+	_drip_accum += _speed * delta
+	if _drip_accum > 2.2:
+		_drip_accum = 0.0
+		Gore.decal(world, global_position, 0.22)
+
+
 func _leave_tracks(delta: float) -> void:
+	_blood_trail(delta)
 	if _speed < 0.3 or world == null or world.tracks == null:
 		return
 	_step_accum += _speed * delta

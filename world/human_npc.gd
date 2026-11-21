@@ -36,6 +36,16 @@ var last_known := Vector3.ZERO
 var home := Vector3.ZERO
 var post := Vector3.ZERO
 var greeted_until := 0.0
+## Hit-location health per body region; a cutting weapon severs a region that reaches 0.
+var region_hp := {&"head": 45.0, &"torso": 999.0, &"arm_l": 35.0, &"arm_r": 35.0, &"leg_l": 45.0, &"leg_r": 45.0}
+var severed: Array[StringName] = []
+var bleeding := 0.0  # health lost per second
+var _skel: Skeleton3D
+var _severed_mod: SeveredBones
+var _stagger_t := 0.0
+var _guard_t := 0.0
+var _limp := 1.0
+var _strafe_dir := 1.0
 
 var _goal := Vector3.ZERO
 var _speed := 0.0
@@ -96,6 +106,11 @@ func _ready() -> void:
 		for n in ["idle", "walk", "run", "alert", "sit"]:
 			if _anim.has_animation(n):
 				_anim.get_animation(n).loop_mode = Animation.LOOP_LINEAR
+	var skels := _model.find_children("*", "Skeleton3D", true, false)
+	_skel = skels[0] if not skels.is_empty() else null
+	if _skel:
+		_severed_mod = SeveredBones.new()
+		_skel.add_child(_severed_mod)
 	if armed:
 		_attach_spear()
 	_set_state(State.SIT if rng.randf() < 0.5 else State.IDLE)
@@ -120,6 +135,7 @@ func _attach_spear() -> void:
 	if sk.find_bone("hand_r") < 0:
 		return
 	var att := BoneAttachment3D.new()
+	att.name = "SpearHold"
 	att.bone_name = "hand_r"
 	sk.add_child(att)
 	var spear := AssetLib.instance(AssetLib.item_model_path(&"spear"))
@@ -234,22 +250,124 @@ func _caption(key: String) -> void:
 
 # ---------------------------------------------------------------- damage
 
-func take_damage(amount: float, source: Node3D = null) -> void:
+func is_guarding() -> bool:
+	return _guard_t > 0.0
+
+
+func is_staggered() -> bool:
+	return _stagger_t > 0.0
+
+
+## Damage with hit location. weapon = the item that hit (cutting weapons can sever); heavy = charged blow.
+func take_damage(amount: float, source: Node3D = null, hit_pos: Vector3 = Vector3.INF,
+		weapon: ItemData = null, heavy: bool = false) -> void:
+	var region: StringName = BodyRegions.region_at(_skel, hit_pos) if hit_pos != Vector3.INF else &"torso"
+	if region in severed:
+		region = &"torso"
+	var cutting := weapon != null and weapon.has_tag(&"tool_axe")
+	var at := hit_pos if hit_pos != Vector3.INF else global_position + Vector3.UP * 1.2
 	if is_dead():
+		# Corpses can still be dismembered with a cutting weapon.
+		if cutting and region != &"torso":
+			region_hp[region] = float(region_hp[region]) - amount
+			Gore.burst(world, at, Vector3.UP, 10)
+			if float(region_hp[region]) <= 0.0 and Gore.enabled():
+				sever(region, source)
 		return
-	health -= amount
+	var dmg := amount * float(BodyRegions.MULT.get(region, 1.0))
+	if _guard_t > 0.0 and source and region != &"leg_l" and region != &"leg_r":
+		var to_src := (source.global_position - global_position).normalized()
+		if global_transform.basis.z.dot(to_src) > 0.3:
+			dmg *= 0.35  # blocked with the spear shaft
+			Sfx.play(&"stone_knock", at, -4.0)
+			if heavy:
+				stagger(0.8)
+	health -= dmg
+	region_hp[region] = float(region_hp[region]) - dmg
+	Gore.burst(world, at, (at - (source.global_position if source else at + Vector3.FORWARD)).normalized(), 18 if heavy else 12)
+	if randf() < 0.35:
+		Gore.decal(world, Vector3(at.x, global_position.y, at.z), 0.4)
+	if heavy:
+		stagger(0.6)
 	var by_player := source != null and source.is_in_group("player")
 	if by_player:
 		factions.change(faction, -40.0, &"attacked")
 		_rally(source)
+	_wound_effects(region)
+	if cutting and region != &"torso" and float(region_hp[region]) <= 0.0 and Gore.enabled():
+		sever(region, source)
+		if is_dead():
+			return
 	if health <= 0.0:
 		die(by_player)
 		return
 	if health < max_health * 0.4 or not armed:
 		_avoid_until = _uptime + 90.0
 		_set_state(State.FLEE)
-	elif by_player:
+	elif by_player and state != State.COMBAT:
 		_set_state(State.COMBAT)
+
+
+func _wound_effects(region: StringName) -> void:
+	if region in [&"leg_l", &"leg_r"] and float(region_hp[region]) < 22.0:
+		_limp = 0.55
+	if region == &"arm_r" and float(region_hp[region]) < 15.0 and armed:
+		_drop_weapon()
+
+
+func stagger(seconds: float) -> void:
+	_stagger_t = maxf(_stagger_t, seconds)
+	_windup = -1.0
+	if _model:
+		var tw := create_tween()
+		tw.tween_property(_model, "position", Vector3(0, -0.05, -0.15), 0.08)
+		tw.tween_property(_model, "position", Vector3.ZERO, 0.35)
+
+
+func _drop_weapon() -> void:
+	armed = false
+	var hold := _skel.find_child("SpearHold", false, false) if _skel else null
+	if hold:
+		hold.queue_free()
+	if world:
+		world.spawn_pickup(ItemStack.new(&"spear", 1, 40), global_position + Vector3.UP * 1.0 + global_transform.basis.z * 0.5)
+
+
+## Cuts a body region off: hides it on the skinned mesh, caps the stump, throws the part away.
+func sever(region: StringName, source: Node3D = null) -> void:
+	if region in severed or region == &"torso" or _skel == null:
+		return
+	severed.append(region)
+	var bone: String = BodyRegions.SEVER_BONE[region]
+	var bi := _skel.find_bone(bone)
+	if bi < 0:
+		return
+	var parent := _skel.get_bone_parent(bi)
+	var part_xf := _skel.global_transform * _skel.get_bone_global_pose(bi) * _skel.get_bone_global_rest(bi).affine_inverse()
+	_severed_mod.hidden.append(bone)
+	Gore.stump(_skel, _skel.get_bone_name(parent), _skel.get_bone_rest(bi).origin, 0.06 if region != &"head" else 0.07)
+	var push := Vector3.UP * 2.0
+	if source:
+		push += (global_position - source.global_position).normalized() * 3.0
+	if world:
+		Gore.spawn_part(world, "res://assets/models/humans/parts/SM_Part_%s_%s.gltf" % [variant, region], part_xf, push)
+		Gore.decal(world, global_position, 1.1)
+	Sfx.play(&"axe_chop", _skel.global_transform * _skel.get_bone_global_pose(bi).origin, 2.0)
+	if region == &"arm_r" and armed:
+		_drop_weapon()
+	if is_dead():
+		return
+	match region:
+		&"head":
+			die(source != null and source.is_in_group("player"))
+		&"leg_l", &"leg_r":
+			health = minf(health, 8.0)
+			bleeding = 6.0
+			die(source != null and source.is_in_group("player"))
+		_:
+			bleeding = 3.0
+			_avoid_until = _uptime + 300.0
+			_set_state(State.FLEE)
 
 
 func _rally(source: Node3D) -> void:
@@ -266,7 +384,13 @@ func die(by_player: bool) -> void:
 	health = 0.0
 	velocity = Vector3.ZERO
 	remove_from_group("interactable")
-	collision_layer = 0
+	add_to_group("corpse")
+	# Corpse stays hittable (dismemberment) but no longer blocks movement.
+	collision_layer = 4
+	for c in get_children():
+		if c is CollisionShape3D:
+			c.rotation_degrees = Vector3(90, 0, 0)
+			c.position = Vector3(0, 0.25, -0.6)
 	if by_player:
 		factions.change(faction, -60.0, &"killed")
 	_play("death", false)
@@ -297,6 +421,20 @@ func _physics_process(delta: float) -> void:
 		return
 	state_time += delta
 	_attack_cd = maxf(_attack_cd - delta, 0.0)
+	_stagger_t = maxf(_stagger_t - delta, 0.0)
+	_guard_t = maxf(_guard_t - delta, 0.0)
+	if bleeding > 0.0:
+		health -= bleeding * delta
+		if randf() < delta * 1.5:
+			Gore.decal(world, global_position, 0.25)
+		if health <= 0.0:
+			die(true)
+			return
+	if state == State.COMBAT and armed and _guard_t <= 0.0 and _stagger_t <= 0.0:
+		var pl := _player()
+		if pl and pl.has_method("is_winding_up") and pl.is_winding_up() \
+				and pl.global_position.distance_to(global_position) < 3.2 and rng.randf() < delta * 2.5:
+			_guard_t = 0.8
 	_think_t -= delta
 	if _think_t <= 0.0:
 		_think_t = 0.12
@@ -429,7 +567,7 @@ func _routine() -> void:
 # ---------------------------------------------------------------- combat
 
 func _update_attack(delta: float) -> void:
-	if state != State.COMBAT or not armed:
+	if state != State.COMBAT or not armed or _stagger_t > 0.0 or _guard_t > 0.0:
 		_windup = -1.0
 		return
 	var p := _player()
@@ -446,7 +584,7 @@ func _update_attack(delta: float) -> void:
 			var dir := (p.global_position - global_position).normalized()
 			if p.global_position.distance_to(global_position) <= ATTACK_RANGE + 0.4 and global_transform.basis.z.dot(dir) > 0.4:
 				if p.has_method("take_hit"):
-					p.take_hit(DAMAGE, &"human", 0.3, global_position)
+					p.take_hit(DAMAGE, &"human", 0.3, global_position, self)
 
 
 # ---------------------------------------------------------------- locomotion & animation
@@ -469,8 +607,20 @@ func _desired() -> Dictionary:
 			speed = WALK * 1.2
 		State.COMBAT:
 			if p:
-				dir = p.global_position - global_position
-				speed = RUN if dir.length() > ATTACK_RANGE * 0.9 else 0.0
+				var to_p := p.global_position - global_position
+				var dist := to_p.length()
+				if _stagger_t > 0.0:
+					dir = -to_p
+					speed = 0.6
+				elif _attack_cd > 0.4 and dist < 4.0:
+					# Between attacks: circle the opponent instead of standing in place.
+					if rng.randf() < 0.01:
+						_strafe_dir = -_strafe_dir
+					dir = to_p.normalized().cross(Vector3.UP) * _strafe_dir + (to_p.normalized() * (dist - 2.6) * 0.5)
+					speed = WALK * 1.2
+				else:
+					dir = to_p
+					speed = RUN if dist > ATTACK_RANGE * 0.9 else 0.0
 		State.FLEE:
 			if p:
 				dir = global_position - p.global_position
@@ -488,11 +638,18 @@ func _desired() -> Dictionary:
 func _move(delta: float) -> void:
 	var want := _desired()
 	var dir: Vector3 = want.dir
-	if dir != Vector3.ZERO:
-		rotation.y = rotate_toward(rotation.y, atan2(dir.x, dir.z), TURN * delta)
+	var face := dir
+	var pl := _player()
+	if state == State.COMBAT and pl:
+		face = (pl.global_position - global_position)  # keep facing the opponent while circling
+		face.y = 0.0
+	if face.length() > 0.01:
+		rotation.y = rotate_toward(rotation.y, atan2(face.x, face.z), TURN * delta)
 	var fwd := global_transform.basis.z
+	if state == State.COMBAT and dir != Vector3.ZERO:
+		fwd = dir.normalized()
 	var align := clampf(fwd.dot(dir), 0.2, 1.0) if dir != Vector3.ZERO else 1.0
-	_speed = move_toward(_speed, float(want.speed) * align, 6.0 * delta)
+	_speed = move_toward(_speed, float(want.speed) * align * _limp, 6.0 * delta)
 	velocity.x = fwd.x * _speed
 	velocity.z = fwd.z * _speed
 	move_and_slide()
@@ -502,6 +659,9 @@ func _animate() -> void:
 	if _anim == null or state == State.DEAD:
 		return
 	if _windup >= 0.0:
+		return
+	if _guard_t > 0.0:
+		_play("alert")
 		return
 	match state:
 		State.SIT:

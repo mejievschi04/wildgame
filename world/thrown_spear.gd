@@ -38,9 +38,12 @@ func _orient() -> void:
 func _on_body_entered(body: Node) -> void:
 	if not flying:
 		return
-	if body is Animal and not (body as Animal).is_dead():
+	if body is HumanNPC and not (body as HumanNPC).is_dead():
+		(body as HumanNPC).take_damage(BASE_DAMAGE * clampf(linear_velocity.length() / 22.0, 0.4, 1.2), thrower, global_position)
+		linear_velocity *= 0.1
+	elif body is Animal and not (body as Animal).is_dead():
 		var speed := linear_velocity.length()
-		(body as Animal).take_damage(BASE_DAMAGE * clampf(speed / 22.0, 0.4, 1.2), thrower)
+		(body as Animal).take_damage(BASE_DAMAGE * clampf(speed / 22.0, 0.4, 1.2), thrower, global_position)
 		Sfx.play(&"chop", global_position, -4.0)
 		linear_velocity *= 0.1
 	_land()

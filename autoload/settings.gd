@@ -10,7 +10,7 @@ const DEFAULTS := {
 	"audio": {"master": 0.8, "music": 0.6, "ambience": 0.65, "sfx": 0.9},
 	"gameplay": {
 		"mouse_sensitivity": 1.0, "invert_y": false, "difficulty": 1, "toggle_sprint": false,
-		"toggle_crouch": true, "day_length_min": 24.0, "language": "ru",
+		"toggle_crouch": true, "day_length_min": 24.0, "language": "ru", "gore": true,
 	},
 	"accessibility": {"hud_scale": 1.0, "high_contrast": false, "reduce_motion": false, "subtitles": true},
 }

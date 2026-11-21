@@ -383,6 +383,86 @@ def make_clips(rig):
     return list(clips)
 
 
+# Severable parts (GDD combat): region -> bones whose faces belong to the detached piece.
+FINGERS = lambda side: {f"{f}_{i:02d}_{side}" for f in ("index", "middle", "pinky", "ring", "thumb") for i in (1, 2, 3)}
+PARTS = {
+    "head": {"head"},
+    "arm_l": {"lowerarm_l", "hand_l"} | FINGERS("l"),
+    "arm_r": {"lowerarm_r", "hand_r"} | FINGERS("r"),
+    "leg_l": {"calf_l", "foot_l", "ball_l"},
+    "leg_r": {"calf_r", "foot_r", "ball_r"},
+}
+
+
+def export_parts(variant, objs, bone_names):
+    """Static rest-pose meshes of each severable part (body + clothing + hair), cut surface capped with flesh."""
+    flesh = mat_flat("M_Flesh", (0.45, 0.06, 0.05), 0.35)
+    all_bones = set()
+    for b in PARTS.values():
+        all_bones |= b
+    for region, bones in PARTS.items():
+        pieces = []
+        for src in objs:
+            o = src.copy()
+            o.data = src.data.copy()
+            bpy.context.scene.collection.objects.link(o)
+            o.parent = None
+            for m in list(o.modifiers):
+                o.modifiers.remove(m)
+            gnames = {g.index: g.name for g in o.vertex_groups}
+            bm = bmesh.new()
+            bm.from_mesh(o.data)
+            deform = bm.verts.layers.deform.active
+            kill = []
+            for f in bm.faces:
+                keep = True
+                for v in f.verts:
+                    best, w = None, 0.0
+                    if deform:
+                        for gi, wt in v[deform].items():
+                            gn = gnames.get(gi)
+                            if gn in bone_names and wt > w:
+                                best, w = gn, wt
+                    if best not in bones:
+                        keep = False
+                        break
+                if not keep:
+                    kill.append(f)
+            bmesh.ops.delete(bm, geom=kill, context="FACES")
+            if len(bm.faces) == 0:
+                bm.free()
+                bpy.data.objects.remove(o)
+                continue
+            n_before = len(bm.faces)
+            bmesh.ops.holes_fill(bm, edges=bm.edges, sides=0)
+            bm.to_mesh(o.data)
+            bm.free()
+            if src.name == objs[0].name:  # cap only the body (clothing shells stay open)
+                if flesh.name not in [m.name for m in o.data.materials if m]:
+                    o.data.materials.append(flesh)
+                fi = [m.name for m in o.data.materials].index(flesh.name)
+                for p in o.data.polygons[n_before:]:
+                    p.material_index = fi
+            o.vertex_groups.clear()
+            pieces.append(o)
+        if not pieces:
+            continue
+        bpy.ops.object.select_all(action="DESELECT")
+        for o in pieces:
+            o.select_set(True)
+        bpy.context.view_layer.objects.active = pieces[0]
+        if len(pieces) > 1:
+            bpy.ops.object.join()
+        part = bpy.context.view_layer.objects.active
+        part.name = f"SM_Part_{variant}_{region}"
+        path = os.path.join(OUT, "parts", f"SM_Part_{variant}_{region}.gltf")
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        bpy.ops.export_scene.gltf(filepath=path, export_format="GLTF_SEPARATE", export_texture_dir="../textures",
+                                  use_selection=True, export_yup=True, export_animations=False, export_skins=False)
+        bpy.data.objects.remove(part)
+    print("PARTS", variant, list(PARTS))
+
+
 def build(variant):
     macro, tone, hair, tint, beard = VARIANTS[variant]
     bpy.ops.wm.read_factory_settings(use_empty=True)
@@ -403,6 +483,7 @@ def build(variant):
     ] + make_hair(bm, hair_mat, beard)
     for p in pieces:
         p.parent = rig
+    export_parts(variant, [bm] + pieces, {b.name for b in rig.data.bones})
     clips = make_clips(rig)
     bpy.ops.object.select_all(action="DESELECT")
     for o in [bm, rig] + pieces:
