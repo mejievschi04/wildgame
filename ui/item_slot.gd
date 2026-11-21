@@ -19,6 +19,7 @@ var selected := false:
 
 var _icon: Panel
 var _initials: Label
+var _tex: TextureRect
 var _count: Label
 var _key: Label
 var _dur: ProgressBar
@@ -48,6 +49,17 @@ func _ready() -> void:
 	_initials.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_initials.add_theme_font_size_override("font_size", 14)
 	_icon.add_child(_initials)
+	_tex = TextureRect.new()
+	_tex.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_tex.offset_left = 3
+	_tex.offset_top = 3
+	_tex.offset_right = -3
+	_tex.offset_bottom = -5
+	_tex.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_tex.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_tex.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	overlay.add_child(_tex)
+	overlay.move_child(_tex, 1)
 	_count = UITheme.label("", "SmallLabel")
 	_count.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
 	_count.grow_horizontal = Control.GROW_DIRECTION_BEGIN
@@ -88,7 +100,10 @@ func _process(_delta: float) -> void:
 
 func _refresh(s: ItemStack) -> void:
 	var data := s.get_data() if s else null
-	_icon.visible = data != null
+	var icon := AssetLib.item_icon(data.id) if data else null
+	_tex.texture = icon
+	_tex.visible = icon != null
+	_icon.visible = data != null and icon == null
 	_count.visible = s != null and s.count > 1
 	_dur.visible = data != null and data.has_durability()
 	tooltip_text = ""
@@ -123,7 +138,7 @@ static func describe(s: ItemStack) -> String:
 		lines.append(Loc.t("TIP_FUEL", {"v": int(d.fuel_seconds / 60.0)}))
 	if d.is_cookable():
 		lines.append(Loc.t("TIP_COOKABLE"))
-	if d.placeholder:
+	if AssetLib.item_model_path(d.id) == "":
 		lines.append(Loc.t("TIP_PLACEHOLDER"))
 	return "\n".join(lines)
 
@@ -152,7 +167,12 @@ func _get_drag_data(_pos: Vector2) -> Variant:
 	var preview := Panel.new()
 	preview.custom_minimum_size = Vector2(44, 44)
 	preview.size = Vector2(44, 44)
-	preview.add_theme_stylebox_override("panel", UITheme.flat(s.get_data().icon_color, UITheme.OCHRE, 1, 6, 0.0))
+	preview.add_theme_stylebox_override("panel", UITheme.flat(Color(UITheme.CHARCOAL, 0.6), UITheme.OCHRE, 1, 6, 0.0))
+	var pic := TextureRect.new()
+	pic.texture = AssetLib.item_icon(s.id)
+	pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	pic.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	preview.add_child(pic)
 	set_drag_preview(preview)
 	return {"slot_index": index, "inv": inventory}
 

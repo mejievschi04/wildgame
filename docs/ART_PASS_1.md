@@ -40,3 +40,13 @@ Main-menu camera (whole valley in view) runs ~45 FPS at Medium.
 - Building pieces & tools are textured primitives, not modelled meshes; no first-person hands.
 - No wind animation on foliage yet; no impostors for distant trees.
 - Sounds: placeholders — the user will supply final audio.
+
+## Art pass 2 (items, icons, wind)
+- `tools/blender/gen_items.py` builds a model for **every item** (23) from scanned textures — knapped flint
+  and axe heads via convex hulls, bark/willow handles, leather bindings, food, waterskins — and renders a
+  256 px inventory icon for each (`assets/icons/T_Icon_<id>.png`).
+- Items use these models in the hand (per-item hold pose), on the ground (pickups) and on the campfire.
+- `world/shaders/foliage.gdshader`: alpha-tested foliage with translucency + wind sway driven by global
+  shader uniforms `wind_strength` / `wind_direction` (set by weather).
+- Still placeholder: deer carcass (replaced by the deer model in Phase 3), building pieces are textured
+  primitives (not sculpted meshes), no first-person arms.

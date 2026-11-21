@@ -324,7 +324,9 @@ func _refresh_recipes() -> void:
 		b.toggle_mode = true
 		b.button_pressed = _selected_recipe == r
 		b.modulate.a = 1.0 if ok else 0.55
-		b.icon = _swatch(d.icon_color)
+		b.icon = AssetLib.item_icon(d.id) if AssetLib.item_icon(d.id) else _swatch(d.icon_color)
+		b.expand_icon = false
+		b.add_theme_constant_override("icon_max_width", 34)
 		b.add_theme_constant_override("h_separation", 10)
 		b.pressed.connect(func() -> void:
 			_selected_recipe = r

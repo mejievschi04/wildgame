@@ -274,8 +274,14 @@ func _refresh() -> void:
 	for i in cooking.size():
 		var data := ItemDB.get_item(cooking[i].id)
 		var done := float(cooking[i].t) >= data.cook_time
-		var col := ItemDB.get_item(data.cook_result).icon_color if done else data.icon_color
-		Graybox.part(_food_root, Graybox.box(Vector3(0.16, 0.08, 0.12)), col, Vector3((i - 1) * 0.2, 0, 0))
+		var show_id: StringName = data.cook_result if done else data.id
+		var path := AssetLib.item_model_path(show_id)
+		if path != "":
+			var m := AssetLib.instance(path)
+			m.position = Vector3((i - 1) * 0.2, 0, 0)
+			_food_root.add_child(m)
+		else:
+			Graybox.part(_food_root, Graybox.box(Vector3(0.16, 0.08, 0.12)), ItemDB.get_item(show_id).icon_color, Vector3((i - 1) * 0.2, 0, 0))
 
 
 func save_state() -> Dictionary:
