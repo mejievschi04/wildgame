@@ -170,7 +170,7 @@ func test_carcass_persists() -> void:
 
 func test_all_species_have_models_clips_and_fur() -> void:
 	var s: GameSession = await _boot()
-	for sp: StringName in [&"deer", &"roe", &"wolf", &"bear", &"mammoth"]:
+	for sp: StringName in ItemDB.animals.keys():
 		var a := _spawn(s, sp, Vector3(30, 0, 30))
 		await tree.process_frame
 		check(a._anim != null, "%s has an AnimationPlayer" % sp)
