@@ -168,3 +168,133 @@ RHINO = {
     "parts": rhino_parts, "attack": lambda rig: horn_attack(rig, 0.6), "clips": rhino_clips,
     "graze_pose": {"neck": -18, "neck2": -8, "head": -14, "arm": 3, "drop": 0.03},
 }
+
+
+# ===================================================================== STEPPE BISON (Bison priscus)
+
+BISON_J = mirror_joints({
+    "nose": (0, 1.63, 0.94), "head": (0, 1.20, 1.30), "neck2": (0, 1.08, 1.35), "neck": (0, 0.90, 1.45),
+    "chest": (0, 0.55, 1.62), "spine": (0, 0.0, 1.45), "hips": (0, -0.70, 1.35),
+    "tail": (0, -0.92, 1.30), "tail2": (0, -1.0, 1.02), "tail3": (0, -1.02, 0.76),
+    "ear.L": (0.17, 1.15, 1.42), "ear_t.L": (0.28, 1.10, 1.44),
+    "sh.L": (0.22, 0.55, 1.15), "el.L": (0.22, 0.42, 0.72), "ca.L": (0.19, 0.48, 0.33), "fh.L": (0.18, 0.52, 0.04),
+    "hp.L": (0.22, -0.72, 1.18), "st.L": (0.24, -0.48, 0.80), "ho.L": (0.19, -0.76, 0.45), "hh.L": (0.18, -0.70, 0.04),
+})
+BISON_EYE = (0.215, 1.31, 1.29)
+
+
+def bison_sculpt(J):
+    sc = Sculpt()
+    sc.ell((0, 0.20, 1.20), (0.40, 0.62, 0.48), k=0.15)           # ribcage
+    sc.ell((0, 0.50, 1.70), (0.30, 0.42, 0.35), k=0.15)           # great shoulder hump
+    sc.ell((0, 0.20, 1.60), (0.24, 0.40, 0.22), k=0.14)
+    sc.ell((0, -0.35, 1.15), (0.36, 0.48, 0.38), k=0.15)          # belly
+    sc.ell((0, -0.70, 1.25), (0.30, 0.30, 0.28), k=0.12)          # slim hindquarters
+    for s in (1, -1):
+        sc.ell((0.20 * s, -0.66, 1.08), (0.14, 0.26, 0.32), (-10, 0, 0), k=0.09)
+        sc.ell((0.25 * s, 0.50, 1.12), (0.16, 0.28, 0.40), (12, 0, 0), k=0.09)
+    sc.cone((0, 0.60, 1.38), (0, 1.05, 1.30), 0.40, 0.30, k=0.12)  # deep neck
+    sc.ell((0, 1.18, 1.32), (0.24, 0.24, 0.24), k=0.08)           # broad skull
+    sc.cone((0, 1.20, 1.25), (0, 1.60, 0.98), 0.22, 0.12, k=0.07)  # face
+    sc.ell((0, 1.61, 0.95), (0.12, 0.08, 0.10), k=0.05)           # muzzle
+    sc.ell((0, 1.38, 1.02), (0.15, 0.26, 0.10), k=0.06)           # jaw
+    for s in (1, -1):
+        sc.sphere((0.228 * s, BISON_EYE[1], BISON_EYE[2]), 0.028, k=0.02, sub=True)
+        sc.leaf((0.17 * s, 1.15, 1.42), (0.28 * s, 1.10, 1.44), 0.07, 0.02, (0, -1, 0.3), k=0.03)
+        L = lambda k: X(J[k + ".L"], s)
+        sc.cone(L("sh"), L("el"), 0.17, 0.11, k=0.07)
+        sc.ell(np.add(L("el"), (0, 0.01, -0.1)), (0.07, 0.08, 0.12), k=0.05)
+        sc.cone(L("el"), L("ca"), 0.09, 0.055, k=0.05)
+        sc.cone(L("ca"), np.add(L("fh"), (0, -0.01, 0.06)), 0.055, 0.048, k=0.03)
+        sc.ell(np.add(L("fh"), (0, 0.02, 0.03)), (0.06, 0.08, 0.045), (-12, 0, 0), k=0.025)
+        sc.cone(L("hp"), L("st"), 0.20, 0.12, k=0.08)
+        sc.ell(np.add(L("st"), (0, -0.09, -0.09)), (0.07, 0.10, 0.13), (25, 0, 0), k=0.05)
+        sc.cone(L("st"), L("ho"), 0.10, 0.05, k=0.05)
+        sc.cone(L("ho"), np.add(L("hh"), (0, -0.01, 0.06)), 0.05, 0.047, k=0.03)
+        sc.ell(np.add(L("hh"), (0, 0.02, 0.03)), (0.058, 0.078, 0.045), (-12, 0, 0), k=0.025)
+    sc.cone(J["tail"], J["tail2"], 0.05, 0.03, k=0.04)
+    sc.cone(J["tail2"], J["tail3"], 0.03, 0.02, k=0.02)
+    return sc
+
+
+def bison_coat(p, n, bone):
+    x, y, z = p
+    pb = part(bone)
+    front, rear, dark, muzzle = (0.24, 0.16, 0.10), (0.46, 0.33, 0.21), (0.13, 0.09, 0.07), (0.24, 0.21, 0.19)
+    fur, rough = 1.0, 0.9
+    c = mix(rear, front, (y + 0.15) * 1.6)                                  # dark forequarters, tawny rear
+    if pb in LEG:
+        c = mix(c, dark, (0.8 - z) * 1.4)
+        if z < 0.06:
+            c, fur, rough = (0.07, 0.06, 0.055), 0.0, 0.45
+    if pb in ("head", "snout"):
+        c = front
+        if y > 1.50:
+            c = mix(front, muzzle, 0.7)
+        if y > 1.62 and n[2] > -0.3:
+            c, fur, rough = (0.06, 0.055, 0.05), 0.0, 0.3
+        if abs(abs(x) - BISON_EYE[0]) < 0.04 and abs(y - BISON_EYE[1]) < 0.04 and abs(z - BISON_EYE[2]) < 0.04:
+            c = mix(c, (0.05, 0.04, 0.035), 0.7)
+    if pb in ("ear", "neck", "neck2"):
+        c = front
+    if pb == "tail_tip":
+        c = dark
+    return c, fur, rough
+
+
+def bison_hair(p, n, bone):
+    x, y, z = p
+    pb = part(bone)
+    if pb in ("head", "snout"):
+        if n[2] < -0.3 and y < 1.5:
+            return 0.36, 0.1, 0.9, 0.07, (0, -0.2, -1)                    # beard
+        if y < 1.40 and n[2] > -0.1:
+            return 0.17, 0.35, 0.4, 0.06, (0, -0.6, 0.3)                  # woolly crown
+        if y < 1.42:
+            return 0.2, 0.2, 0.7, 0.06, (0, -0.5, -1)                     # cheeks blend into the mane
+        return 0.0, 0, 0, 0, (0, 0, -1)
+    if pb in ("ear",):
+        return 0.12, 0.3, 0.5, 0.05, (0, -1, 0)
+    if pb in ("neck", "neck2") or (pb == "chest" and y > 0.2):
+        return (0.34 if n[2] < 0 else 0.26), 0.25, 0.7, 0.07, (0, -0.5, -1)  # mane
+    if pb in TORSO:
+        if y > 0.05:
+            return 0.2, 0.2, 0.7, 0.06, (0, -0.8, -1)
+        return 0.045, 0.05, 0.3, 0.035, (0, -1, -0.4)                    # short summer coat behind
+    if pb == "upperarm":
+        return 0.24, 0.1, 0.9, 0.06, (0, -0.2, -1)                        # forelimb chaps
+    if pb == "forearm" and z > 0.45:
+        return 0.16, 0.05, 1.0, 0.05, (0, -0.1, -1)
+    if pb == "tail_tip":
+        return 0.2, 0.1, 1.0, 0.04, (0, -0.2, -1)
+    return 0.0, 0, 0, 0, (0, 0, -1)
+
+
+def bison_parts():
+    horn = fl.simple_mat("M_Bison_Horn", (0.13, 0.12, 0.11), 0.4)
+    out = []
+    for s in (1, -1):
+        pts = [(0.15 * s, 1.27, 1.42), (0.31 * s, 1.29, 1.45), (0.43 * s, 1.33, 1.56), (0.47 * s, 1.40, 1.70), (0.43 * s, 1.47, 1.80)]
+        out.append((fl.tube("Horn", pts, 0.065, 0.01, ring=12, n=20, mat=horn, power=0.8), "head"))
+    return out
+
+
+def bison_clips(rig):
+    walk = {"period": 1.3, "duty": 0.65, "amp_f": 17, "amp_h": 15, "lift": 45,
+            "phases": {"hL": 0.0, "fL": -0.25, "hR": -0.5, "fR": -0.75},
+            "bob": 0.02, "bob_freq": 2, "spine": 1, "yaw": 2, "head": 3, "tail": 5}
+    run = {"period": 0.6, "duty": 0.38, "amp_f": 32, "amp_h": 30, "lift": 70,
+           "phases": {"hL": 0.0, "hR": -0.12, "fR": -0.45, "fL": -0.55},
+           "bob": 0.06, "bob_freq": 1, "spine": 5, "yaw": 1, "head": 4, "tail": 14}
+    return std_clips(rig, BISON, walk, run)
+
+
+BISON = {
+    "name": "Bison", "J": BISON_J, "sculpt": bison_sculpt, "voxel": 0.013, "tris": 16000,
+    "coat": bison_coat, "hair": bison_hair, "card_density": 650,
+    "hair_palette": [(0.24, 0.16, 0.10), (0.34, 0.24, 0.15), (0.14, 0.10, 0.07), (0.46, 0.33, 0.21)],
+    "fur_scale": 140.0, "fur_stretch": 6.0, "bump": 0.7, "strands_per_card": 180,
+    "eyes": [(BISON_EYE, 0.02)], "eye_color": (0.08, 0.05, 0.03),
+    "parts": bison_parts, "attack": lambda rig: horn_attack(rig, 0.5), "clips": bison_clips,
+    "graze_pose": {"neck": -30, "neck2": -12, "head": -10, "arm": 5, "drop": 0.03},
+}
