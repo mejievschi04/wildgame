@@ -101,7 +101,7 @@ func max_awareness() -> Dictionary:
 	for a in living():
 		if a.awareness > v:
 			v = a.awareness
-		if a.is_predator() and a.state in [Animal.State.CHASE, Animal.State.ATTACK] and a.threat == world.player:
+		if a.is_hostile() and a.threat == world.player:
 			hostile = true
 	return {"value": v, "hostile": hostile}
 

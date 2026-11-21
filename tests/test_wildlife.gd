@@ -166,3 +166,56 @@ func test_carcass_persists() -> void:
 	var carcasses := tree.get_nodes_in_group("carcass")
 	check(carcasses.size() == 1 and (carcasses[0] as Animal).species == &"deer", "deer carcass restored")
 	await _teardown(s2)
+
+
+func test_all_species_have_models_clips_and_fur() -> void:
+	var s: GameSession = await _boot()
+	for sp: StringName in [&"deer", &"roe", &"wolf", &"bear", &"mammoth"]:
+		var a := _spawn(s, sp, Vector3(30, 0, 30))
+		await tree.process_frame
+		check(a._anim != null, "%s has an AnimationPlayer" % sp)
+		for clip in ["idle", "walk", "run", "graze", "alert", "attack", "death"]:
+			check(a._anim.has_animation(clip), "%s has clip %s" % [sp, clip])
+		var fur := false
+		for mi: MeshInstance3D in a._model.find_children("*", "MeshInstance3D", true, false):
+			var m := mi.get_surface_override_material(0)
+			if m is BaseMaterial3D and (m as BaseMaterial3D).transparency == BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR:
+				fur = mi.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		check(fur, "%s has alpha-tested fur cards that don't cast shadows" % sp)
+		a.queue_free()
+	await _teardown(s)
+
+
+func test_mammoth_defends_itself() -> void:
+	var s: GameSession = await _boot()
+	var m := _spawn(s, &"mammoth", Vector3(0, 0, -6))
+	await tree.physics_frame
+	m.awareness = 1.0
+	m._set_state(Animal.State.ALERT)
+	m._think_defensive(0.1, s.player, 1.0)
+	check(m.state == Animal.State.CHASE, "a mammoth charges a player who comes too close")
+	m.state_time = float(m.def.give_up) + 1.0
+	m._think_defensive(0.1, s.player, 1.0)
+	check(m.state == Animal.State.RECOVER and m.calm_until > m._uptime, "then calms down (no permanent aggro)")
+	var far := _spawn(s, &"mammoth", Vector3(0, 0, -40))
+	await tree.physics_frame
+	far.take_damage(30.0, s.player)
+	check(far.state == Animal.State.CHASE, "a hurt mammoth turns on the attacker instead of fleeing")
+	await _teardown(s)
+
+
+func test_bear_is_territorial_and_wolves_skip_megafauna() -> void:
+	var s: GameSession = await _boot()
+	var bear := _spawn(s, &"bear", Vector3(0, 0, -8))
+	await tree.physics_frame
+	bear.hungry = false
+	check(bear._wants_to_attack(s.player), "a bear engages a player inside its territory")
+	check(bear._find_prey() == null, "bears don't hunt deer")
+	var wolf := _spawn(s, &"wolf", Vector3(60, 0, 0))
+	var mam := _spawn(s, &"mammoth", Vector3(64, 0, 0))
+	var roe := _spawn(s, &"roe", Vector3(56, 0, 0))
+	await tree.physics_frame
+	var prey := wolf._find_prey()
+	check(prey != mam, "wolves don't pick a mammoth as prey")
+	check(prey == null or prey == roe, "roe deer are valid wolf prey")
+	await _teardown(s)

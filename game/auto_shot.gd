@@ -3,7 +3,7 @@ extends Node
 ## DEV TOOL: deterministic screenshots for verification.
 ## Usage: godot --path . -- --autoshot=/abs/out.png [--shot-frames=120] [--shot-hour=21.5] [--shot-scenario=inventory]
 ## Scenarios: none, inventory, journal, pause, camp (lit fire + bed in view), kit (starter items), prompt (aim at sticks),
-## build (hut + lean-to + blueprint + active ghost), buildmenu (radial menu).
+## build (hut + lean-to + blueprint + active ghost), buildmenu (radial menu), fauna (all species, live).
 
 var out_path := ""
 var frames := 120
@@ -90,6 +90,26 @@ func _ready() -> void:
 			w.set_physics_process(false)
 			w._play("walk" if i == 0 else "idle")
 		p.head.rotation.x = -0.12
+	if scenario == "fauna":  # every species in a row, physics ON (checks ground contact + live animation)
+		var wl := session.world.wildlife
+		wl.enabled = false
+		var cam := p.get_viewport().get_camera_3d()
+		var fwd := -cam.global_transform.basis.z
+		fwd.y = 0.0
+		fwd = fwd.normalized()
+		var right := fwd.cross(Vector3.UP)
+		var row := [[&"roe", -3.2, 5.5], [&"wolf", -1.2, 6.0], [&"deer", 1.2, 7.5], [&"bear", 4.0, 8.0], [&"mammoth", 1.0, 15.0]]
+		for e: Array in row:
+			var pos: Vector3 = p.global_position + fwd * float(e[2]) + right * float(e[1])
+			var a := wl.spawn(e[0], session.world.ground_point(pos.x, pos.z) + Vector3.UP * 0.3)
+			a.rotation.y = atan2(fwd.x, fwd.z) + PI * 0.5
+			a.calm_until = 1e9
+			a.hungry = false
+		get_tree().create_timer(1.5).timeout.connect(func() -> void:
+			for a: Animal in wl.living():
+				var g := session.world.height_at(a.global_position.x, a.global_position.z)
+				print("FAUNA_GROUND %s body_y-ground=%.2f" % [a.species, a.global_position.y - g]))
+		p.head.rotation.x = -0.05
 	if scenario == "carcass":
 		var cpos: Vector3 = session.world.get_node("POI_Carcass").global_position
 		p.global_position = cpos + Vector3(3.0, 0.5, 2.0)

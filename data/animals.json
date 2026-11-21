@@ -6,6 +6,13 @@
 		"loot": {"meat_raw": 6, "hide": 2, "bone": 3}, "group": [2, 4], "max": 8, "track": "hoof",
 		"spawn_min": 55, "spawn_max": 95
 	},
+	"roe": {
+		"model": "res://assets/models/animals/SK_Roe.gltf", "diet": "prey", "health": 45,
+		"walk": 1.3, "run": 10.5, "turn": 4.2, "sight": 44, "fov": 300, "hearing": 38, "smell": 55,
+		"radius": 0.22, "height": 1.0, "length": 0.95,
+		"loot": {"meat_raw": 3, "hide": 1, "bone": 2}, "group": [1, 3], "max": 5, "track": "hoof", "track_scale": 0.7,
+		"spawn_min": 50, "spawn_max": 95
+	},
 	"wolf": {
 		"model": "res://assets/models/animals/SK_Wolf.gltf", "diet": "predator", "health": 70,
 		"walk": 1.7, "run": 8.2, "turn": 4.5, "sight": 42, "fov": 230, "hearing": 38, "smell": 75,
@@ -14,5 +21,23 @@
 		"give_up": 22.0, "flee_health": 0.4, "fire_fear": 7.0,
 		"loot": {"meat_raw": 3, "hide": 1, "bone": 2}, "group": [2, 3], "max": 3, "track": "paw",
 		"spawn_min": 75, "spawn_max": 110
+	},
+	"bear": {
+		"model": "res://assets/models/animals/SK_Bear.gltf", "diet": "predator", "hunts": false, "territory": 14.0,
+		"health": 260, "walk": 1.4, "run": 8.8, "turn": 2.6, "sight": 34, "fov": 240, "hearing": 40, "smell": 90,
+		"radius": 0.55, "height": 1.45, "length": 2.2,
+		"damage": 32, "attack_range": 2.3, "attack_windup": 0.6, "attack_cooldown": 2.2, "bleed_chance": 0.6,
+		"give_up": 14.0, "flee_health": 0.3, "fire_fear": 6.0,
+		"loot": {"meat_raw": 14, "hide": 4, "bone": 6}, "group": [1, 1], "max": 1, "track": "paw", "track_scale": 1.9,
+		"spawn_min": 90, "spawn_max": 140
+	},
+	"mammoth": {
+		"model": "res://assets/models/animals/SK_Mammoth.gltf", "diet": "defensive", "health": 900,
+		"walk": 1.4, "run": 6.5, "turn": 1.3, "sight": 30, "fov": 280, "hearing": 45, "smell": 80,
+		"radius": 1.1, "height": 3.6, "length": 3.8,
+		"damage": 55, "attack_range": 3.6, "attack_windup": 0.7, "attack_cooldown": 2.6, "bleed_chance": 0.2,
+		"charge_range": 9.0, "give_up": 9.0, "flee_health": 0.2, "fire_fear": 8.0,
+		"loot": {"meat_raw": 40, "hide": 8, "bone": 14}, "group": [2, 3], "max": 3, "track": "pad", "track_scale": 3.2,
+		"spawn_min": 80, "spawn_max": 130
 	}
 }

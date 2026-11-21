@@ -33,3 +33,37 @@ hunt + butcher loot + journal, spear throw damage + wear, director limits & spaw
 - Animals have no navmesh (local steering only) and can get briefly stuck in dense trees.
 - No hit-location damage, no limping/blood trails yet; tracks show species and age, not direction arrows.
 - Human NPCs / factions (rest of Master-Prompt Phase 3) are not implemented yet.
+
+
+## Fauna art pass 2 — realistic procedural animals (2026-11-21)
+Five species, generated in Blender (no downloaded assets): `blender -b --python tools/blender/gen_animals.py -- [wolf deer roe bear mammoth]`
+(~30 s each). Library: `tools/blender/fauna_lib.py`; species data: `gen_animals.py` (wolf), `species_more.py` (others).
+
+| Step | What |
+|---|---|
+| Anatomy | signed-distance sculpt: smooth union of tapered capsules + ellipsoids (ribcage, brisket, scapulae, haunches, flank folds, skull, cheeks, muzzle, jaw, ears), eye sockets subtracted → surface-nets mesh → smoothed, decimated to 12–20k tris |
+| Coat | per-vertex region rules (saddle, belly, rump patch, muzzle, eye rims, nose leather, hooves/pads) × fur-strand noise → Cycles bake: albedo (× baked AO), tangent normal (strand bump), roughness — 2k PNGs in `assets/models/animals/textures/` |
+| Fur | alpha-tested hair cards rooted on the body (ruff, mane, mammoth skirt up to 1 m, bear shag), strand atlas generated per species; cards take their root's skin weights; in game: two-sided, no shadow casting, hidden beyond 70 m |
+| Parts | glossy eyes, mammoth tusks, bear claws (rigid to head/feet bones) |
+| Rig/clips | same bone names as before (+ mammoth trunk `snout2-4`); clips idle/walk/run/graze/alert/attack/death with stance/swing leg cycles, lateral-sequence walk, gallop (wolf/deer/bear) or amble (mammoth), trunk sway |
+
+Preview: `blender -b --python tools/blender/preview_animal.py -- out.png assets/models/animals/SK_Bear.gltf [clip] [frame]`.
+In-game check: `godot --path . res://scenes/game.tscn -- --autoshot=/abs/out.png --shot-scenario=fauna --shot-hour=10`
+(prints `FAUNA_GROUND` = body height above terrain; must be ~0).
+
+| Species | Diet / behaviour | Notes |
+|---|---|---|
+| Roe deer «Косуля» | prey, herds of 1–3 (≤5) | fastest runner, 3 meat |
+| Cave bear «Пещерный медведь» | predator, **territorial** (engages inside 14 m), does not hunt deer | 260 HP, 32 dmg swipe, high bleed chance, 14 meat |
+| Woolly mammoth «Шерстистый мамонт» | **defensive**: grazes, charges a player within 9 m or one who hurts it, calms after 9 s | 900 HP, 55 dmg tusk toss, fears fire, 40 meat |
+
+Fixes in this pass: animals used to sink until the belly capsule touched the terrain (deer legs ~0.5 m underground,
+mammoth ~1 m) — a ground-contact sphere now carries them. Wolves only hunt `prey` species. Creature death causes are
+per species (`DEATH_BEAR`, `DEATH_MAMMOTH`).
+
+Tests added (3): every species loads with all 7 clips and shadowless alpha fur; mammoth charges then calms, and turns
+on an attacker; bear is territorial and doesn't hunt; wolves skip mammoths but take roe.
+
+Limitations: procedural sculpts read as realistic at gameplay distance; in extreme close-ups faces are simpler than
+hand-sculpted assets. Fur cards cost ~8 % FPS with five animals in view. Next species (same pipeline): woolly rhino,
+steppe bison, wild horse, giant deer (Megaloceros), cave lion, wild boar, reindeer, fox, hare.

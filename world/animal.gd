@@ -4,7 +4,10 @@ extends CharacterBody3D
 ##   sight (range, FOV, line of sight, player visibility), hearing (player noise), smell (wind-dependent).
 ## Prey:      IDLE/WANDER/GRAZE → ALERT → FLEE (alarms herd) → RECOVER
 ## Predator:  PATROL → SUSPICIOUS → INVESTIGATE → CHASE → ATTACK (wind-up) → gives up / RETREAT when hurt
-##            also HUNT_PREY (chases deer), afraid of fire/torches. No teleporting, no permanent aggro.
+##            also HUNT_PREY (deer/roe, if the species hunts), afraid of fire/torches. Territorial ones (bear)
+##            engage a player who comes too close. No teleporting, no permanent aggro.
+## Defensive: grazes like prey, but charges (CHASE → ATTACK) a player who comes within `charge_range` or
+##            hurts it (mammoth); calms down after `give_up` seconds and wanders off.
 
 signal died(animal: Animal)
 
@@ -66,6 +69,19 @@ func is_predator() -> bool:
 	return str(def.get("diet", "prey")) == "predator"
 
 
+func is_defensive() -> bool:
+	return str(def.get("diet", "prey")) == "defensive"
+
+
+func is_prey() -> bool:
+	return str(def.get("diet", "prey")) == "prey"
+
+
+## Hostile right now (chasing or attacking) — used by the HUD danger cue.
+func is_hostile() -> bool:
+	return state in [State.CHASE, State.ATTACK] and not is_prey()
+
+
 func is_dead() -> bool:
 	return state == State.DEAD
 
@@ -87,6 +103,14 @@ func _ready() -> void:
 	cs.rotation_degrees = Vector3(90, 0, 0)
 	cs.position = Vector3(0, h * 0.6, 0)
 	add_child(cs)
+	# The body capsule sits at belly height; this small sphere under it is what stands on the ground
+	# (without it the animal sank until the capsule touched the terrain — legs buried).
+	var feet := CollisionShape3D.new()
+	var ball := SphereShape3D.new()
+	ball.radius = clampf(r * 0.6, 0.12, 0.5)
+	feet.shape = ball
+	feet.position = Vector3(0, ball.radius, 0)
+	add_child(feet)
 	_model = AssetLib.instance(str(def.model))
 	add_child(_model)
 	_fix_materials(_model)
@@ -101,16 +125,23 @@ func _ready() -> void:
 
 
 static func _fix_materials(root: Node) -> void:
-	# Coat colour lives in vertex colours; make sure the material uses them.
+	# Body: baked PBR coat (albedo/normal/roughness) — used as imported. Fur cards: alpha-tested,
+	# two-sided, and they don't cast shadows (dense cards would self-shadow to black).
 	for mi: MeshInstance3D in root.find_children("*", "MeshInstance3D", true, false):
 		for s in mi.mesh.get_surface_count():
 			var m := mi.mesh.surface_get_material(s)
-			if m is BaseMaterial3D:
+			if m is BaseMaterial3D and String(m.resource_name).ends_with("_Fur"):
 				var d := (m as BaseMaterial3D).duplicate() as BaseMaterial3D
-				d.vertex_color_use_as_albedo = true
-				d.vertex_color_is_srgb = false
+				d.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+				d.alpha_scissor_threshold = 0.42
+				d.alpha_antialiasing_mode = BaseMaterial3D.ALPHA_ANTIALIASING_ALPHA_TO_COVERAGE
+				d.cull_mode = BaseMaterial3D.CULL_DISABLED
 				d.roughness = 0.85
 				mi.set_surface_override_material(s, d)
+				mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+				mi.visibility_range_end = 70.0  # silhouette fuzz only matters up close
+				mi.visibility_range_end_margin = 8.0
+				mi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
 
 
 # ---------------------------------------------------------------- perception
@@ -191,6 +222,14 @@ func take_damage(amount: float, source: Node3D = null, hit_pos: Vector3 = Vector
 		elif source and source.is_in_group("player"):
 			awareness = 1.0
 			_set_state(State.CHASE)
+	elif is_defensive():
+		if health < max_health * float(def.get("flee_health", 0.25)):
+			calm_until = _uptime + 120.0
+			_set_state(State.FLEE)
+		elif source and source.is_in_group("player"):
+			awareness = 1.0
+			calm_until = 0.0
+			_set_state(State.CHASE)
 	else:
 		_alarm_herd(source)
 		_set_state(State.FLEE)
@@ -238,7 +277,7 @@ func perform_interaction(player: Node, _action: StringName) -> void:
 	if not is_dead() or butchered or not player.inventory.has_tag(&"tool_knife"):
 		return
 	var loot: Dictionary = def.get("loot", {})
-	var share := 0.5 if killed_by == &"wolf" else 1.0  # wolves already ate part of it
+	var share := 0.5 if ItemDB.animals.has(killed_by) else 1.0  # a predator already ate part of it
 	for id: String in loot.keys():
 		var n := maxi(1, int(round(int(loot[id]) * share)))
 		player.give_item(StringName(id), n)
@@ -292,6 +331,8 @@ func _think(dt: float) -> void:
 		awareness = maxf(awareness - 0.12 * dt, 0.0)
 	if is_predator():
 		_think_predator(dt, p, stim)
+	elif is_defensive():
+		_think_defensive(dt, p, stim)
 	else:
 		_think_prey(dt, p, stim)
 
@@ -375,7 +416,7 @@ func _think_predator(_dt: float, p: Node3D, stim: float) -> void:
 				hungry = false
 				_set_state(State.IDLE)
 			elif threat.global_position.distance_to(global_position) < 1.8:
-				(threat as Animal).die(&"wolf")
+				(threat as Animal).die(species)
 				hungry = false
 				_set_state(State.IDLE)
 			elif awareness > 0.7 and may_engage and _wants_to_attack(p):
@@ -390,13 +431,59 @@ func _think_predator(_dt: float, p: Node3D, stim: float) -> void:
 				_set_state(State.PATROL)
 
 
-## Predators commit to the player only with a reason: hungry, night, a weak player, or provoked.
+## Predators commit to the player only with a reason: hungry, night, a weak player, provoked, or (territorial
+## species) the player came too close.
 func _wants_to_attack(p: Node3D) -> bool:
 	if p == null:
 		return false
 	var night: bool = world.day_night.is_night() if world else false
 	var weak: bool = p.get("stats") != null and p.stats.health < 60.0
-	return hungry or night or weak or health < max_health
+	var intruder := p.global_position.distance_to(global_position) < float(def.get("territory", 0.0))
+	return hungry or night or weak or intruder or health < max_health
+
+
+func _think_defensive(_dt: float, p: Node3D, stim: float) -> void:
+	var d := p.global_position.distance_to(global_position) if p else INF
+	var charge := float(def.get("charge_range", 8.0))
+	var may_engage := _uptime >= calm_until
+	match state:
+		State.IDLE, State.GRAZE, State.WANDER:
+			if awareness > 0.35:
+				threat = p
+				_set_state(State.ALERT)
+			elif state == State.GRAZE and state_time > rng.randf_range(8.0, 18.0):
+				_set_state(State.WANDER)
+			elif state == State.IDLE and state_time > 6.0:
+				_set_state(State.GRAZE)
+			elif state == State.WANDER and (global_position.distance_to(_goal) < 2.0 or state_time > 30.0):
+				_set_state(State.IDLE if rng.randf() < 0.4 else State.GRAZE)
+		State.ALERT:
+			if may_engage and d < charge and stim > 0.1 and not _fire_near(p.global_position if p else global_position):
+				threat = p
+				_set_state(State.CHASE)
+			elif awareness < 0.15 and state_time > 5.0:
+				_set_state(State.GRAZE)
+		State.CHASE:
+			if threat == null or not is_instance_valid(threat) or (p and p.get("dead") == true):
+				_set_state(State.GRAZE)
+			elif state_time > float(def.get("give_up", 10.0)) or d > charge * 3.0:
+				calm_until = _uptime + 45.0
+				_set_state(State.RECOVER)
+			elif _fire_near(p.global_position if p else global_position) and d < float(def.get("fire_fear", 6.0)):
+				calm_until = _uptime + 30.0
+				_set_state(State.FLEE)
+			elif d <= float(def.attack_range) and _attack_cd <= 0.0:
+				_set_state(State.ATTACK)
+		State.ATTACK:
+			if _windup < 0.0 and state_time > 1.2:
+				_set_state(State.CHASE if threat else State.GRAZE)
+		State.FLEE:
+			if state_time > 10.0:
+				_set_state(State.RECOVER)
+		State.RECOVER:
+			if state_time > 12.0:
+				home = global_position
+				_set_state(State.GRAZE)
 
 
 func _fire_near(pos: Vector3) -> bool:
@@ -410,10 +497,12 @@ func _fire_near(pos: Vector3) -> bool:
 
 
 func _find_prey() -> Animal:
+	if not bool(def.get("hunts", true)):
+		return null
 	var best: Animal = null
 	var best_d := float(def.sight)
 	for a: Animal in get_tree().get_nodes_in_group("animal"):
-		if a == self or a.is_predator() or a.is_dead():
+		if a == self or not a.is_prey() or a.is_dead():
 			continue
 		var d := a.global_position.distance_to(global_position)
 		if d < best_d and (_line_of_sight(a.global_position + Vector3.UP) or smells(a.global_position)):
@@ -449,7 +538,7 @@ func _update_attack(delta: float) -> void:
 			if p and threat == p and p.global_position.distance_to(global_position) <= float(def.attack_range) + 0.5:
 				var dir := (p.global_position - global_position).normalized()
 				if (-global_transform.basis.z).dot(dir) > 0.4 and p.has_method("take_hit"):
-					p.take_hit(float(def.damage), &"wolf", float(def.get("bleed_chance", 0.0)), global_position, self)
+					p.take_hit(float(def.damage), species, float(def.get("bleed_chance", 0.0)), global_position, self)
 
 
 # ---------------------------------------------------------------- locomotion

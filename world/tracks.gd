@@ -17,11 +17,14 @@ func _ready() -> void:
 
 func add(species: StringName, kind: String, pos: Vector3, yaw: float) -> void:
 	_left = not _left
-	var side := Vector3(cos(yaw), 0, -sin(yaw)) * (0.11 if _left else -0.11)
+	var sc0 := float(ItemDB.get_animal(species).get("track_scale", 1.0)) if ItemDB.animals.has(species) else 1.0
+	var side := Vector3(cos(yaw), 0, -sin(yaw)) * (0.11 if _left else -0.11) * sc0
 	var p := pos + side
 	var d := Decal.new()
 	d.texture_albedo = _texture(kind)
 	d.size = Vector3(0.16, 0.5, 0.2) if kind == "hoof" else Vector3(0.14, 0.5, 0.16)
+	var sc := float(ItemDB.get_animal(species).get("track_scale", 1.0)) if ItemDB.animals.has(species) else 1.0
+	d.size *= Vector3(sc, 1.0, sc)
 	d.modulate = Color(0.16, 0.12, 0.09, 0.85)
 	d.distance_fade_enabled = true
 	d.distance_fade_begin = 22.0
@@ -78,6 +81,8 @@ static func _texture(kind: String) -> Texture2D:
 	var blobs: Array = []
 	if kind == "hoof":
 		blobs = [[Vector2(24, 30), Vector2(7, 18)], [Vector2(40, 30), Vector2(7, 18)]]
+	elif kind == "pad":  # elephant-like round footprint
+		blobs = [[Vector2(32, 32), Vector2(24, 26)]]
 	else:
 		blobs = [[Vector2(32, 40), Vector2(11, 10)], [Vector2(20, 22), Vector2(4, 5)], [Vector2(28, 16), Vector2(4, 5)],
 			[Vector2(36, 16), Vector2(4, 5)], [Vector2(44, 22), Vector2(4, 5)]]
