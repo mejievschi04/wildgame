@@ -45,3 +45,10 @@ Blender 5.x → **glTF 2.0 (.glb)** (Godot-native; FBX only if a DCC requires it
 1. Export `SM_*.glb`, drop into `assets/models/...`.
 2. In the relevant builder (e.g. `ResourceNode._build`) swap the Graybox primitives for `preload("res://assets/...glb").instantiate()`; keep collision shapes.
 3. Set `"placeholder": false` for the item in `data/items.json` and add its icon.
+
+## Audio
+Current sounds are **procedural placeholders** (`core/sound_synth.gd`). Replacement rules:
+- Format: OGG Vorbis (loops) / WAV 16-bit (short one-shots), 44.1 kHz, mono for 3D sources.
+- Naming: `SFX_<Category>_<Name>_<Variant>` (e.g. `SFX_Step_Wood_03.wav`), ambience `AMB_*`, music `MUS_*`.
+- Keep the `Sfx.NAMES` keys; swap `SoundSynth.build()` output for `load()`ed streams with random variants.
+- Every imported sound lists its source and licence in this file (CC0 or own recordings only).

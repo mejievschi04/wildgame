@@ -34,6 +34,7 @@ autoload/   Global services (no gameplay state of a running world)
   settings.gd      user://settings.cfg, input remapping, video/audio apply
   save_manager.gd  versioned save slots
   game.gd          scene flow: menu ↔ session, pending save data
+  sfx.gd           procedural sound streams + pooled 2D/3D players, captions
 
 core/       Pure logic, no scene tree dependency → unit-testable
   item_data.gd, recipe_data.gd, item_stack.gd
@@ -41,6 +42,7 @@ core/       Pure logic, no scene tree dependency → unit-testable
   crafting.gd      recipe checks/execution
   survival_stats.gd health, stamina, hunger, thirst, body temperature, rest, conditions
   input_setup.gd   default action map (keyboard physical keys + gamepad)
+  sound_synth.gd   offline synth (noise/tones/envelopes → AudioStreamWAV)
 
 player/     Player character, interaction, placement
 world/      Forest graybox generation, day/night, interactables, structures
@@ -80,12 +82,21 @@ Runtime-spawned objects (pickups, structures) are serialized as lists and re-spa
 **Time simulation** (group `time_sim`): `simulate(seconds)` — used for sleeping/time skips
 so fires, regrowth and needs advance consistently without running physics.
 
+## 3b. Building
+
+`BuildingPiece` (one script, data from `data/building_pieces.json`) is spawned through
+`ForestWorld.spawn_structure(&"piece", xform, {"piece": id, "on": [support ids]})`.
+`BuildController.evaluate(aim, normal, collider, yaw)` is a pure query returning
+`{valid, reason, xform, supports}`, so snapping is unit-tested headless.
+Support is a graph of structure ids; `ForestWorld.remove_piece()` cascades collapse.
+
 ## 4. Data tables
 
 - `data/items.json` — id, category, weight, max_stack, max_durability, tags, food/water/health,
   sickness_chance, cook_result/cook_time, use_result, fuel_seconds, place, damage, icon colour.
 - `data/recipes.json` — result, ingredients, required tool tag, station, craft time.
 - `data/resource_nodes.json` — harvestable node kinds: hand yield vs tool-hit yield, capacity, regrow.
+- `data/building_pieces.json` — building pieces: cost, snap mode, health, class, shelter value, footprint.
 
 Name/description keys are derived: `ITEM_<ID>` / `ITEM_<ID>_DESC`, `NODE_<KIND>`.
 Tests validate that every reference and every key exists.

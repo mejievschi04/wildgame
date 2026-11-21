@@ -84,6 +84,7 @@ func perform_interaction(player: Node, action: StringName) -> void:
 		return
 	_give(player, cfg.hand_yield)
 	_consume_one()
+	Sfx.play(&"stone_knock" if kind == &"stones" else &"rustle", global_position + Vector3.UP * 0.3, -4.0)
 
 
 ## LMB swing with the equipped item. Returns true when the hit landed (tool wears).
@@ -97,6 +98,7 @@ func on_hit(player: Node, item: ItemData) -> bool:
 	_give(player, cfg.hit_yield)
 	_consume_one()
 	_shake()
+	Sfx.play(&"chop" if String(kind).begins_with("tree") else &"stone_knock", global_position + Vector3.UP * 1.0)
 	return true
 
 

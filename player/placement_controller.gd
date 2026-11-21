@@ -115,4 +115,5 @@ func confirm() -> void:
 		return
 	player.inventory.take_from_slot(slot, 1)
 	player.world.spawn_structure(structure, _xform)
+	Sfx.play(&"place", _xform.origin)
 	cancel()

@@ -47,6 +47,7 @@ var _swing_cd := 0.0
 var _crouching := false
 var _sprint_toggled := false
 var _bob_t := 0.0
+var _last_step_sign := 1.0
 var _fall_speed := 0.0
 var _gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity", 9.8)
 var _hand_item_id: StringName = &""
@@ -214,6 +215,7 @@ func _on_landed(speed: float) -> void:
 	if speed <= SAFE_FALL_SPEED:
 		return
 	stats.damage((speed - SAFE_FALL_SPEED) * 9.0, &"fall")
+	Sfx.play(&"hurt", null)
 	if speed > SAFE_FALL_SPEED + 4.0:
 		stats.add_condition(&"fracture", 600.0)
 		Events.toast(Loc.t("MSG_FRACTURE"), &"danger")
@@ -223,10 +225,28 @@ func _update_head(delta: float, moving: bool, sprinting: bool) -> void:
 	var target := EYE_CROUCH if _crouching else EYE_STAND
 	var reduce := bool(Settings.get_value("accessibility", "reduce_motion"))
 	var bob := 0.0
-	if moving and not reduce:
-		_bob_t += delta * (11.0 if sprinting else 7.5)
-		bob = sin(_bob_t) * (0.045 if sprinting else 0.025)
+	if moving:
+		_bob_t += delta * (11.0 if sprinting else 7.5) * (0.7 if _crouching else 1.0)
+		if not reduce:
+			bob = sin(_bob_t) * (0.045 if sprinting else 0.025)
+		var sgn := signf(sin(_bob_t))
+		if sgn != _last_step_sign and sgn < 0.0:
+			_footstep(sprinting)
+		_last_step_sign = sgn
 	head.position.y = lerpf(head.position.y, target + bob, 1.0 - exp(-12.0 * delta))
+
+
+func _footstep(sprinting: bool) -> void:
+	var surface := &"step_grass"
+	if global_position.y < ForestWorld.WATER_LEVEL - 0.1:
+		surface = &"step_water"
+	else:
+		for i in get_slide_collision_count():
+			if get_slide_collision(i).get_collider() is BuildingPiece:
+				surface = &"step_wood"
+				break
+	var vol := -8.0 if sprinting else (-16.0 if _crouching else -12.0)
+	Sfx.play(surface, global_position, vol, 0.12)
 
 
 # ---------------------------------------------------------------- interaction
@@ -298,6 +318,7 @@ func swing() -> void:
 		return
 	_swing_cd = SWING_COOLDOWN
 	_animate_swing()
+	Sfx.play(&"whoosh", null, -10.0)
 	var item := inventory.hand.get_data() if inventory.hand else null
 	if not ray.is_colliding():
 		return
@@ -305,6 +326,7 @@ func swing() -> void:
 	if target and target.has_method("on_hit") and target.on_hit(self, item):
 		if inventory.wear_hand(1):
 			Events.toast(Loc.t("MSG_TOOL_BROKE", {"item": item.display_name()}), &"danger")
+			Sfx.play(&"tool_break", null)
 
 
 func _animate_swing() -> void:
@@ -343,6 +365,7 @@ func consume_slot(i: int) -> void:
 	if not data.is_consumable():
 		return
 	inventory.take_from_slot(i, 1)
+	Sfx.play(&"drink" if data.category == &"drink" else &"eat", null, -4.0)
 	var sick := stats.consume(data)
 	if data.use_result != &"":
 		# Put the container back into the same slot when possible.

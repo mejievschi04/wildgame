@@ -33,6 +33,7 @@ func perform_interaction(player: Node, _action: StringName) -> void:
 	var leftover: int = player.inventory.add_stack(stack)
 	if leftover < before:
 		Events.item_gained.emit(stack.id, before - leftover)
+		Sfx.play(&"pop", global_position, -6.0)
 	if leftover <= 0:
 		queue_free()
 	else:

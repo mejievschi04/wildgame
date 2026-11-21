@@ -30,6 +30,7 @@ var _toasts: VBoxContainer
 var _vignette: ColorRect
 var _fade: ColorRect
 var _build_box: VBoxContainer
+var _caption: Label
 var _build_title: Label
 var _build_info: Label
 var _build_keys: Label
@@ -46,6 +47,15 @@ func _ready() -> void:
 	_build_hotbar()
 	_build_toasts()
 	_build_build_hint()
+	_caption = UITheme.label("", "SmallLabel")
+	_caption.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
+	_caption.offset_top = -250
+	_caption.offset_bottom = -222
+	_caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_caption.add_theme_color_override("font_color", Color(UITheme.BONE, 0.9))
+	_caption.modulate.a = 0.0
+	add_child(_caption)
+	Sfx.caption.connect(_on_caption)
 	_fade = ColorRect.new()
 	_fade.color = Color(0, 0, 0, 0)
 	_fade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -283,6 +293,14 @@ func _on_notify(text: String, kind: StringName) -> void:
 	tw.tween_interval(TOAST_TIME)
 	tw.tween_property(panel, "modulate:a", 0.0, 0.4)
 	tw.tween_callback(panel.queue_free)
+
+
+func _on_caption(text: String) -> void:
+	_caption.text = text
+	var tw := _caption.create_tween()
+	_caption.modulate.a = 1.0
+	tw.tween_interval(2.2)
+	tw.tween_property(_caption, "modulate:a", 0.0, 0.4)
 
 
 func fade_flash() -> void:

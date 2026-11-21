@@ -231,6 +231,7 @@ func perform_interaction(player: Node, action: StringName) -> void:
 	var inv: Inventory = player.inventory
 	match op:
 		&"deliver":
+			Sfx.play(&"build", global_position + Vector3.UP)
 			if deliver_from(inv):
 				Events.toast(Loc.t("MSG_BUILT", {"name": display_name()}), &"good")
 				Events.building_completed.emit(self)
@@ -254,6 +255,8 @@ func perform_interaction(player: Node, action: StringName) -> void:
 
 
 func set_door_open(open: bool) -> void:
+	if open != door_open and is_inside_tree():
+		Sfx.play(&"door", global_position + Vector3.UP)
 	door_open = open
 	if _hinge:
 		var tw := create_tween()

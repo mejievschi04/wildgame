@@ -31,6 +31,9 @@ func _ready() -> void:
 	_cam.fov = 62.0
 	add_child(_cam)
 	_update_cam()
+	var amb := Ambience.new()
+	amb.day_night = world.day_night
+	add_child(amb)
 	var layer := CanvasLayer.new()
 	add_child(layer)
 	layer.add_child(MainMenu.new())

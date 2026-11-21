@@ -22,6 +22,7 @@ var _flames: CPUParticles3D
 var _logs: Array[MeshInstance3D] = []
 var _food_root: Node3D
 var _flicker_t := 0.0
+var _crackle: AudioStreamPlayer3D
 
 
 func _ready() -> void:
@@ -88,6 +89,9 @@ func _build() -> void:
 	_food_root = Node3D.new()
 	_food_root.position = Vector3(0, 0.35, 0)
 	add_child(_food_root)
+	_crackle = Sfx.make_loop_3d(&"fire_loop", -3.0)
+	_crackle.position = Vector3(0, 0.4, 0)
+	add_child(_crackle)
 	Graybox.add_shape(self, Graybox.cyl_shape(0.7, 0.4), Vector3(0, 0.2, 0))
 
 
@@ -212,12 +216,14 @@ func perform_interaction(player: Node, action: StringName) -> void:
 			player.give_item(raw.cook_result, 1)
 		&"ignite":
 			ignite()
+			Sfx.play(&"fire_ignite", global_position)
 			player.world.add_journal("JOURNAL_FIRE")
 		&"fuel":
 			var s := inv.find_slot(func(d: ItemData) -> bool: return d.is_fuel())
 			if s >= 0:
 				var st := inv.take_from_slot(s, 1)
 				add_fuel(st.get_data().fuel_seconds)
+				Sfx.play(&"rustle", global_position, -6.0)
 		&"cook":
 			var s := inv.find_slot(func(d: ItemData) -> bool: return d.is_cookable())
 			if s >= 0:
@@ -243,6 +249,11 @@ func _refresh() -> void:
 	if _light == null:
 		return
 	_light.visible = lit
+	if _crackle and _crackle.is_inside_tree() and _crackle.playing != lit:
+		if lit:
+			_crackle.play(randf() * 2.0)
+		else:
+			_crackle.stop()
 	_flames.emitting = lit
 	_flames.visible = lit
 	var log_col := Color(0.36, 0.25, 0.16) if fuel > 0.0 else Color(0.16, 0.15, 0.14)

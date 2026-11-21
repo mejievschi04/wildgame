@@ -183,6 +183,7 @@ static func button(text: String, cb: Callable, variation: String = "") -> Button
 	if variation != "":
 		b.theme_type_variation = variation
 	b.pressed.connect(cb)
+	b.pressed.connect(Sfx.ui_click)
 	b.focus_mode = Control.FOCUS_ALL
 	return b
 

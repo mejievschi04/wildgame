@@ -384,6 +384,7 @@ func _on_craft_pressed() -> void:
 		_craft_progress.visible = false
 		var res := Crafting.craft(r, player.inventory, player.world.get_stations_near(player.global_position))
 		if res.ok:
+			Sfx.play(&"craft", null, -3.0)
 			Events.crafted.emit(r.id)
 			Events.item_gained.emit(r.result, r.result_count - int(res.leftover))
 			if int(res.leftover) > 0:

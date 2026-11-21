@@ -55,6 +55,7 @@ func perform_interaction(player: Node, _action: StringName) -> void:
 	for id: StringName in contents.keys():
 		player.give_item(id, contents[id])
 	looted = true
+	Sfx.play(&"rustle", global_position)
 	player.world.add_journal(journal_key)
 	_refresh()
 

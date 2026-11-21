@@ -33,6 +33,7 @@ func perform_interaction(player: Node, action: StringName) -> void:
 	match action:
 		&"interact":
 			player.stats.thirst = minf(player.stats.thirst + 15.0, SurvivalStats.MAX)
+			Sfx.play(&"drink", null, -4.0)
 			if randf() < RAW_SIP_SICKNESS:
 				player.stats.add_condition(&"food_poisoning", 90.0)
 				Events.toast(Loc.t("MSG_FEEL_SICK"), &"danger")
@@ -42,5 +43,6 @@ func perform_interaction(player: Node, action: StringName) -> void:
 			var i := inv.first_slot_of(&"waterskin_empty")
 			if i >= 0:
 				inv.slots[i] = ItemStack.new(&"waterskin_raw", 1)
+				Sfx.play(&"step_water", player.global_position)
 				inv.changed.emit()
 				Events.toast(Loc.t("MSG_WATERSKIN_FILLED"), &"good")
