@@ -7,6 +7,8 @@ config/name="WILDBOUND: Primal Age"
 config/description="First-person prehistoric survival (Phase 1 graybox)."
 run/main_scene="res://scenes/main_menu.tscn"
 config/features=PackedStringArray("4.7", "Forward Plus")
+config/icon="res://assets/icons/T_AppIcon_1024.png"
+config/macos_native_icon="res://assets/icons/WILDBOUND.icns"
 
 [autoload]
 
