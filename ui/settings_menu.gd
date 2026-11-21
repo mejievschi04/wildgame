@@ -115,6 +115,7 @@ func _audio_tab() -> Control:
 	var p := _page()
 	_row(p, "SET_MASTER", _slider("audio", "master", 0, 1, 0.05, "%.2f"))
 	_row(p, "SET_MUSIC", _slider("audio", "music", 0, 1, 0.05, "%.2f"))
+	_row(p, "SET_AMBIENCE", _slider("audio", "ambience", 0, 1, 0.05, "%.2f"))
 	_row(p, "SET_SFX", _slider("audio", "sfx", 0, 1, 0.05, "%.2f"))
 	return p
 

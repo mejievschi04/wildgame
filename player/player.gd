@@ -442,7 +442,11 @@ func swing() -> void:
 	tw.parallel().tween_property(v, "position", rest_pos + st[3], strike).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 	tw.tween_callback(func() -> void:
 		if _resolve_swing():
-			_kick(v, rest_rot, st))
+			_kick(v, rest_rot, st)
+		else:
+			var held := inventory.hand.get_data() if inventory.hand else null
+			if held and held.has_tag(&"tool_axe"):
+				Sfx.play(&"axe_glance", global_position + Vector3.UP, -8.0, 0.05))
 	tw.tween_property(v, "rotation_degrees", rest_rot, recover).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	tw.parallel().tween_property(v, "position", rest_pos, recover).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	tw.tween_callback(func() -> void: _swinging = false)

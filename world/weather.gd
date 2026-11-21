@@ -194,7 +194,7 @@ func _build_rain() -> void:
 	add_child(_rain_collider)
 	_rain_audio = AudioStreamPlayer.new()
 	_rain_audio.stream = Sfx.stream(&"rain_loop")
-	_rain_audio.bus = &"SFX"
+	_rain_audio.bus = &"Ambience"
 	_rain_audio.volume_db = -80.0
 	add_child(_rain_audio)
 
@@ -234,7 +234,7 @@ func _apply_visuals() -> void:
 	if _rain_audio.stream:
 		if r > 0.05 and not _rain_audio.playing:
 			_rain_audio.play()
-		_rain_audio.volume_db = linear_to_db(maxf(r * 0.6, 0.0001))
+		_rain_audio.volume_db = linear_to_db(maxf(r * 0.24, 0.0001))
 	world.set_ground_wetness(clampf(rain * 1.2, 0.0, 1.0))
 
 

@@ -1,7 +1,7 @@
 class_name SoundSynth
 extends RefCounted
 ## Tiny offline synthesizer: filtered noise + tones + envelopes → AudioStreamWAV.
-## All game sounds are generated procedurally at startup (original, licence-free PLACEHOLDER audio).
+## Procedural fallback for sound events that do not have imported assets yet.
 
 const RATE := 22050
 
@@ -129,6 +129,10 @@ static func build(name: StringName) -> PackedFloat32Array:
 			return normalize(b, 0.6)
 		&"chop":
 			return normalize(mix(tone(0.25, 120, 65, 0.001, 0.07, 1.0, 0.4), noise(0.08, 2600, 300, 0.001, 0.02, 0.7, 13)), 0.85)
+		&"axe_chop":
+			return normalize(mix(tone(0.25, 120, 65, 0.001, 0.07, 1.0, 0.4), noise(0.08, 2600, 300, 0.001, 0.02, 0.7, 13)), 0.85)
+		&"axe_glance":
+			return normalize(noise(0.25, 1400, 300, 0.08, 0.07, 1.0, 19), 0.35)
 		&"stone_knock":
 			var b := tone(0.12, 980, 900, 0.0005, 0.03, 0.6, 0.5)
 			mix(b, tone(0.1, 1450, 1400, 0.0005, 0.02, 0.4))

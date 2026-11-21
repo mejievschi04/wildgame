@@ -98,7 +98,7 @@ func on_hit(player: Node, item: ItemData) -> bool:
 	_give(player, cfg.hit_yield)
 	_consume_one()
 	_shake()
-	Sfx.play(&"chop" if String(kind).begins_with("tree") else &"stone_knock", global_position + Vector3.UP * 1.0)
+	Sfx.play(&"axe_chop" if String(kind).begins_with("tree") else &"stone_knock", global_position + Vector3.UP * 1.0)
 	return true
 
 

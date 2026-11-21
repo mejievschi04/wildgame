@@ -98,7 +98,7 @@ func _build() -> void:
 	_food_root = Node3D.new()
 	_food_root.position = Vector3(0, 0.35, 0)
 	add_child(_food_root)
-	_crackle = Sfx.make_loop_3d(&"fire_loop", -3.0)
+	_crackle = Sfx.make_loop_3d(&"fire_loop", 2.0)
 	_crackle.position = Vector3(0, 0.4, 0)
 	add_child(_crackle)
 	Graybox.add_shape(self, Graybox.cyl_shape(0.7, 0.4), Vector3(0, 0.2, 0))

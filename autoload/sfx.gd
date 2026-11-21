@@ -1,5 +1,5 @@
 extends Node
-## Sound service: procedurally generated streams (SoundSynth) + pooled 2D/3D players on the SFX bus.
+## Sound service: imported assets with procedural fallbacks + pooled 2D/3D players on the SFX bus.
 ## Important sounds emit a caption for the subtitles accessibility option (GDD §12).
 
 signal caption(text: String)
@@ -7,8 +7,13 @@ signal caption(text: String)
 const NAMES := [
 	&"step_grass", &"step_wood", &"step_water", &"rustle", &"chop", &"stone_knock", &"whoosh", &"pop",
 	&"craft", &"place", &"build", &"dismantle", &"collapse", &"door", &"eat", &"drink", &"fire_ignite",
-	&"tool_break", &"hurt", &"ui_click", &"fire_loop", &"wind_loop", &"birds_loop", &"crickets_loop", &"rain_loop",
+	&"tool_break", &"hurt", &"ui_click", &"axe_chop", &"axe_glance", &"fire_loop", &"wind_loop", &"birds_loop", &"crickets_loop", &"rain_loop",
 ]
+const FILES := {
+	&"axe_chop": ["res://assets/audio/SFX_Axe_Chop_09.wav"],
+	&"axe_glance": ["res://assets/audio/SFX_Axe_Chop_05.wav"],
+	&"fire_loop": ["res://assets/audio/AMB_Campfire_Crackle.wav"],
+}
 const CAPTIONS := {
 	&"fire_ignite": "CAPTION_FIRE", &"tool_break": "CAPTION_TOOL_BREAK",
 	&"collapse": "CAPTION_COLLAPSE", &"hurt": "CAPTION_HURT", &"door": "CAPTION_DOOR",
@@ -17,6 +22,7 @@ const POOL_3D := 16
 const POOL_2D := 6
 
 var streams: Dictionary = {}
+var _variants: Dictionary = {}
 var _pool3d: Array[AudioStreamPlayer3D] = []
 var _pool2d: Array[AudioStreamPlayer] = []
 var _next3d := 0
@@ -26,8 +32,22 @@ var _next2d := 0
 func _ready() -> void:
 	var t0 := Time.get_ticks_msec()
 	for n: StringName in NAMES:
-		streams[n] = SoundSynth.to_stream(SoundSynth.build(n), String(n).ends_with("_loop"))
-	print_verbose("Sfx: generated %d sounds in %d ms" % [streams.size(), Time.get_ticks_msec() - t0])
+		var loaded: Array[AudioStream] = []
+		for path: String in FILES.get(n, []):
+			var custom_stream := load(path) as AudioStream
+			if custom_stream:
+				loaded.append(custom_stream)
+		if not loaded.is_empty():
+			streams[n] = loaded[0]
+			_variants[n] = loaded
+		else:
+			streams[n] = SoundSynth.to_stream(SoundSynth.build(n), String(n).ends_with("_loop"))
+	if streams[&"fire_loop"] is AudioStreamWAV:
+		var fire := streams[&"fire_loop"] as AudioStreamWAV
+		fire.loop_mode = AudioStreamWAV.LOOP_FORWARD
+		fire.loop_begin = 0
+		fire.loop_end = fire.data.size() / 2
+	print_verbose("Sfx: prepared %d sounds in %d ms" % [streams.size(), Time.get_ticks_msec() - t0])
 	for i in POOL_3D:
 		var p := AudioStreamPlayer3D.new()
 		p.bus = &"SFX"
@@ -53,6 +73,9 @@ func play(name: StringName, pos: Variant = null, volume_db: float = 0.0, pitch_v
 	var s: AudioStream = streams.get(name)
 	if s == null:
 		return
+	var choices: Array = _variants.get(name, [])
+	if choices.size() > 1:
+		s = choices[randi_range(0, choices.size() - 1)]
 	var pitch := 1.0 + randf_range(-pitch_var, pitch_var)
 	if pos is Vector3:
 		var p := _pool3d[_next3d]

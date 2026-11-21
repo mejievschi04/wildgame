@@ -214,7 +214,7 @@ func on_hit(player: Node, item: ItemData) -> bool:
 		chop += 1
 		_wobble = 1.0
 		_chips(point, (p3.global_position - point).normalized())
-		Sfx.play(&"chop", point)
+		Sfx.play(&"axe_chop", point)
 		if regrow_seconds > 0.0 and regrow_left <= 0.0:
 			regrow_left = 0.0
 		if chop >= fell_hits:
@@ -223,7 +223,7 @@ func on_hit(player: Node, item: ItemData) -> bool:
 		return true
 	# FALLEN: buck into logs
 	_chips(point, Vector3.UP)
-	Sfx.play(&"chop", point, -2.0)
+	Sfx.play(&"axe_chop", point, -2.0)
 	_give(player, cfg.get("hit_yield", {"wood": 1}))
 	remaining -= 1
 	if remaining <= 0:

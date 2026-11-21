@@ -7,7 +7,7 @@ const PATH := "user://settings.cfg"
 const DEFAULTS := {
 	"video": {"fullscreen": false, "vsync": true, "fov": 80.0, "render_scale": 1.0, "shadows": true, "max_fps": 0,
 		"quality": 1, "aa": 3, "upscaler": 0},
-	"audio": {"master": 0.8, "music": 0.6, "sfx": 0.9},
+	"audio": {"master": 0.8, "music": 0.6, "ambience": 0.65, "sfx": 0.9},
 	"gameplay": {
 		"mouse_sensitivity": 1.0, "invert_y": false, "difficulty": 1, "toggle_sprint": false,
 		"toggle_crouch": true, "day_length_min": 24.0, "language": "ru",
@@ -21,7 +21,7 @@ const QUALITY := [
 	{"shadow_dist": 65.0, "shadow_atlas": 2048, "splits": 2, "volfog": true, "ssao": true, "grass_range": 34.0, "fern_range": 60.0},
 	{"shadow_dist": 120.0, "shadow_atlas": 4096, "splits": 4, "volfog": true, "ssao": true, "grass_range": 55.0, "fern_range": 90.0},
 ]
-const AUDIO_BUSES := ["Music", "SFX"]
+const AUDIO_BUSES := ["Music", "Ambience", "SFX"]
 
 var _cfg := ConfigFile.new()
 
@@ -122,6 +122,8 @@ func _apply(section: String, key: String) -> void:
 			_set_bus_volume("Master", float(v))
 		["audio", "music"]:
 			_set_bus_volume("Music", float(v))
+		["audio", "ambience"]:
+			_set_bus_volume("Ambience", float(v))
 		["audio", "sfx"]:
 			_set_bus_volume("SFX", float(v))
 		["gameplay", "language"]:

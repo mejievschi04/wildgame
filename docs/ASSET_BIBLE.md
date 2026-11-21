@@ -47,8 +47,14 @@ Blender 5.x → **glTF 2.0 (.glb)** (Godot-native; FBX only if a DCC requires it
 3. Set `"placeholder": false` for the item in `data/items.json` and add its icon.
 
 ## Audio
-Current sounds are **procedural placeholders** (`core/sound_synth.gd`). Replacement rules:
+Most sounds remain **procedural placeholders** (`core/sound_synth.gd`); the selected replacements are listed below. Replacement rules:
 - Format: OGG Vorbis (loops) / WAV 16-bit (short one-shots), 44.1 kHz, mono for 3D sources.
 - Naming: `SFX_<Category>_<Name>_<Variant>` (e.g. `SFX_Step_Wood_03.wav`), ambience `AMB_*`, music `MUS_*`.
 - Keep the `Sfx.NAMES` keys; swap `SoundSynth.build()` output for `load()`ed streams with random variants.
 - Every imported sound lists its source and licence in this file (CC0 or own recordings only).
+
+### Integrated CC0 sound files
+- `assets/audio/SFX_Axe_Chop_09.wav` — SFXMint, “Stump Block Axe Chopping Wood 09”, AI-generated, CC0 1.0; used on tree impacts. Source: https://sfxmint.com/sounds/axe-chopping-wood-09
+- `assets/audio/SFX_Axe_Chop_05.wav` — SFXMint, “Glancing Axe Chopping Wood 05”, AI-generated, CC0 1.0; used when an axe swing misses. Source: https://sfxmint.com/sounds/axe-chopping-wood-05
+- `assets/audio/AMB_Campfire_Crackle.wav` — SFXMint, “Steady Burning Fireplace Crackling 50”, AI-generated, CC0 1.0; prepared loop used by campfires. Source: https://sfxmint.com/sounds/ambience-fireplace-50
+- Original downloaded stereo files are preserved in `assets/audio/source/`; runtime copies are downmixed to mono for 3D positioning.
