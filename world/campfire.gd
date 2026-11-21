@@ -1,0 +1,275 @@
+class_name Campfire
+extends StaticBody3D
+## Placed campfire: fuel, ignition by friction (hold), warmth, light, cooking, crafting station.
+## Visuals are PLACEHOLDER graybox primitives + CPU particles.
+
+const MAX_FUEL := 1200.0
+const IGNITE_HOLD := 4.0
+const WARMTH := 20.0
+const WARM_RADIUS := 4.0
+const WARM_FALLOFF := 8.5
+const STATION_RADIUS := 3.5
+const COOK_SLOTS := 3
+
+var structure_type: StringName = &"campfire"
+var structure_id := ""
+var fuel := 0.0
+var lit := false
+var cooking: Array = []  # [{id: StringName, t: float}]
+
+var _light: OmniLight3D
+var _flames: CPUParticles3D
+var _logs: Array[MeshInstance3D] = []
+var _food_root: Node3D
+var _flicker_t := 0.0
+
+
+func _ready() -> void:
+	collision_layer = 1
+	collision_mask = 0
+	add_to_group("interactable")
+	add_to_group("structure")
+	add_to_group("time_sim")
+	add_to_group("campfire")
+	_build()
+	_refresh()
+
+
+func _build() -> void:
+	for i in 8:
+		var a := TAU * i / 8.0
+		Graybox.part(self, Graybox.sphere(0.14, 6), Color(0.42, 0.41, 0.38),
+			Vector3(cos(a) * 0.55, 0.07, sin(a) * 0.55), Vector3.ZERO, Vector3(1.2, 0.8, 1.0))
+	for i in 3:
+		var lg := Graybox.part(self, Graybox.cylinder(0.05, 0.06, 0.8, 6), Color(0.36, 0.25, 0.16),
+			Vector3(0, 0.14, 0), Vector3(70, 60.0 * i, 0))
+		lg.material_override = Graybox.mat(Color(0.36, 0.25, 0.16)).duplicate()
+		_logs.append(lg)
+	_light = OmniLight3D.new()
+	_light.light_color = Color(1.0, 0.62, 0.3)
+	_light.omni_range = 11.0
+	_light.light_energy = 2.2
+	_light.shadow_enabled = true
+	_light.position = Vector3(0, 0.7, 0)
+	add_child(_light)
+	_flames = CPUParticles3D.new()
+	_flames.amount = 40
+	_flames.lifetime = 0.7
+	_flames.position = Vector3(0, 0.18, 0)
+	_flames.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
+	_flames.emission_sphere_radius = 0.18
+	_flames.direction = Vector3.UP
+	_flames.spread = 12.0
+	_flames.gravity = Vector3(0, 1.2, 0)
+	_flames.initial_velocity_min = 0.4
+	_flames.initial_velocity_max = 0.9
+	_flames.scale_amount_min = 0.6
+	_flames.scale_amount_max = 1.0
+	var curve := Curve.new()
+	curve.add_point(Vector2(0, 1))
+	curve.add_point(Vector2(1, 0))
+	_flames.scale_amount_curve = curve
+	var quad := QuadMesh.new()
+	quad.size = Vector2(0.22, 0.3)
+	var fm := StandardMaterial3D.new()
+	fm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	fm.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+	fm.albedo_color = Color(1.0, 0.55, 0.15)
+	fm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	fm.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	fm.vertex_color_use_as_albedo = true
+	quad.material = fm
+	_flames.mesh = quad
+	var grad := Gradient.new()
+	grad.set_color(0, Color(1.0, 0.85, 0.4, 1.0))
+	grad.set_color(1, Color(0.9, 0.2, 0.05, 0.0))
+	_flames.color_ramp = grad
+	add_child(_flames)
+	_food_root = Node3D.new()
+	_food_root.position = Vector3(0, 0.35, 0)
+	add_child(_food_root)
+	Graybox.add_shape(self, Graybox.cyl_shape(0.7, 0.4), Vector3(0, 0.2, 0))
+
+
+func _process(delta: float) -> void:
+	if lit:
+		_burn(delta)
+		_flicker_t += delta * 9.0
+		_light.light_energy = 2.0 + sin(_flicker_t) * 0.18 + sin(_flicker_t * 2.3) * 0.12
+
+
+func simulate(seconds: float) -> void:
+	if lit:
+		_burn(seconds)
+
+
+func _burn(dt: float) -> void:
+	var burn := minf(dt, fuel)
+	fuel -= burn
+	for c: Dictionary in cooking:
+		c.t = float(c.t) + burn
+	if fuel <= 0.0:
+		fuel = 0.0
+		lit = false
+		_refresh()
+
+
+func is_lit() -> bool:
+	return lit
+
+
+func warmth_at(pos: Vector3) -> float:
+	if not lit:
+		return 0.0
+	var d := pos.distance_to(global_position)
+	if d <= WARM_RADIUS:
+		return WARMTH
+	return WARMTH * (1.0 - smoothstep(WARM_RADIUS, WARM_FALLOFF, d))
+
+
+func get_display_name() -> String:
+	return Loc.t("STRUCT_CAMPFIRE")
+
+
+func get_status_text() -> String:
+	if lit:
+		return Loc.t("STATUS_FIRE_LIT", {"m": ceili(fuel / 60.0)})
+	if fuel > 0.0:
+		return Loc.t("STATUS_FIRE_READY")
+	return Loc.t("STATUS_FIRE_EMPTY")
+
+
+func _ready_index() -> int:
+	for i in cooking.size():
+		var data := ItemDB.get_item(cooking[i].id)
+		if data and float(cooking[i].t) >= data.cook_time:
+			return i
+	return -1
+
+
+func get_interactions(player: Node) -> Array:
+	var inv: Inventory = player.inventory
+	var opts: Array = []
+	var fuel_slot := inv.find_slot(func(d: ItemData) -> bool: return d.is_fuel())
+	var fuel_opt := {}
+	if fuel_slot >= 0 and fuel < MAX_FUEL - 30.0:
+		var fd := inv.get_slot(fuel_slot).get_data()
+		fuel_opt = {"text": Loc.t("ACT_ADD_FUEL", {"item": fd.display_name()}), "hold": 0.0, "enabled": true}
+	var cook_slot := inv.find_slot(func(d: ItemData) -> bool: return d.is_cookable())
+	var cook_opt := {}
+	if lit and cook_slot >= 0 and cooking.size() < COOK_SLOTS:
+		var cd := inv.get_slot(cook_slot).get_data()
+		cook_opt = {"text": Loc.t("ACT_COOK", {"item": cd.display_name()}), "hold": 0.0, "enabled": true}
+
+	var ready := _ready_index()
+	if ready >= 0:
+		var rd := ItemDB.get_item(ItemDB.get_item(cooking[ready].id).cook_result)
+		opts.append({"action": &"interact", "text": Loc.t("ACT_TAKE_COOKED", {"item": rd.display_name()}),
+			"hold": 0.0, "enabled": true, "op": &"take"})
+		if not cook_opt.is_empty():
+			opts.append(_with(cook_opt, &"alt_interact", &"cook"))
+		elif not fuel_opt.is_empty():
+			opts.append(_with(fuel_opt, &"alt_interact", &"fuel"))
+		return opts
+	if not lit:
+		if fuel > 0.0:
+			opts.append({"action": &"interact", "text": Loc.t("ACT_IGNITE"), "hold": IGNITE_HOLD,
+				"enabled": true, "op": &"ignite"})
+			if not fuel_opt.is_empty():
+				opts.append(_with(fuel_opt, &"alt_interact", &"fuel"))
+		elif not fuel_opt.is_empty():
+			opts.append(_with(fuel_opt, &"interact", &"fuel"))
+		else:
+			opts.append({"action": &"interact", "text": Loc.t("NEED_FUEL"), "hold": 0.0, "enabled": false})
+		return opts
+	if not fuel_opt.is_empty():
+		opts.append(_with(fuel_opt, &"interact", &"fuel"))
+	if not cook_opt.is_empty():
+		opts.append(_with(cook_opt, &"alt_interact", &"cook"))
+	if opts.is_empty():
+		opts.append({"action": &"interact", "text": Loc.t("NEED_FUEL"), "hold": 0.0, "enabled": false})
+	return opts
+
+
+func _with(opt: Dictionary, action: StringName, op: StringName) -> Dictionary:
+	var o := opt.duplicate()
+	o.action = action
+	o.op = op
+	return o
+
+
+func perform_interaction(player: Node, action: StringName) -> void:
+	var op: StringName = &""
+	for o: Dictionary in get_interactions(player):
+		if o.action == action and o.enabled:
+			op = o.get("op", &"")
+	var inv: Inventory = player.inventory
+	match op:
+		&"take":
+			var i := _ready_index()
+			var raw := ItemDB.get_item(cooking[i].id)
+			cooking.remove_at(i)
+			player.give_item(raw.cook_result, 1)
+		&"ignite":
+			ignite()
+			player.world.add_journal("JOURNAL_FIRE")
+		&"fuel":
+			var s := inv.find_slot(func(d: ItemData) -> bool: return d.is_fuel())
+			if s >= 0:
+				var st := inv.take_from_slot(s, 1)
+				add_fuel(st.get_data().fuel_seconds)
+		&"cook":
+			var s := inv.find_slot(func(d: ItemData) -> bool: return d.is_cookable())
+			if s >= 0:
+				var st := inv.take_from_slot(s, 1)
+				cooking.append({"id": st.id, "t": 0.0})
+	_refresh()
+
+
+func add_fuel(seconds: float) -> void:
+	fuel = minf(fuel + seconds, MAX_FUEL)
+	_refresh()
+
+
+func ignite() -> bool:
+	if fuel <= 0.0:
+		return false
+	lit = true
+	_refresh()
+	return true
+
+
+func _refresh() -> void:
+	if _light == null:
+		return
+	_light.visible = lit
+	_flames.emitting = lit
+	_flames.visible = lit
+	var log_col := Color(0.36, 0.25, 0.16) if fuel > 0.0 else Color(0.16, 0.15, 0.14)
+	for l in _logs:
+		(l.material_override as StandardMaterial3D).albedo_color = log_col
+		l.visible = fuel > 0.0 or not lit
+	for c in _food_root.get_children():
+		c.queue_free()
+	for i in cooking.size():
+		var data := ItemDB.get_item(cooking[i].id)
+		var done := float(cooking[i].t) >= data.cook_time
+		var col := ItemDB.get_item(data.cook_result).icon_color if done else data.icon_color
+		Graybox.part(_food_root, Graybox.box(Vector3(0.16, 0.08, 0.12)), col, Vector3((i - 1) * 0.2, 0, 0))
+
+
+func save_state() -> Dictionary:
+	var c: Array = []
+	for e: Dictionary in cooking:
+		c.append({"id": String(e.id), "t": e.t})
+	return {"fuel": fuel, "lit": lit, "cooking": c}
+
+
+func load_state(d: Dictionary) -> void:
+	fuel = float(d.get("fuel", 0.0))
+	lit = bool(d.get("lit", false)) and fuel > 0.0
+	cooking.clear()
+	for e: Dictionary in d.get("cooking", []):
+		if ItemDB.get_item(StringName(str(e.id))):
+			cooking.append({"id": StringName(str(e.id)), "t": float(e.get("t", 0.0))})
+	_refresh()

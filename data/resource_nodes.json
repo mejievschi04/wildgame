@@ -1,0 +1,10 @@
+{
+	"tree_pine":  {"hit_tag": "tool_axe", "hit_yield": {"wood": 1}, "capacity": 5, "regrow": 2880, "blocking": true},
+	"tree_birch": {"hit_tag": "tool_axe", "hit_yield": {"wood": 1}, "capacity": 4, "regrow": 2880, "blocking": true},
+	"rock":       {"hit_tag": "tool_hammer", "hit_yield": {"stone": 1}, "capacity": 8, "regrow": 0, "blocking": true},
+	"flint":      {"hit_tag": "tool_hammer", "hit_yield": {"flint": 1}, "capacity": 4, "regrow": 0, "blocking": true},
+	"bush":       {"hand_yield": {"fiber": 2, "berries": 2}, "capacity": 3, "hold": 0.9, "regrow": 1440, "blocking": false},
+	"sticks":     {"hand_yield": {"stick": 2}, "capacity": 2, "hold": 0.6, "regrow": 1200, "blocking": false},
+	"stones":     {"hand_yield": {"stone": 1}, "capacity": 3, "hold": 0.6, "regrow": 0, "blocking": false},
+	"mushroom":   {"hand_yield": {"mushroom": 1}, "capacity": 1, "hold": 0.4, "regrow": 1800, "blocking": false}
+}

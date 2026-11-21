@@ -1,0 +1,10 @@
+[
+	{"id": "stone_axe", "result": "stone_axe", "ingredients": {"stick": 1, "stone": 1, "fiber": 3}, "time": 3.0},
+	{"id": "flint_knife", "result": "flint_knife", "ingredients": {"flint": 2, "fiber": 1}, "tool": "tool_hammer", "time": 2.5},
+	{"id": "spear", "result": "spear", "ingredients": {"stick": 2, "flint": 1, "fiber": 2}, "tool": "tool_knife", "time": 3.0},
+	{"id": "campfire_kit", "result": "campfire_kit", "ingredients": {"stone": 5, "stick": 4}, "time": 2.0},
+	{"id": "torch", "result": "torch", "ingredients": {"stick": 1, "fiber": 3}, "station": "campfire", "time": 1.5},
+	{"id": "bandage", "result": "bandage", "ingredients": {"fiber": 4}, "time": 1.5},
+	{"id": "leaf_bed_kit", "result": "leaf_bed_kit", "ingredients": {"fiber": 8, "stick": 4}, "time": 3.0},
+	{"id": "waterskin", "result": "waterskin_empty", "ingredients": {"hide": 1, "fiber": 3}, "tool": "tool_knife", "time": 3.0}
+]

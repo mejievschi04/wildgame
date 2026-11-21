@@ -1,0 +1,28 @@
+[
+	{"id": "stone", "category": "resource", "weight": 1.0, "max_stack": 20, "tags": ["tool_hammer", "equippable"], "damage": 6, "icon": "#8c8a80"},
+	{"id": "flint", "category": "resource", "weight": 0.4, "max_stack": 20, "icon": "#4b5057"},
+	{"id": "stick", "category": "resource", "weight": 0.3, "max_stack": 30, "fuel_seconds": 60, "icon": "#8b6a43"},
+	{"id": "wood", "category": "resource", "weight": 1.5, "max_stack": 15, "fuel_seconds": 240, "icon": "#6b4a2b"},
+	{"id": "fiber", "category": "resource", "weight": 0.05, "max_stack": 40, "icon": "#9aa860"},
+	{"id": "hide", "category": "resource", "weight": 1.2, "max_stack": 5, "icon": "#a07850"},
+	{"id": "bone", "category": "resource", "weight": 0.4, "max_stack": 10, "icon": "#ddd3bc"},
+
+	{"id": "berries", "category": "food", "weight": 0.05, "max_stack": 30, "food": 4, "water": 2, "icon": "#7a2f4a"},
+	{"id": "mushroom", "category": "food", "weight": 0.1, "max_stack": 15, "food": 3, "sickness_chance": 0.2, "cook_result": "mushroom_cooked", "cook_time": 20, "icon": "#b5a27a"},
+	{"id": "mushroom_cooked", "category": "food", "weight": 0.1, "max_stack": 15, "food": 9, "icon": "#7d6a45"},
+	{"id": "meat_raw", "category": "food", "weight": 0.5, "max_stack": 10, "food": 8, "sickness_chance": 0.5, "cook_result": "meat_cooked", "cook_time": 40, "icon": "#a8403e"},
+	{"id": "meat_cooked", "category": "food", "weight": 0.45, "max_stack": 10, "food": 32, "health": 5, "icon": "#6e3b22"},
+
+	{"id": "waterskin_empty", "category": "tool", "weight": 0.4, "max_stack": 1, "icon": "#9b7653"},
+	{"id": "waterskin_raw", "category": "drink", "weight": 1.4, "max_stack": 1, "water": 35, "sickness_chance": 0.1, "use_result": "waterskin_empty", "cook_result": "waterskin_boiled", "cook_time": 30, "icon": "#6f8fa0"},
+	{"id": "waterskin_boiled", "category": "drink", "weight": 1.4, "max_stack": 1, "water": 35, "use_result": "waterskin_empty", "icon": "#8fb3c4"},
+	{"id": "bandage", "category": "medical", "weight": 0.1, "max_stack": 10, "health": 15, "cures": ["bleeding"], "icon": "#d8cfb2"},
+
+	{"id": "stone_axe", "category": "tool", "weight": 1.6, "max_stack": 1, "max_durability": 120, "tags": ["tool_axe", "tool_hammer", "equippable", "weapon"], "damage": 18, "icon": "#7b6e5c"},
+	{"id": "flint_knife", "category": "tool", "weight": 0.3, "max_stack": 1, "max_durability": 90, "tags": ["tool_knife", "equippable", "weapon"], "damage": 14, "icon": "#3e444a"},
+	{"id": "spear", "category": "weapon", "weight": 1.8, "max_stack": 1, "max_durability": 80, "tags": ["equippable", "weapon", "spear"], "damage": 30, "icon": "#a58658"},
+	{"id": "torch", "category": "tool", "weight": 0.5, "max_stack": 1, "max_durability": 300, "tags": ["equippable", "light"], "damage": 4, "icon": "#c49a5a"},
+
+	{"id": "campfire_kit", "category": "placeable", "weight": 4.0, "max_stack": 1, "place": "campfire", "icon": "#5c5449"},
+	{"id": "leaf_bed_kit", "category": "placeable", "weight": 2.5, "max_stack": 1, "place": "bed", "icon": "#6f7d45"}
+]
