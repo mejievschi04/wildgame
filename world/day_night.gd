@@ -118,6 +118,9 @@ func sun_elevation() -> float:
 
 
 func update_visuals() -> void:
+	var w: Weather = get_parent().get("weather") if get_parent() else null
+	var cloud := w.cloud if w else 0.0
+	var fog_extra := w.fog_extra if w else 0.0
 	var elev := sun_elevation()
 	var t := clampf((time_hours - SUNRISE) / (SUNSET - SUNRISE), 0.0, 1.0)
 	var elev_deg := maxf(elev, 0.02) * 62.0
@@ -125,7 +128,7 @@ func update_visuals() -> void:
 	var day_k := smoothstep(-0.08, 0.3, elev)  # 0 night … 1 day
 	var dusk_k := 1.0 - absf(clampf(elev * 3.0, -1.0, 1.0))  # strongest near the horizon
 	sun.visible = elev > -0.05
-	sun.light_energy = 1.35 * day_k
+	sun.light_energy = 1.35 * day_k * (1.0 - 0.8 * cloud)
 	sun.light_color = Color(1.0, 0.93, 0.82).lerp(Color(1.0, 0.55, 0.3), dusk_k * 0.8)
 	moon.visible = day_k < 0.6
 	moon.light_energy = 0.16 * (1.0 - day_k)
@@ -135,14 +138,16 @@ func update_visuals() -> void:
 	var day_top := Color(0.36, 0.52, 0.70)
 	var day_hor := Color(0.72, 0.77, 0.78)
 	var dusk_hor := Color(0.86, 0.52, 0.32)
+	day_top = day_top.lerp(Color(0.42, 0.45, 0.48), cloud * 0.8)
+	day_hor = day_hor.lerp(Color(0.55, 0.57, 0.58), cloud * 0.8)
 	sky_material.sky_top_color = night_top.lerp(day_top, day_k)
 	var hor := night_hor.lerp(day_hor, day_k).lerp(dusk_hor, dusk_k * 0.75 * clampf(day_k * 2.0, 0.0, 1.0))
 	sky_material.sky_horizon_color = hor
 	sky_material.ground_horizon_color = hor.darkened(0.2)
 	sky_material.ground_bottom_color = Color(0.08, 0.09, 0.07).lerp(Color(0.2, 0.22, 0.17), day_k)
 	sky_material.sky_energy_multiplier = lerpf(0.25, 1.0, day_k)
-	environment.ambient_light_energy = lerpf(0.35, 0.9, day_k)
+	environment.ambient_light_energy = lerpf(0.35, 0.9, day_k) * (1.0 - 0.25 * cloud)
 	environment.fog_light_color = hor.darkened(0.15)
-	environment.fog_density = lerpf(0.010, 0.0022, day_k)
+	environment.fog_density = lerpf(0.010, 0.0022, day_k) + fog_extra + cloud * 0.0015
 	environment.volumetric_fog_albedo = hor.lightened(0.2)
 	environment.volumetric_fog_density = lerpf(0.012, 0.0028, day_k)

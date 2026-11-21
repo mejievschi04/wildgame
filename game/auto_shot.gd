@@ -63,6 +63,8 @@ func _ready() -> void:
 		p.head.rotation.x = -0.6
 	if scenario in ["build", "buildmenu"]:
 		_build_demo(session)
+	if scenario in ["rain", "storm", "fog", "cloudy"]:
+		session.world.weather.set_state(StringName(scenario), true)
 	if scenario == "kit":
 		session.world.add_journal("JOURNAL_WATER")
 

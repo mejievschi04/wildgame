@@ -36,6 +36,8 @@ var conditions: Dictionary = {}
 var dead := false
 var death_cause: StringName = &""
 var last_effective_temp := 18.0
+## 0 dry … 1 soaked. Wet clothing loses most of its insulation.
+var wetness := 0.0
 
 var _stamina_delay := 0.0
 
@@ -108,8 +110,18 @@ func tick(delta: float, env: Dictionary) -> void:
 		return
 	var sleeping: bool = env.get("sleeping", false)
 	var sprinting: bool = env.get("sprinting", false)
-	last_effective_temp = float(env.get("ambient_temp", 18.0)) + float(env.get("warmth", 0.0)) \
-		+ float(env.get("insulation", 4.0))
+	var warmth := float(env.get("warmth", 0.0))
+	var rain := float(env.get("rain", 0.0))
+	if rain > 0.0:
+		wetness = minf(wetness + rain * 0.012 * delta, 1.0)
+	else:
+		wetness = maxf(wetness - (0.003 + warmth * 0.0015) * delta, 0.0)
+	if wetness > 0.25:
+		add_condition(&"wet")
+	elif wetness < 0.15 and has_condition(&"wet"):
+		remove_condition(&"wet")
+	last_effective_temp = float(env.get("ambient_temp", 18.0)) + warmth \
+		+ float(env.get("insulation", 4.0)) * (1.0 - 0.6 * wetness) - wetness * 4.0
 
 	# Needs.
 	var need_mult := difficulty * (0.5 if sleeping else 1.0)
@@ -212,7 +224,7 @@ func to_dict() -> Dictionary:
 		conds[String(id)] = -1.0 if is_inf(t) else t
 	return {
 		"health": health, "stamina": stamina, "hunger": hunger, "thirst": thirst,
-		"rest": rest, "body_temp": body_temp, "conditions": conds,
+		"rest": rest, "body_temp": body_temp, "conditions": conds, "wetness": wetness,
 	}
 
 
@@ -223,6 +235,7 @@ func from_dict(d: Dictionary) -> void:
 	thirst = float(d.get("thirst", MAX))
 	rest = float(d.get("rest", MAX))
 	body_temp = float(d.get("body_temp", NORMAL_TEMP))
+	wetness = float(d.get("wetness", 0.0))
 	conditions.clear()
 	var conds: Dictionary = d.get("conditions", {})
 	for k: String in conds.keys():

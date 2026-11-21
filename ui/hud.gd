@@ -3,7 +3,7 @@ extends Control
 ## Restrained HUD (GDD §12): 4 permanent indicators bottom-left (health, stamina, satiety, hydration);
 ## temperature/rest/conditions/weight appear only when relevant; minimal reticle; prompts only on interaction.
 
-const CONDITION_KEYS := [&"hypothermia", &"overheat", &"bleeding", &"food_poisoning", &"fracture"]
+const CONDITION_KEYS := [&"hypothermia", &"overheat", &"bleeding", &"food_poisoning", &"fracture", &"wet"]
 const TOAST_TIME := 3.2
 const MAX_TOASTS := 5
 

@@ -21,6 +21,7 @@ const STRUCTURE_SCRIPTS := {
 ## true when used as the main-menu backdrop: no gameplay simulation.
 var menu_mode := false
 var day_night: DayNight
+var weather: Weather
 var journal: Array[String] = []
 var player: Node = null
 
@@ -52,6 +53,10 @@ func _ready() -> void:
 	day_night = DayNight.new()
 	day_night.name = "DayNight"
 	add_child(day_night)
+	weather = Weather.new()
+	weather.name = "Weather"
+	weather.world = self
+	add_child(weather)
 	_build_terrain()
 	_build_water()
 	_build_bounds()
@@ -327,6 +332,11 @@ func _scatter() -> void:
 	_scatter_kind(&"mushroom", 30, 0.6, anywhere)
 
 
+func set_ground_wetness(v: float) -> void:
+	if _terrain_mat:
+		_terrain_mat.set_shader_parameter("rain_wetness", v)
+
+
 ## Forest density mask (0 clearing … 1 dense forest) from tree positions; drives terrain layers
 ## (needles vs grass) and decorative scatter.
 func _build_forest_mask() -> void:
@@ -405,6 +415,8 @@ func spawn_position() -> Vector3:
 
 func ambient_temperature_at(pos: Vector3) -> float:
 	var t := day_night.ambient_temperature()
+	if weather:
+		t += weather.temp_offset + weather.wind_chill_at(pos)
 	if pos.y < WATER_LEVEL - 0.3:
 		t -= 4.0
 	return t
@@ -565,12 +577,15 @@ func collect_save() -> Dictionary:
 	return {
 		"time_hours": day_night.time_hours, "day": day_night.day, "journal": journal.duplicate(),
 		"nodes": nodes, "pickups": pickups, "structures": structures, "structure_counter": _structure_counter,
+		"weather": weather.save_state(),
 	}
 
 
 func apply_save(d: Dictionary) -> void:
 	day_night.time_hours = float(d.get("time_hours", 12.0))
 	day_night.day = int(d.get("day", 1))
+	if d.has("weather"):
+		weather.load_state(d.weather)
 	journal.clear()
 	for k: Variant in d.get("journal", []):
 		journal.append(str(k))

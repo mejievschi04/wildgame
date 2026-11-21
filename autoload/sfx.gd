@@ -7,7 +7,7 @@ signal caption(text: String)
 const NAMES := [
 	&"step_grass", &"step_wood", &"step_water", &"rustle", &"chop", &"stone_knock", &"whoosh", &"pop",
 	&"craft", &"place", &"build", &"dismantle", &"collapse", &"door", &"eat", &"drink", &"fire_ignite",
-	&"tool_break", &"hurt", &"ui_click", &"fire_loop", &"wind_loop", &"birds_loop", &"crickets_loop",
+	&"tool_break", &"hurt", &"ui_click", &"fire_loop", &"wind_loop", &"birds_loop", &"crickets_loop", &"rain_loop",
 ]
 const CAPTIONS := {
 	&"fire_ignite": "CAPTION_FIRE", &"tool_break": "CAPTION_TOOL_BREAK",

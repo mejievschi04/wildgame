@@ -207,6 +207,7 @@ func survival_env(sleeping: bool = false, sprinting: bool = false) -> Dictionary
 		"ambient_temp": world.ambient_temperature_at(global_position),
 		"warmth": world.get_warmth_at(global_position),
 		"insulation": INSULATION + world.get_shelter_at(pos),
+		"rain": world.weather.rain_at(pos) if world.weather else 0.0,
 		"sleeping": sleeping, "sprinting": sprinting,
 	}
 
@@ -424,6 +425,8 @@ func _tick_torch(delta: float) -> void:
 func can_sleep() -> Dictionary:
 	if stats.rest > 85.0 and not world.day_night.is_night():
 		return {"ok": false, "reason": Loc.t("SLEEP_NOT_TIRED")}
+	if world.weather and world.weather.rain_at(global_position + Vector3.UP * 0.5) > 0.1:
+		return {"ok": false, "reason": Loc.t("SLEEP_RAIN")}
 	var env := survival_env(true)
 	var eff: float = env.ambient_temp + env.warmth + env.insulation
 	if eff < 8.0:

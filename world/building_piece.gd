@@ -270,8 +270,13 @@ func _dry_ready_index() -> int:
 	return -1
 
 
+func _rained_on() -> bool:
+	var w := get_tree().get_first_node_in_group("weather") as Weather if is_inside_tree() else null
+	return w != null and w.rain_at(global_position) > 0.1
+
+
 func simulate(seconds: float) -> void:
-	if piece_id != &"drying_rack" or drying.is_empty():
+	if piece_id != &"drying_rack" or drying.is_empty() or _rained_on():
 		return
 	for d: Dictionary in drying:
 		d.t = float(d.t) + seconds
@@ -279,7 +284,7 @@ func simulate(seconds: float) -> void:
 
 
 func _process(delta: float) -> void:
-	if piece_id == &"drying_rack" and not drying.is_empty():
+	if piece_id == &"drying_rack" and not drying.is_empty() and not _rained_on():
 		for d: Dictionary in drying:
 			d.t = float(d.t) + delta
 

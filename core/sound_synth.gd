@@ -211,6 +211,13 @@ static func build(name: StringName) -> PackedFloat32Array:
 				for c in rng.randi_range(2, 4):
 					mix(b, tone(0.09, f, f * rng.randf_range(1.1, 1.4), 0.01, 0.03, 0.5), at + c * 0.12)
 			return make_loop(normalize(b, 0.4), 0.3)
+		&"rain_loop":
+			var b := noise(4.0, 5200, 900, 0.0, 99.0, 0.6, 131)
+			var rng := RandomNumberGenerator.new()
+			rng.seed = 132
+			for k in 160:
+				mix(b, noise(0.012, 8000, 3000, 0.0005, 0.004, rng.randf_range(0.2, 0.6), 140 + k), rng.randf_range(0.0, 3.9))
+			return make_loop(normalize(b, 0.5), 0.3)
 		&"crickets_loop":
 			var b := silence(4.0)
 			var t := 0.0

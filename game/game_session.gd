@@ -80,6 +80,9 @@ func _build_ui() -> void:
 	layer.add_child(storage_screen)
 	storage_screen.closed.connect(_on_ui_closed)
 	Events.open_storage.connect(open_storage)
+	world.weather.state_changed.connect(func(s: StringName) -> void:
+		if s in [&"rain", &"storm"]:
+			world.add_journal("JOURNAL_RAIN"))
 	Events.building_placed.connect(func(p: Node) -> void: Sfx.play(&"place", (p as Node3D).global_position))
 	Events.building_completed.connect(func(p: Node) -> void: Sfx.play(&"build", (p as Node3D).global_position + Vector3.UP))
 	Events.building_removed.connect(func(p: Node, dismantled: bool) -> void:

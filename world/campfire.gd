@@ -116,11 +116,16 @@ func simulate(seconds: float) -> void:
 		_burn(seconds)
 
 
+func _rain_factor() -> float:
+	var w := get_tree().get_first_node_in_group("weather") as Weather if is_inside_tree() else null
+	return 1.0 + 3.0 * w.rain_at(global_position) if w else 1.0
+
+
 func _burn(dt: float) -> void:
-	var burn := minf(dt, fuel)
+	var burn := minf(dt * _rain_factor(), fuel)
 	fuel -= burn
 	for c: Dictionary in cooking:
-		c.t = float(c.t) + burn
+		c.t = float(c.t) + burn / _rain_factor()
 	if fuel <= 0.0:
 		fuel = 0.0
 		lit = false
@@ -146,7 +151,8 @@ func get_display_name() -> String:
 
 func get_status_text() -> String:
 	if lit:
-		return Loc.t("STATUS_FIRE_LIT", {"m": ceili(fuel / 60.0)})
+		var txt := Loc.t("STATUS_FIRE_LIT", {"m": ceili(fuel / 60.0 / _rain_factor())})
+		return txt + (Loc.t("STATUS_FIRE_RAIN") if _rain_factor() > 1.1 else "")
 	if fuel > 0.0:
 		return Loc.t("STATUS_FIRE_READY")
 	return Loc.t("STATUS_FIRE_EMPTY")

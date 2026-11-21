@@ -12,6 +12,7 @@ uniform sampler2D macro_noise : hint_default_white, filter_linear_mipmap, repeat
 uniform float map_size = 260.0;
 uniform float tile = 0.3;
 uniform float water_level = 0.0;
+uniform float rain_wetness = 0.0;
 
 varying vec3 wpos;
 varying vec3 wnrm;
@@ -71,7 +72,7 @@ void fragment() {
 	alb /= total; nrm /= total; arm /= total;
 	alb *= mix(0.82, 1.12, n1);
 	// Wet darkening near the waterline.
-	float wet = 1.0 - smoothstep(-0.1, 0.5, h);
+	float wet = max(1.0 - smoothstep(-0.1, 0.5, h), rain_wetness * 0.75);
 	alb *= mix(1.0, 0.62, wet);
 	ALBEDO = alb;
 	NORMAL_MAP = nrm;

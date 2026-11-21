@@ -4,6 +4,8 @@
 cd "$(dirname "$0")/.."
 GODOT="${GODOT:-/Applications/Godot.app/Contents/MacOS/Godot}"
 LOG="$(mktemp -t wildbound_tests)"
+# Refresh imports + global class cache (new class_name scripts, new assets).
+"$GODOT" --headless --path . --import >/dev/null 2>&1
 "$GODOT" --headless --path . res://tests/test_runner.tscn >"$LOG" 2>&1 &
 PID=$!
 for i in $(seq 1 300); do kill -0 $PID 2>/dev/null || break; sleep 1; done
