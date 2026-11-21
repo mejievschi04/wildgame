@@ -24,6 +24,10 @@ var day_night: DayNight
 var weather: Weather
 var tracks: Tracks
 var wildlife: Wildlife
+var factions: Factions
+var camps: Camps
+var _camp_sites: Array[Vector2] = []
+var _camp_heights: Array[float] = []
 var journal: Array[String] = []
 var player: Node = null
 
@@ -49,6 +53,7 @@ func _ready() -> void:
 	_detail.seed = SEED + 1
 	_detail.frequency = 0.09
 	_rng.seed = SEED
+	_load_camp_sites()
 	nodes_root = _child_root("Nodes")
 	structures_root = _child_root("Structures")
 	pickups_root = _child_root("Pickups")
@@ -63,6 +68,8 @@ func _ready() -> void:
 	_build_water()
 	_build_bounds()
 	_build_pois()
+	for c in _camp_sites:
+		_occupy(c.x, c.y, 16.0)
 	_scatter()
 	_build_forest_mask()
 	tracks = Tracks.new()
@@ -72,6 +79,18 @@ func _ready() -> void:
 	wildlife.name = "Wildlife"
 	wildlife.world = self
 	add_child(wildlife)
+	if not menu_mode:
+		factions = Factions.new()
+		factions.name = "Factions"
+		factions.world = self
+		add_child(factions)
+		camps = Camps.new()
+		camps.name = "Camps"
+		camps.world = self
+		camps.factions = factions
+		add_child(camps)
+		camps.build_structures()
+		camps.spawn_people()
 	var veg := Vegetation.new()
 	veg.name = "Vegetation"
 	add_child(veg)
@@ -107,8 +126,21 @@ func river_distance(x: float, z: float) -> float:
 	return absf(x - river_x(z))
 
 
+func _load_camp_sites() -> void:
+	var f := FileAccess.open("res://data/factions.json", FileAccess.READ)
+	var d: Variant = JSON.parse_string(f.get_as_text()) if f else {}
+	for k: String in (d as Dictionary).keys():
+		var c := Camps.site(d[k])
+		_camp_sites.append(c)
+		_camp_heights.append(maxf(_noise.get_noise_2d(c.x, c.y) * 5.0 + 3.6, 1.5))
+
+
 func height_at(x: float, z: float) -> float:
 	var h := _noise.get_noise_2d(x, z) * 5.0 + 3.6 + _detail.get_noise_2d(x, z) * 0.35
+	for i in _camp_sites.size():
+		var dc0 := Vector2(x, z).distance_to(_camp_sites[i])
+		if dc0 < 22.0:
+			h = lerpf(h, _camp_heights[i], 1.0 - smoothstep(10.0, 22.0, dc0))
 	var ds := Vector2(x, z).distance_to(SPAWN)
 	h = lerpf(h, 3.2, (1.0 - smoothstep(7.0, 20.0, ds)) * 0.85)
 	var dc := Vector2(x, z).distance_to(OLD_CAMP)
@@ -587,6 +619,7 @@ func collect_save() -> Dictionary:
 		"time_hours": day_night.time_hours, "day": day_night.day, "journal": journal.duplicate(),
 		"nodes": nodes, "pickups": pickups, "structures": structures, "structure_counter": _structure_counter,
 		"weather": weather.save_state(), "carcasses": wildlife.save_state(),
+		"factions": factions.save_state() if factions else {}, "npcs": camps.save_state() if camps else {},
 	}
 
 
@@ -596,6 +629,10 @@ func apply_save(d: Dictionary) -> void:
 	if d.has("weather"):
 		weather.load_state(d.weather)
 	wildlife.load_state(d.get("carcasses", []))
+	if factions:
+		factions.load_state(d.get("factions", {}))
+	if camps:
+		camps.load_state(d.get("npcs", {}))
 	journal.clear()
 	for k: Variant in d.get("journal", []):
 		journal.append(str(k))
@@ -604,12 +641,14 @@ func apply_save(d: Dictionary) -> void:
 		if _nodes.has(id):
 			_nodes[id].load_state(nodes[id])
 	for p in pickups_root.get_children():
+		pickups_root.remove_child(p)  # detach now so restored nodes keep their names
 		p.queue_free()
 	for p: Dictionary in d.get("pickups", []):
 		var st := ItemStack.from_dict(p.item)
 		if ItemDB.get_item(st.id):
 			spawn_pickup(st, _vec(p.pos))
 	for s in structures_root.get_children():
+		structures_root.remove_child(s)
 		s.queue_free()
 	_structure_counter = int(d.get("structure_counter", 0))
 	for s: Dictionary in d.get("structures", []):

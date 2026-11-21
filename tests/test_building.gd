@@ -28,6 +28,11 @@ func _foundation(s: GameSession, offset: Vector3 = Vector3(4, 0, 4), built: bool
 	return f
 
 
+## Player-built pieces only (faction camps contribute their own structures).
+func _mine() -> Array:
+	return tree.get_nodes_in_group("building").filter(func(n: Node) -> bool: return not String(n.name).begins_with("camp_"))
+
+
 func _place(s: GameSession, id: StringName, mode: String, near: Vector3, pick: int = 0) -> BuildingPiece:
 	var bc := s.player.build
 	bc.piece_id = id
@@ -124,7 +129,7 @@ func test_collapse_cascade_and_refunds() -> void:
 	s.world.remove_piece(f, 0.25, null)
 	await tree.process_frame
 	await tree.process_frame
-	eq(tree.get_nodes_in_group("building").size(), 0, "doorway, door and roof collapsed")
+	eq(_mine().size(), 0, "doorway, door and roof collapsed")
 	check(tree.get_nodes_in_group("pickup").size() > 0, "collapse drops some materials")
 	await _teardown(s)
 
@@ -175,7 +180,7 @@ func test_storage_door_rack_persist() -> void:
 	tree.root.add_child(s2)
 	for i in 3:
 		await tree.physics_frame
-	var pieces := tree.get_nodes_in_group("building")
+	var pieces := _mine()
 	eq(pieces.size(), 6, "all pieces restored")
 	var found_box := false
 	var found_door := false
@@ -203,5 +208,5 @@ func test_repair() -> void:
 	near(f.health, 270.0, 0.01, "+40 % health")
 	f.damage(1000.0)
 	await tree.process_frame
-	eq(tree.get_nodes_in_group("building").size(), 0, "destroyed piece removed")
+	eq(_mine().size(), 0, "destroyed piece removed")
 	await _teardown(s)

@@ -1,0 +1,88 @@
+{
+	"hunters": {
+		"start": 0,
+		"temper": "wary",
+		"variants": [
+			"M1",
+			"M3",
+			"F1"
+		],
+		"count": 3,
+		"armed": true,
+		"camp": [
+			92,
+			62
+		],
+		"territory": 0,
+		"wants": {
+			"flint": 6,
+			"wood": 3,
+			"hide": 8,
+			"stone": 2
+		},
+		"gives": {
+			"meat_dried": 1,
+			"spear": 1,
+			"bandage": 1
+		},
+		"journal": "JOURNAL_HUNTERS"
+	},
+	"clan": {
+		"start": -15,
+		"temper": "territorial",
+		"variants": [
+			"M1",
+			"M2",
+			"M3",
+			"F2"
+		],
+		"count": 4,
+		"armed": true,
+		"camp": [
+			-82,
+			-72
+		],
+		"territory": 34,
+		"wants": {
+			"meat_cooked": 6,
+			"meat_dried": 6,
+			"hide": 8,
+			"berries": 1
+		},
+		"gives": {
+			"flint": 2,
+			"flint_knife": 1,
+			"torch": 1
+		},
+		"journal": "JOURNAL_CLAN"
+	},
+	"gatherers": {
+		"start": 20,
+		"temper": "peaceful",
+		"variants": [
+			"F1",
+			"F2",
+			"M2"
+		],
+		"count": 3,
+		"armed": false,
+		"camp": [
+			-35,
+			78
+		],
+		"territory": 0,
+		"wants": {
+			"stick": 1,
+			"fiber": 1,
+			"meat_raw": 4,
+			"flint": 3
+		},
+		"gives": {
+			"berries": 3,
+			"mushroom_cooked": 2,
+			"bandage": 1,
+			"waterskin_empty": 1
+		},
+		"journal": "JOURNAL_GATHERERS"
+	}
+}

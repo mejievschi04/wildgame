@@ -15,6 +15,8 @@ var structure_type: StringName = &"campfire"
 var structure_id := ""
 var fuel := 0.0
 var lit := false
+## Faction camp fires are tended by their people: they never run out.
+var eternal := false
 var cooking: Array = []  # [{id: StringName, t: float}]
 
 var _light: OmniLight3D
@@ -122,6 +124,10 @@ func _rain_factor() -> float:
 
 
 func _burn(dt: float) -> void:
+	if eternal:
+		for c: Dictionary in cooking:
+			c.t = float(c.t) + dt
+		return
 	var burn := minf(dt * _rain_factor(), fuel)
 	fuel -= burn
 	for c: Dictionary in cooking:
@@ -294,11 +300,12 @@ func save_state() -> Dictionary:
 	var c: Array = []
 	for e: Dictionary in cooking:
 		c.append({"id": String(e.id), "t": e.t})
-	return {"fuel": fuel, "lit": lit, "cooking": c}
+	return {"fuel": fuel, "lit": lit, "cooking": c, "eternal": eternal}
 
 
 func load_state(d: Dictionary) -> void:
 	fuel = float(d.get("fuel", 0.0))
+	eternal = bool(d.get("eternal", false))
 	lit = bool(d.get("lit", false)) and fuel > 0.0
 	cooking.clear()
 	for e: Dictionary in d.get("cooking", []):

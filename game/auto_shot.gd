@@ -110,6 +110,17 @@ func _ready() -> void:
 		p.head.rotation.x = -0.32
 		p.inventory.add_item(&"stone_axe")
 		p.inventory.equip_slot(p.inventory.first_slot_of(&"stone_axe"))
+	if scenario.begins_with("tribe_"):
+		var fname := scenario.substr(6)
+		var c := Camps.site(session.world.factions.def_of(StringName(fname)))
+		var center := session.world.ground_point(c.x, c.y)
+		var at := center + Vector3(cos(-1.25), 0, sin(-1.25)) * 6.5
+		p.global_position = session.world.ground_point(at.x, at.z) + Vector3.UP * 0.3
+		p.look_at(Vector3(center.x, p.global_position.y, center.z))
+		p.rotation = Vector3(0, p.rotation.y, 0)
+		p.head.rotation.x = -0.16
+		session.world.wildlife.enabled = false
+		session.world.factions.change(StringName(fname), 60.0)  # friendly for a calm screenshot
 	if scenario == "kit":
 		session.world.add_journal("JOURNAL_WATER")
 

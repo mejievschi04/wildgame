@@ -58,6 +58,7 @@ var _torch_wear_accum := 0.0
 var _noise_burst := 0.0
 var _move_noise := 0.05
 var aiming := false
+var _gesture_t := 0.0
 var _shake := 0.0
 ## Footprint under the crosshair (read by the HUD): {species, age, yaw} or {}.
 var look_track: Dictionary = {}
@@ -134,6 +135,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			use_slot(i)
 			get_viewport().set_input_as_handled()
 			return
+	if event.is_action_pressed("gesture"):
+		gesture()
 	if event.is_action_pressed("sprint") and bool(Settings.get_value("gameplay", "toggle_sprint")):
 		_sprint_toggled = not _sprint_toggled
 	if event.is_action_pressed("crouch"):
@@ -201,6 +204,7 @@ func _physics_process(delta: float) -> void:
 	var moving := move.length() > 0.1
 	_move_noise = 0.05 if not moving else (1.0 if sprinting else (0.12 if _crouching else 0.45))
 	_noise_burst = maxf(_noise_burst - delta, 0.0)
+	_gesture_t = maxf(_gesture_t - delta, 0.0)
 	if inventory.hand == null or inventory.hand.id != &"spear":
 		aiming = false
 	var was_on_floor := is_on_floor()
@@ -230,6 +234,22 @@ func survival_env(sleeping: bool = false, sprinting: bool = false) -> Dictionary
 		"rain": world.weather.rain_at(pos) if world.weather else 0.0,
 		"sleeping": sleeping, "sprinting": sprinting,
 	}
+
+
+## Open-palm gesture (GDD §7: diplomacy without a shared language).
+func gesture() -> void:
+	if _gesture_t > 0.0 or dead:
+		return
+	_gesture_t = 2.2
+	Events.toast(Loc.t("MSG_GESTURE"), &"info")
+	var tw := create_tween()
+	tw.tween_property(hand_root, "position:y", -0.9, 0.2)
+	tw.tween_interval(1.6)
+	tw.tween_property(hand_root, "position:y", -0.42, 0.3)
+
+
+func is_gesturing() -> bool:
+	return _gesture_t > 0.0
 
 
 ## How audible the player is right now (0..1): movement + recent actions (chopping, gathering, jumping).
@@ -281,6 +301,21 @@ func throw_spear() -> void:
 	spear.launch(st, camera.global_position + fwd * 0.7, fwd * 24.0 + Vector3(velocity.x, 0, velocity.z), self)
 	_noise_burst = maxf(_noise_burst, 0.6)
 	Sfx.play(&"whoosh", null, -4.0)
+
+
+## Sleep needs safety: no hostile/wary armed strangers nearby, no predator hunting you.
+func _safe_to_sleep() -> bool:
+	for n: HumanNPC in get_tree().get_nodes_in_group("npc"):
+		if n.is_dead() or n.global_position.distance_to(global_position) > 40.0:
+			continue
+		if n.armed and world.factions and world.factions.stance(n.faction) in [&"hostile", &"wary"]:
+			return false
+		if n.state == HumanNPC.State.COMBAT:
+			return false
+	for a: Animal in get_tree().get_nodes_in_group("animal"):
+		if a.is_predator() and not a.is_dead() and a.state in [Animal.State.CHASE, Animal.State.ATTACK]:
+			return false
+	return true
 
 
 func _on_landed(speed: float) -> void:
@@ -578,6 +613,8 @@ func _tick_torch(delta: float) -> void:
 func can_sleep() -> Dictionary:
 	if stats.rest > 85.0 and not world.day_night.is_night():
 		return {"ok": false, "reason": Loc.t("SLEEP_NOT_TIRED")}
+	if not _safe_to_sleep():
+		return {"ok": false, "reason": Loc.t("SLEEP_UNSAFE")}
 	if world.weather and world.weather.rain_at(global_position + Vector3.UP * 0.5) > 0.1:
 		return {"ok": false, "reason": Loc.t("SLEEP_RAIN")}
 	var env := survival_env(true)

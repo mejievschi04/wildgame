@@ -159,7 +159,7 @@ func test_save_and_restore_world_state() -> void:
 	near(s2.world.day_night.time_hours, 18.25, 0.05, "time restored")
 	near(s2.player.stats.hunger, 42.0, 0.5, "stats restored")
 	eq(s2.player.inventory.count_of(&"flint_knife"), 1, "inventory restored")
-	var fires := tree.get_nodes_in_group("campfire")
+	var fires := tree.get_nodes_in_group("campfire").filter(func(n: Node) -> bool: return not String(n.name).begins_with("camp_"))
 	check(fires.size() == 1 and (fires[0] as Campfire).lit, "lit campfire restored")
 	eq(tree.get_nodes_in_group("pickup").size(), 1, "pickup restored")
 	await _teardown(s2)
