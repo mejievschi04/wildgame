@@ -24,6 +24,42 @@ static func mat(color: Color, roughness: float = 0.9, emission: float = 0.0) -> 
 	return m
 
 
+## Scanned CC0 PBR materials (assets/textures/materials), object-space triplanar so primitives
+## of any size get correctly scaled texture. scale = texture repeats per metre.
+static func tex(name: String, tint: Color = Color.WHITE, scale: float = 1.0) -> StandardMaterial3D:
+	var key := "tex|%s|%s|%.2f" % [name, tint.to_html(), scale]
+	if _materials.has(key):
+		return _materials[key]
+	var base := "res://assets/textures/materials/T_%s_" % name
+	var m := StandardMaterial3D.new()
+	m.albedo_texture = load(base + "diff.jpg")
+	m.albedo_color = tint
+	m.normal_enabled = true
+	m.normal_texture = load(base + "nor_gl.jpg")
+	m.roughness_texture = load(base + "arm.jpg")
+	m.roughness_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_GREEN
+	m.ao_enabled = true
+	m.ao_texture = load(base + "arm.jpg")
+	m.ao_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_RED
+	m.uv1_triplanar = true
+	m.uv1_scale = Vector3.ONE * scale
+	m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+	_materials[key] = m
+	return m
+
+
+static func part_mat(parent: Node3D, mesh: Mesh, material: Material, pos: Vector3 = Vector3.ZERO,
+		rot_deg: Vector3 = Vector3.ZERO, scl: Vector3 = Vector3.ONE) -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	mi.mesh = mesh
+	mi.material_override = material
+	mi.position = pos
+	mi.rotation_degrees = rot_deg
+	mi.scale = scl
+	parent.add_child(mi)
+	return mi
+
+
 static func cylinder(top: float, bottom: float, height: float, segments: int = 8) -> CylinderMesh:
 	var key := "cyl|%.3f|%.3f|%.3f|%d" % [top, bottom, height, segments]
 	if not _meshes.has(key):

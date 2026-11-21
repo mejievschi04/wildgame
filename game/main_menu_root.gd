@@ -16,15 +16,8 @@ func _ready() -> void:
 	var fire: Campfire = world.spawn_structure(&"campfire", Transform3D(Basis(), base))
 	fire.add_fuel(Campfire.MAX_FUEL)
 	fire.ignite()
-	# Lean-to shelter graybox behind the fire.
-	var shelter := Node3D.new()
-	shelter.position = world.ground_point(-4.5, 0.0)
-	shelter.rotation.y = 0.5
-	add_child(shelter)
-	for i in 7:
-		Graybox.part(shelter, Graybox.cylinder(0.05, 0.06, 3.0, 5), Color(0.38, 0.29, 0.2),
-			Vector3(-1.8 + i * 0.6, 1.1, 0), Vector3(-38, 0, 0))
-	Graybox.part(shelter, Graybox.box(Vector3(3.8, 2.8, 0.05)), Color(0.55, 0.42, 0.28), Vector3(0, 1.12, -0.08), Vector3(-38, 0, 0))
+	var lean: BuildingPiece = world.spawn_structure(&"piece", Transform3D(Basis(Vector3.UP, 0.5 + PI), world.ground_point(-4.5, 0.0)), {"piece": "lean_to"})
+	lean.complete()
 	var bed: Node3D = world.spawn_structure(&"bed", Transform3D(Basis(Vector3.UP, 0.5), world.ground_point(-4.0, 1.2)))
 	bed.process_mode = Node.PROCESS_MODE_DISABLED
 	_cam = Camera3D.new()

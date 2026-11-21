@@ -9,7 +9,9 @@ var out_path := ""
 var frames := 120
 var hour := -1.0
 var scenario := ""
+var bench_off := PackedStringArray()
 var _n := 0
+var _fps_samples: Array[float] = []
 
 
 static func attach_if_requested(parent: Node) -> void:
@@ -25,6 +27,7 @@ static func attach_if_requested(parent: Node) -> void:
 	s.frames = int(args.get("shot-frames", "120"))
 	s.hour = float(args.get("shot-hour", "-1"))
 	s.scenario = args.get("shot-scenario", "")
+	s.bench_off = str(args.get("bench-off", "")).split(",", false)
 	s.process_mode = Node.PROCESS_MODE_ALWAYS
 	parent.set_meta("no_focus_pause", true)  # unfocused automation window must not auto-pause
 	parent.add_child.call_deferred(s)
@@ -64,8 +67,65 @@ func _ready() -> void:
 		session.world.add_journal("JOURNAL_WATER")
 
 
-func _process(_delta: float) -> void:
+func _apply_bench() -> void:
+	var root := get_parent()
+	var env: Environment = null
+	for we: WorldEnvironment in root.find_children("*", "WorldEnvironment", true, false):
+		env = we.environment
+	for f in bench_off:
+		match f:
+			"grass", "veg":
+				for v in root.find_children("Vegetation", "", true, false):
+					for c in v.get_children():
+						if c is MultiMeshInstance3D and (f == "veg" or (c as MultiMeshInstance3D).visibility_range_end < 50.0):
+							c.visible = false
+			"volfog": env.volumetric_fog_enabled = false
+			"ssao": env.ssao_enabled = false
+			"shadows":
+				for l: DirectionalLight3D in root.find_children("*", "DirectionalLight3D", true, false):
+					l.shadow_enabled = false
+			"msaa": get_viewport().msaa_3d = Viewport.MSAA_DISABLED
+			"fsr2":
+				get_viewport().msaa_3d = Viewport.MSAA_DISABLED
+				get_viewport().scaling_3d_mode = Viewport.SCALING_3D_MODE_FSR2
+				get_viewport().scaling_3d_scale = 0.67
+			"fsr2_60":
+				get_viewport().msaa_3d = Viewport.MSAA_DISABLED
+				get_viewport().scaling_3d_mode = Viewport.SCALING_3D_MODE_FSR2
+				get_viewport().scaling_3d_scale = 0.6
+			"shadow2k":
+				RenderingServer.directional_shadow_atlas_set_size(2048, true)
+			"shadow60":
+				for l: DirectionalLight3D in root.find_children("*", "DirectionalLight3D", true, false):
+					l.directional_shadow_max_distance = 60.0
+			"novsync":
+				DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
+				Engine.max_fps = 0
+			"taa":
+				get_viewport().msaa_3d = Viewport.MSAA_DISABLED
+				get_viewport().use_taa = true
+			"smaa":
+				get_viewport().msaa_3d = Viewport.MSAA_DISABLED
+				get_viewport().screen_space_aa = Viewport.SCREEN_SPACE_AA_SMAA
+			"fxaa":
+				get_viewport().msaa_3d = Viewport.MSAA_DISABLED
+				get_viewport().screen_space_aa = Viewport.SCREEN_SPACE_AA_FXAA
+			"metalfx":
+				get_viewport().msaa_3d = Viewport.MSAA_DISABLED
+				get_viewport().scaling_3d_mode = Viewport.SCALING_3D_MODE_METALFX_TEMPORAL
+				get_viewport().scaling_3d_scale = 0.67
+			"trees":
+				for n: Node in root.get_tree().get_nodes_in_group("resource_node"):
+					if String(n.get("kind")).begins_with("tree"):
+						(n as Node3D).visible = false
+
+
+func _process(delta: float) -> void:
 	_n += 1
+	if _n == 5 and not bench_off.is_empty():
+		_apply_bench()
+	if _n > frames - 120:
+		_fps_samples.append(1.0 / maxf(delta, 0.0001))
 	var session := get_parent() as GameSession
 	if session and _n == 20:
 		match scenario:
@@ -76,7 +136,12 @@ func _process(_delta: float) -> void:
 	if _n >= frames:
 		var img := get_viewport().get_texture().get_image()
 		img.save_png(out_path)
-		print("AutoShot saved ", out_path, "  fps=", Engine.get_frames_per_second(), "  draw_calls=", RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME))
+		print("viewport px=", get_viewport().get_texture().get_size(), " window=", DisplayServer.window_get_size(), " scale=", DisplayServer.screen_get_scale())
+		var avg := 0.0
+		for f in _fps_samples:
+			avg += f
+		avg /= maxf(_fps_samples.size(), 1.0)
+		print("AutoShot saved ", out_path, "  fps=", Engine.get_frames_per_second(), " avg_last120=", snappedf(avg, 0.1), " off=", bench_off, "  draw_calls=", RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME))
 		get_tree().quit()
 
 

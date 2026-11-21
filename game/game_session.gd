@@ -112,6 +112,8 @@ func _process(delta: float) -> void:
 
 
 func is_ui_open() -> bool:
+	if inventory_screen == null:  # UI not built yet (e.g. focus lost while loading)
+		return true
 	return inventory_screen.visible or pause_menu.visible or death_screen.visible \
 		or build_menu.visible or storage_screen.visible
 

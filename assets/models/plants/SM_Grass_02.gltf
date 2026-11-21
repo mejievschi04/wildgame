@@ -1,0 +1,162 @@
+{
+ "asset": {
+  "generator": "Khronos glTF Blender I/O v5.3.43",
+  "version": "2.0"
+ },
+ "scene": 0,
+ "scenes": [
+  {
+   "name": "Scene",
+   "nodes": [
+    0
+   ]
+  }
+ ],
+ "nodes": [
+  {
+   "mesh": 0,
+   "name": "SM_Grass_02"
+  }
+ ],
+ "materials": [
+  {
+   "alphaMode": "MASK",
+   "doubleSided": true,
+   "name": "grass_medium_01",
+   "normalTexture": {
+    "index": 0
+   },
+   "pbrMetallicRoughness": {
+    "baseColorTexture": {
+     "index": 1
+    },
+    "metallicFactor": 0,
+    "metallicRoughnessTexture": {
+     "index": 2
+    }
+   },
+   "alphaCutoff": 0.5
+  }
+ ],
+ "meshes": [
+  {
+   "name": "Plane.038",
+   "primitives": [
+    {
+     "attributes": {
+      "POSITION": 0,
+      "NORMAL": 1,
+      "TEXCOORD_0": 2
+     },
+     "indices": 3,
+     "material": 0
+    }
+   ]
+  }
+ ],
+ "textures": [
+  {
+   "sampler": 0,
+   "source": 0
+  },
+  {
+   "sampler": 0,
+   "source": 1
+  },
+  {
+   "sampler": 0,
+   "source": 2
+  }
+ ],
+ "images": [
+  {
+   "mimeType": "image/jpeg",
+   "name": "grass_medium_01_nor_gl_1k",
+   "uri": "textures/grass_medium_01_nor_gl_1k.jpg"
+  },
+  {
+   "mimeType": "image/png",
+   "name": "grass_medium_01_diff_1k",
+   "uri": "textures/grass_medium_01_diff_1k.png"
+  },
+  {
+   "mimeType": "image/png",
+   "name": "grass_medium_01_arm_1k",
+   "uri": "textures/grass_medium_01_arm_1k.png"
+  }
+ ],
+ "accessors": [
+  {
+   "bufferView": 0,
+   "componentType": 5126,
+   "count": 922,
+   "max": [
+    0.13438916206359863,
+    0.16366693377494812,
+    0.11340517550706863
+   ],
+   "min": [
+    -0.11127471923828125,
+    0.02205822244286537,
+    -0.12382075190544128
+   ],
+   "type": "VEC3"
+  },
+  {
+   "bufferView": 1,
+   "componentType": 5126,
+   "count": 922,
+   "type": "VEC3"
+  },
+  {
+   "bufferView": 2,
+   "componentType": 5126,
+   "count": 922,
+   "type": "VEC2"
+  },
+  {
+   "bufferView": 3,
+   "componentType": 5123,
+   "count": 1500,
+   "type": "SCALAR"
+  }
+ ],
+ "bufferViews": [
+  {
+   "buffer": 0,
+   "byteLength": 11064,
+   "byteOffset": 0,
+   "target": 34962
+  },
+  {
+   "buffer": 0,
+   "byteLength": 11064,
+   "byteOffset": 11064,
+   "target": 34962
+  },
+  {
+   "buffer": 0,
+   "byteLength": 7376,
+   "byteOffset": 22128,
+   "target": 34962
+  },
+  {
+   "buffer": 0,
+   "byteLength": 3000,
+   "byteOffset": 29504,
+   "target": 34963
+  }
+ ],
+ "samplers": [
+  {
+   "magFilter": 9729,
+   "minFilter": 9987
+  }
+ ],
+ "buffers": [
+  {
+   "byteLength": 32504,
+   "uri": "SM_Grass_02.bin"
+  }
+ ]
+}

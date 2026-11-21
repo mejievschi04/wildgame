@@ -378,6 +378,10 @@ func _physics_process(_delta: float) -> void:
 ## Builds the PLACEHOLDER visual for a piece (also used for ghost previews).
 static func build_visual(id: StringName) -> Node3D:
 	var root := Node3D.new()
+	var m_wood := Graybox.tex("Log", Color(1, 1, 1), 1.0)
+	var m_stake := Graybox.tex("Wattle", Color(0.95, 0.9, 0.85), 2.5)
+	var m_weave := Graybox.tex("Wattle", Color(0.8, 0.72, 0.6), 3.5)
+	var m_thatch := Graybox.tex("Thatch", Color.WHITE, 0.6)
 	var wood := Color(0.42, 0.3, 0.19)
 	var stake := Color(0.47, 0.36, 0.23)
 	var weave := Color(0.55, 0.43, 0.27)
@@ -385,70 +389,69 @@ static func build_visual(id: StringName) -> Node3D:
 	match id:
 		&"foundation":
 			for i in 7:
-				Graybox.part(root, Graybox.cylinder(0.14, 0.14, GRID, 7), wood.lightened(0.04 * (i % 2)),
-					Vector3(-0.86 + i * 0.287, FOUNDATION_H * 0.5, 0), Vector3(90, 0, 0))
+				Graybox.part_mat(root, Graybox.cylinder(0.14, 0.14, GRID, 7), m_wood, Vector3(-0.86 + i * 0.287, FOUNDATION_H * 0.5, 0), Vector3(90, 0, 0))
 			for sx in [-0.9, 0.9]:
 				for sz in [-0.9, 0.9]:
-					Graybox.part(root, Graybox.cylinder(0.1, 0.12, 2.0, 6), wood.darkened(0.15), Vector3(sx, -0.95, sz))
+					Graybox.part_mat(root, Graybox.cylinder(0.1, 0.12, 2.0, 6), m_wood, Vector3(sx, -0.95, sz))
 		&"wall", &"doorway":
 			var n := 7
 			for i in n:
 				var x := -0.93 + i * (1.86 / (n - 1))
 				if id == &"doorway" and absf(x) < DOOR_W * 0.5:
 					continue
-				Graybox.part(root, Graybox.cylinder(0.045, 0.05, WALL_H, 5), stake, Vector3(x, WALL_H * 0.5, 0))
+				Graybox.part_mat(root, Graybox.cylinder(0.045, 0.05, WALL_H, 5), m_stake, Vector3(x, WALL_H * 0.5, 0))
 			var bands := 6
 			for j in bands:
 				var y := 0.25 + j * 0.34
 				if id == &"doorway" and y < DOOR_H:
 					var side := (GRID - DOOR_W) * 0.5
 					for sx in [-1.0, 1.0]:
-						Graybox.part(root, Graybox.box(Vector3(side, 0.22, 0.09)), weave.lightened(0.05 * (j % 2)),
-							Vector3(sx * (DOOR_W + side) * 0.5, y, 0))
+						Graybox.part_mat(root, Graybox.box(Vector3(side, 0.22, 0.09)), m_weave, Vector3(sx * (DOOR_W + side) * 0.5, y, 0))
 				else:
-					Graybox.part(root, Graybox.box(Vector3(GRID - 0.05, 0.22, 0.09)), weave.lightened(0.05 * (j % 2)), Vector3(0, y, 0))
+					Graybox.part_mat(root, Graybox.box(Vector3(GRID - 0.05, 0.22, 0.09)), m_weave, Vector3(0, y, 0))
 		&"door":
 			var hinge := Node3D.new()
 			hinge.name = "Hinge"
 			hinge.position = Vector3(-DOOR_W * 0.5, 0, 0)
 			root.add_child(hinge)
-			Graybox.part(hinge, Graybox.box(Vector3(DOOR_W - 0.06, DOOR_H - 0.04, 0.06)), weave, Vector3(DOOR_W * 0.5, DOOR_H * 0.5, 0))
+			Graybox.part_mat(hinge, Graybox.box(Vector3(DOOR_W - 0.06, DOOR_H - 0.04, 0.06)), m_weave, Vector3(DOOR_W * 0.5, DOOR_H * 0.5, 0))
 			for y in [0.4, 1.0, 1.6]:
-				Graybox.part(hinge, Graybox.box(Vector3(DOOR_W - 0.02, 0.06, 0.09)), stake.darkened(0.1), Vector3(DOOR_W * 0.5, y, 0))
+				Graybox.part_mat(hinge, Graybox.box(Vector3(DOOR_W - 0.02, 0.06, 0.09)), m_stake, Vector3(DOOR_W * 0.5, y, 0))
 		&"pillar":
-			Graybox.part(root, Graybox.cylinder(0.11, 0.13, WALL_H, 7), wood, Vector3(0, WALL_H * 0.5, 0))
+			Graybox.part_mat(root, Graybox.cylinder(0.11, 0.13, WALL_H, 7), m_wood, Vector3(0, WALL_H * 0.5, 0))
 		&"roof":
 			var tilt := Node3D.new()
 			tilt.position = Vector3(0, 0.2, 0)
 			tilt.rotation_degrees = Vector3(-12, 0, 0)
 			root.add_child(tilt)
-			Graybox.part(tilt, Graybox.box(Vector3(GRID + 0.3, 0.12, GRID + 0.3)), thatch)
+			Graybox.part_mat(tilt, Graybox.box(Vector3(GRID + 0.3, 0.12, GRID + 0.3)), m_thatch)
 			for sx in [-0.95, 0.0, 0.95]:
-				Graybox.part(tilt, Graybox.cylinder(0.05, 0.05, GRID + 0.4, 5), wood, Vector3(sx, -0.08, 0), Vector3(90, 0, 0))
+				Graybox.part_mat(tilt, Graybox.cylinder(0.05, 0.05, GRID + 0.4, 5), m_wood, Vector3(sx, -0.08, 0), Vector3(90, 0, 0))
 		&"fence":
 			for i in 4:
-				Graybox.part(root, Graybox.cylinder(0.05, 0.06, 1.2, 5), stake, Vector3(-0.9 + i * 0.6, 0.55, 0))
+				Graybox.part_mat(root, Graybox.cylinder(0.05, 0.06, 1.2, 5), m_stake, Vector3(-0.9 + i * 0.6, 0.55, 0))
 			for y in [0.4, 0.85]:
-				Graybox.part(root, Graybox.cylinder(0.035, 0.035, 2.0, 5), wood, Vector3(0, y, 0), Vector3(0, 0, 90))
+				Graybox.part_mat(root, Graybox.cylinder(0.035, 0.035, 2.0, 5), m_wood, Vector3(0, y, 0), Vector3(0, 0, 90))
 		&"storage":
-			Graybox.part(root, Graybox.box(Vector3(1.0, 0.6, 0.7)), weave, Vector3(0, 0.3, 0))
-			Graybox.part(root, Graybox.box(Vector3(1.05, 0.08, 0.75)), stake.darkened(0.1), Vector3(0, 0.64, 0))
+			var basket := AssetLib.instance(AssetLib.PROPS[&"basket"])
+			basket.scale = Vector3(2.7, 2.4, 2.7)
+			root.add_child(basket)
 		&"drying_rack":
 			for sx in [-0.75, 0.75]:
-				Graybox.part(root, Graybox.cylinder(0.04, 0.05, 1.7, 5), stake, Vector3(sx, 0.8, 0.25), Vector3(-17, 0, 0))
-				Graybox.part(root, Graybox.cylinder(0.04, 0.05, 1.7, 5), stake, Vector3(sx, 0.8, -0.25), Vector3(17, 0, 0))
-			Graybox.part(root, Graybox.cylinder(0.035, 0.035, 1.7, 5), wood, Vector3(0, 1.5, 0), Vector3(0, 0, 90))
+				Graybox.part_mat(root, Graybox.cylinder(0.04, 0.05, 1.7, 5), m_stake, Vector3(sx, 0.8, 0.25), Vector3(-17, 0, 0))
+				Graybox.part_mat(root, Graybox.cylinder(0.04, 0.05, 1.7, 5), m_stake, Vector3(sx, 0.8, -0.25), Vector3(17, 0, 0))
+			Graybox.part_mat(root, Graybox.cylinder(0.035, 0.035, 1.7, 5), m_wood, Vector3(0, 1.5, 0), Vector3(0, 0, 90))
 			var dry := Node3D.new()
 			dry.name = "DryRoot"
 			dry.position = Vector3(0, 1.5, 0)
 			root.add_child(dry)
 		&"lean_to":
 			for i in 6:
-				Graybox.part(root, Graybox.cylinder(0.05, 0.06, 2.9, 5), wood, Vector3(-1.35 + i * 0.54, 1.05, 0.0), Vector3(-38, 0, 0))
-			Graybox.part(root, Graybox.box(Vector3(3.0, 2.75, 0.06)), thatch, Vector3(0, 1.08, -0.08), Vector3(-38, 0, 0))
-			Graybox.part(root, Graybox.cylinder(0.07, 0.07, 3.2, 6), wood, Vector3(0, 1.95, -0.6), Vector3(0, 0, 90))
+				Graybox.part_mat(root, Graybox.cylinder(0.05, 0.06, 2.9, 5), m_wood, Vector3(-1.35 + i * 0.54, 1.05, 0.0), Vector3(-38, 0, 0))
+			Graybox.part_mat(root, Graybox.box(Vector3(3.0, 2.75, 0.06)), m_thatch, Vector3(0, 1.08, -0.08), Vector3(-38, 0, 0))
+			Graybox.part_mat(root, Graybox.cylinder(0.07, 0.07, 3.2, 6), m_wood, Vector3(0, 1.95, -0.6), Vector3(0, 0, 90))
 			for sx in [-1.4, 1.4]:
-				Graybox.part(root, Graybox.cylinder(0.07, 0.08, 2.0, 6), wood, Vector3(sx, 1.0, -0.6))
+				Graybox.part_mat(root, Graybox.cylinder(0.07, 0.08, 2.0, 6), m_wood, Vector3(sx, 1.0, -0.6))
 	return root
 
 

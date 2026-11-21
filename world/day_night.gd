@@ -28,10 +28,16 @@ func _ready() -> void:
 	environment.sky = sky
 	environment.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
 	environment.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
-	environment.tonemap_mode = Environment.TONE_MAPPER_FILMIC
-	environment.tonemap_white = 6.0
+	environment.tonemap_mode = Environment.TONE_MAPPER_AGX
+	environment.tonemap_exposure = 1.05
 	environment.ssao_enabled = true
-	environment.ssao_radius = 1.5
+	environment.ssao_radius = 1.2
+	environment.ssao_intensity = 1.6
+	environment.volumetric_fog_enabled = true
+	environment.volumetric_fog_density = 0.006
+	environment.volumetric_fog_length = 90.0
+	environment.volumetric_fog_anisotropy = 0.6
+	environment.volumetric_fog_sky_affect = 0.0
 	environment.glow_enabled = true
 	environment.glow_intensity = 0.5
 	environment.glow_bloom = 0.05
@@ -44,7 +50,8 @@ func _ready() -> void:
 
 	sun = DirectionalLight3D.new()
 	sun.shadow_enabled = true
-	sun.directional_shadow_max_distance = 90.0
+	sun.shadow_blur = 1.2
+	sun.directional_shadow_blend_splits = true
 	sun.light_angular_distance = 0.6
 	add_child(sun)
 	moon = DirectionalLight3D.new()
@@ -61,6 +68,13 @@ func _ready() -> void:
 func _apply_settings() -> void:
 	day_length_sec = maxf(float(Settings.get_value("gameplay", "day_length_min")), 4.0) * 60.0
 	sun.shadow_enabled = bool(Settings.get_value("video", "shadows"))
+	var q := Settings.quality()
+	sun.directional_shadow_max_distance = q.shadow_dist
+	RenderingServer.directional_shadow_atlas_set_size(int(q.shadow_atlas), true)
+	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS if int(q.splits) == 2 \
+		else DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
+	environment.volumetric_fog_enabled = q.volfog
+	environment.ssao_enabled = q.ssao
 
 
 func _process(delta: float) -> void:
@@ -129,4 +143,6 @@ func update_visuals() -> void:
 	sky_material.sky_energy_multiplier = lerpf(0.25, 1.0, day_k)
 	environment.ambient_light_energy = lerpf(0.35, 0.9, day_k)
 	environment.fog_light_color = hor.darkened(0.15)
-	environment.fog_density = lerpf(0.012, 0.0045, day_k)
+	environment.fog_density = lerpf(0.010, 0.0022, day_k)
+	environment.volumetric_fog_albedo = hor.lightened(0.2)
+	environment.volumetric_fog_density = lerpf(0.012, 0.0028, day_k)

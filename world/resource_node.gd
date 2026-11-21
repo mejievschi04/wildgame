@@ -169,69 +169,101 @@ func _depleted(n: Node3D) -> Node3D:
 
 func _build(s: float) -> void:
 	match kind:
-		&"tree_pine":
-			var h := 8.5 * s
-			var trunk_col := Color(0.33, 0.24, 0.17)
-			_full(Graybox.part(_visual, Graybox.cylinder(0.14, 0.3, h, 7), trunk_col, Vector3(0, h * 0.5, 0)))
-			var green := Color(0.14, 0.24, 0.15)
-			for i in 3:
-				var cone_h := (3.6 - i * 0.7) * s
-				var r := (2.0 - i * 0.45) * s
-				var y := h * (0.42 + i * 0.2)
-				_full(Graybox.part(_visual, Graybox.cylinder(0.0, r, cone_h, 8), green.lightened(i * 0.04), Vector3(0, y, 0)))
-			_depleted(Graybox.part(_visual, Graybox.cylinder(0.26, 0.32, 0.55, 7), trunk_col.lightened(0.15), Vector3(0, 0.27, 0)))
-			_tree_shapes(h)
-		&"tree_birch":
-			var h := 7.0 * s
-			_full(Graybox.part(_visual, Graybox.cylinder(0.12, 0.22, h, 7), Color(0.82, 0.8, 0.74), Vector3(0, h * 0.5, 0)))
-			var leaf := Color(0.33, 0.45, 0.2)
-			_full(Graybox.part(_visual, Graybox.sphere(2.0 * s, 9), leaf, Vector3(0, h * 0.82, 0), Vector3.ZERO, Vector3(1, 1.3, 1)))
-			_full(Graybox.part(_visual, Graybox.sphere(1.4 * s, 8), leaf.lightened(0.06), Vector3(0.9 * s, h * 0.68, 0.4 * s)))
-			_depleted(Graybox.part(_visual, Graybox.cylinder(0.2, 0.24, 0.5, 7), Color(0.75, 0.72, 0.65), Vector3(0, 0.25, 0)))
-			_tree_shapes(h)
+		&"tree_pine", &"tree_birch":
+			var species: StringName = &"alder"
+			if kind == &"tree_pine":
+				species = &"pine" if absi(hash(node_id + "sp")) % 10 < 3 else &"spruce"
+			var tree := _art(AssetLib.pick(AssetLib.TREES[species], node_id), Vector3.ONE * s)
+			_full(tree)
+			var stump := _art(AssetLib.pick(AssetLib.TREES[&"stump"], node_id), Vector3.ONE * 0.5)
+			_depleted(stump)
+			_tree_shapes(maxf(AssetLib.aabb(tree).size.y * s, 6.0))
 		&"rock":
-			_full(Graybox.part(_visual, Graybox.sphere(1.0, 7), Color(0.47, 0.46, 0.43), Vector3(0, 0.4 * s, 0),
-				Vector3(8, 20, 5), Vector3(1.6, 1.1, 1.3) * s))
-			_depleted(Graybox.part(_visual, Graybox.sphere(0.5, 6), Color(0.45, 0.44, 0.41), Vector3(0, 0.05, 0),
-				Vector3.ZERO, Vector3(1.8, 0.35, 1.5)))
-			_shape = Graybox.add_shape(self, Graybox.box_shape(Vector3(2.6, 1.6, 2.2) * s), Vector3(0, 0.5 * s, 0))
+			var rock := _art(AssetLib.pick(AssetLib.ROCKS[&"big"], node_id), Vector3.ONE * s)
+			_full(rock)
+			_shape = _aabb_shape(rock, s, 0.8)
 		&"flint":
-			_full(Graybox.part(_visual, Graybox.sphere(0.7, 7), Color(0.3, 0.31, 0.33), Vector3(0, 0.3 * s, 0),
-				Vector3(10, 0, 12), Vector3(1.3, 0.9, 1.1) * s))
+			var host := _art(AssetLib.pick(AssetLib.ROCKS[&"medium"], node_id), Vector3.ONE * s)
+			_full(host)
+			var dark := Color(0.32, 0.33, 0.37)
 			for i in 3:
-				var a := TAU * i / 3.0
-				_full(Graybox.part(_visual, Graybox.sphere(0.18, 6), Color(0.62, 0.6, 0.55),
-					Vector3(cos(a) * 0.55, 0.45, sin(a) * 0.5) * s))
-			_depleted(Graybox.part(_visual, Graybox.sphere(0.4, 6), Color(0.3, 0.31, 0.33), Vector3(0, 0.04, 0),
-				Vector3.ZERO, Vector3(1.6, 0.3, 1.3)))
-			_shape = Graybox.add_shape(self, Graybox.box_shape(Vector3(1.8, 1.2, 1.6) * s), Vector3(0, 0.4 * s, 0))
+				var a := TAU * i / 3.0 + 0.5
+				var nod := _art(AssetLib.ROCKS[&"small"][i % 3], Vector3.ONE * 2.6 * s)
+				nod.position = Vector3(cos(a) * 0.45, 0.0, sin(a) * 0.4) * s
+				nod.rotation = Vector3(0.4 * i, a, 0.2)
+				_tint(nod, dark)
+				_full(nod)
+			_shape = _aabb_shape(host, s, 0.85)
 		&"bush":
-			var col := Color(0.22, 0.35, 0.17)
-			Graybox.part(_visual, Graybox.sphere(0.8, 8), col, Vector3(0, 0.45 * s, 0), Vector3.ZERO, Vector3(1.3, 0.85, 1.2) * s)
-			_full(Graybox.part(_visual, Graybox.sphere(0.55, 7), col.lightened(0.08), Vector3(0.45, 0.7, 0.2) * s))
-			for i in 7:
-				var a := TAU * i / 7.0
-				_full(Graybox.part(_visual, Graybox.sphere(0.07, 5), Color(0.5, 0.1, 0.22),
-					Vector3(cos(a) * 0.9, 0.55 + 0.25 * sin(a * 3.0), sin(a) * 0.85) * s))
-			_depleted(Graybox.part(_visual, Graybox.sphere(0.5, 6), Color(0.33, 0.3, 0.17), Vector3(0, 0.6 * s, 0)))
-			_shape = Graybox.add_shape(self, Graybox.box_shape(Vector3(1.8, 1.2, 1.8) * s), Vector3(0, 0.6 * s, 0))
+			var rngb := RandomNumberGenerator.new()
+			rngb.seed = hash(node_id + "bush")
+			for i in 9:
+				var sprig := _art(AssetLib.PLANTS[&"shrub"][1 + i % 2], Vector3.ONE * rngb.randf_range(2.6, 3.4) * s)
+				var a := TAU * i / 9.0 + rngb.randf() * 0.4
+				sprig.position = Vector3(cos(a), 0, sin(a)) * rngb.randf_range(0.05, 0.35) * s
+				sprig.rotation = Vector3(cos(a) * 0.35, rngb.randf() * TAU, sin(a) * 0.35)
+			var berry_mat := StandardMaterial3D.new()
+			berry_mat.albedo_color = Color(0.32, 0.04, 0.12)
+			berry_mat.roughness = 0.25
+			var berries := Node3D.new()
+			_visual.add_child(berries)
+			var rng := RandomNumberGenerator.new()
+			rng.seed = hash(node_id)
+			for i in 14:
+				var mi := MeshInstance3D.new()
+				mi.mesh = Graybox.sphere(0.035, 6)
+				mi.material_override = berry_mat
+				var a := rng.randf() * TAU
+				var r := rng.randf_range(0.2, 0.75) * s
+				mi.position = Vector3(cos(a) * r, rng.randf_range(0.15, 0.55) * s, sin(a) * r)
+				berries.add_child(mi)
+			_full(berries)
+			_shape = Graybox.add_shape(self, Graybox.box_shape(Vector3(1.6, 1.0, 1.6) * s), Vector3(0, 0.45 * s, 0))
 		&"sticks":
-			for i in 4:
-				var a := 40.0 * i + 10.0
-				_full(Graybox.part(_visual, Graybox.cylinder(0.035, 0.045, 1.3, 5), Color(0.45, 0.34, 0.22),
-					Vector3(0.1 * i - 0.15, 0.06 + 0.05 * i, 0.05 * i), Vector3(90, a, 0)))
+			var b1 := _art(AssetLib.pick(AssetLib.PLANTS[&"branches"], node_id), Vector3.ONE)
+			_full(b1)
+			var b2 := _art(AssetLib.pick(AssetLib.PLANTS[&"branches"], node_id + "b"), Vector3.ONE * 0.9)
+			b2.rotation.y = 1.3
+			b2.position = Vector3(0.15, 0.02, 0.1)
+			_full(b2)
 			_shape = Graybox.add_shape(self, Graybox.box_shape(Vector3(1.4, 0.5, 1.4)), Vector3(0, 0.2, 0))
 		&"stones":
-			for i in 4:
-				var a := TAU * i / 4.0 + 0.4
-				_full(Graybox.part(_visual, Graybox.sphere(0.14 + 0.04 * (i % 2), 6), Color(0.52, 0.51, 0.47),
-					Vector3(cos(a) * 0.25, 0.08, sin(a) * 0.22), Vector3(0, 0, 0), Vector3(1.2, 0.7, 1.0)))
+			for i in 5:
+				var a := TAU * i / 5.0 + 0.4
+				var st := _art(AssetLib.ROCKS[&"small"][i % 3], Vector3.ONE * (2.0 + 0.4 * (i % 2)))
+				st.position = Vector3(cos(a) * 0.22, 0.0, sin(a) * 0.2)
+				st.rotation = Vector3(0, a * 2.0, 0)
+				_full(st)
 			_shape = Graybox.add_shape(self, Graybox.box_shape(Vector3(0.9, 0.45, 0.9)), Vector3(0, 0.15, 0))
 		&"mushroom":
 			_full(Graybox.part(_visual, Graybox.cylinder(0.04, 0.05, 0.18, 6), Color(0.86, 0.82, 0.72), Vector3(0, 0.09, 0)))
 			_full(Graybox.part(_visual, Graybox.sphere(0.12, 7), Color(0.6, 0.42, 0.26), Vector3(0, 0.19, 0),
 				Vector3.ZERO, Vector3(1.2, 0.55, 1.2)))
 			_shape = Graybox.add_shape(self, Graybox.box_shape(Vector3(0.5, 0.4, 0.5)), Vector3(0, 0.15, 0))
+
+
+func _art(path: String, scl: Vector3) -> Node3D:
+	var n := AssetLib.instance(path)
+	n.scale = scl
+	_visual.add_child(n)
+	return n
+
+
+func _aabb_shape(art: Node3D, s: float, shrink: float) -> CollisionShape3D:
+	var box := AssetLib.aabb(art)
+	var size := box.size * s * shrink
+	var cs := Graybox.add_shape(self, Graybox.box_shape(size), Basis(Vector3.UP, _visual.rotation.y) * ((box.position + box.size * 0.5) * s))
+	cs.rotation.y = _visual.rotation.y
+	return cs
+
+
+func _tint(root: Node3D, c: Color) -> void:
+	for mi: MeshInstance3D in root.find_children("*", "MeshInstance3D", true, false):
+		var m := mi.mesh.surface_get_material(0)
+		if m is BaseMaterial3D:
+			var d := (m as BaseMaterial3D).duplicate() as BaseMaterial3D
+			d.albedo_color = c
+			mi.material_override = d
 
 
 func _tree_shapes(h: float) -> void:

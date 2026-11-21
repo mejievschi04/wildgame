@@ -37,14 +37,12 @@ func _ready() -> void:
 
 
 func _build() -> void:
-	for i in 8:
-		var a := TAU * i / 8.0
-		Graybox.part(self, Graybox.sphere(0.14, 6), Color(0.42, 0.41, 0.38),
-			Vector3(cos(a) * 0.55, 0.07, sin(a) * 0.55), Vector3.ZERO, Vector3(1.2, 0.8, 1.0))
-	for i in 3:
-		var lg := Graybox.part(self, Graybox.cylinder(0.05, 0.06, 0.8, 6), Color(0.36, 0.25, 0.16),
-			Vector3(0, 0.14, 0), Vector3(70, 60.0 * i, 0))
-		lg.material_override = Graybox.mat(Color(0.36, 0.25, 0.16)).duplicate()
+	var pit := AssetLib.instance(AssetLib.PROPS[&"fire_pit"])
+	pit.scale = Vector3.ONE * 0.85
+	add_child(pit)
+	for i in 4:
+		var lg := Graybox.part_mat(self, Graybox.cylinder(0.045, 0.06, 0.75, 7), Graybox.tex("Log", Color.WHITE, 2.0).duplicate(),
+			Vector3(0, 0.16, 0), Vector3(62, 45.0 * i + 10.0, 0))
 		_logs.append(lg)
 	_light = OmniLight3D.new()
 	_light.light_color = Color(1.0, 0.62, 0.3)
@@ -54,7 +52,7 @@ func _build() -> void:
 	_light.position = Vector3(0, 0.7, 0)
 	add_child(_light)
 	_flames = CPUParticles3D.new()
-	_flames.amount = 40
+	_flames.amount = 70
 	_flames.lifetime = 0.7
 	_flames.position = Vector3(0, 0.18, 0)
 	_flames.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
@@ -79,6 +77,17 @@ func _build() -> void:
 	fm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	fm.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
 	fm.vertex_color_use_as_albedo = true
+	var g := Gradient.new()
+	g.set_color(0, Color(1, 1, 1, 1))
+	g.set_color(1, Color(1, 1, 1, 0))
+	var gt := GradientTexture2D.new()
+	gt.gradient = g
+	gt.fill = GradientTexture2D.FILL_RADIAL
+	gt.fill_from = Vector2(0.5, 0.6)
+	gt.fill_to = Vector2(0.5, 0.0)
+	gt.width = 64
+	gt.height = 64
+	fm.albedo_texture = gt
 	quad.material = fm
 	_flames.mesh = quad
 	var grad := Gradient.new()
@@ -256,7 +265,7 @@ func _refresh() -> void:
 			_crackle.stop()
 	_flames.emitting = lit
 	_flames.visible = lit
-	var log_col := Color(0.36, 0.25, 0.16) if fuel > 0.0 else Color(0.16, 0.15, 0.14)
+	var log_col := Color.WHITE if fuel > 0.0 else Color(0.18, 0.17, 0.16)
 	for l in _logs:
 		(l.material_override as StandardMaterial3D).albedo_color = log_col
 		l.visible = fuel > 0.0 or not lit

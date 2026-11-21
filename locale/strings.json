@@ -1,9 +1,9 @@
 {
 	"ru": {
 		"GAME_SUBTITLE": "Первобытная эпоха",
-		"BUILD_INFO": "Фаза 1 · graybox-прототип · v0.1",
+		"BUILD_INFO": "Фаза 2 · художественный проход 1 · v0.2",
 		"MP_LATER": "Совместная игра появится после одиночного вертикального среза.",
-		"CREDITS_TEXT": "WILDBOUND: Primal Age\n\nПрототип фазы 1 (graybox). Вся геометрия и иконки — временные заглушки.\n\nДвижок: Godot Engine 4.7 (MIT).\nШрифты: системные шрифты ОС.\nСторонние ассеты не используются.",
+		"CREDITS_TEXT": "WILDBOUND: Primal Age\n\nДвижок: Godot Engine 4.7 (MIT).\nСканированные модели и текстуры: Poly Haven (CC0) — полный список в docs/ASSET_CREDITS.md.\nДеревья, постройки и инструменты собраны в Blender из этих материалов.\nЗвуки — временные заглушки.",
 		"MENU_CONTINUE": "Продолжить",
 		"MENU_NEW_GAME": "Новая игра",
 		"MENU_MULTIPLAYER": "Совместная игра",
@@ -163,7 +163,7 @@
 		"STATUS_FIRE_READY": "сложен, но не горит",
 		"STATUS_FIRE_EMPTY": "холодный · нет топлива",
 		"NODE_TREE_PINE": "Сосна",
-		"NODE_TREE_BIRCH": "Берёза",
+		"NODE_TREE_BIRCH": "Ольха",
 		"NODE_ROCK": "Скальный выход",
 		"NODE_FLINT": "Кремнёвая жила",
 		"NODE_BUSH": "Куст",
@@ -329,6 +329,21 @@
 		"CAPTION_TOOL_BREAK": "[треск ломающегося инструмента]",
 		"CAPTION_COLLAPSE": "[грохот обрушения]",
 		"CAPTION_HURT": "[глухой удар]",
-		"CAPTION_DOOR": "[скрип двери]"
+		"CAPTION_DOOR": "[скрип двери]",
+		"SET_QUALITY": "Качество графики",
+		"QUALITY_LOW": "Низкое",
+		"QUALITY_MEDIUM": "Среднее",
+		"QUALITY_HIGH": "Высокое",
+		"SET_AA": "Сглаживание",
+		"AA_OFF": "Выкл.",
+		"AA_FXAA": "FXAA",
+		"AA_SMAA": "SMAA",
+		"AA_TAA": "TAA (рекомендуется)",
+		"AA_MSAA": "MSAA 2× (тяжело)",
+		"SET_UPSCALER": "Масштабирование (при масштабе < 1)",
+		"UPSCALE_BILINEAR": "Билинейное",
+		"UPSCALE_FSR2": "AMD FSR 2",
+		"UPSCALE_METALFX": "Apple MetalFX",
+		"QUALITY_RESTART_HINT": "Дальность травы применяется при следующей загрузке."
 	}
 }

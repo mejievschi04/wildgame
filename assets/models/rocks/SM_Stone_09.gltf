@@ -1,0 +1,160 @@
+{
+ "asset": {
+  "generator": "Khronos glTF Blender I/O v5.3.43",
+  "version": "2.0"
+ },
+ "scene": 0,
+ "scenes": [
+  {
+   "name": "Scene",
+   "nodes": [
+    0
+   ]
+  }
+ ],
+ "nodes": [
+  {
+   "mesh": 0,
+   "name": "SM_Stone_09"
+  }
+ ],
+ "materials": [
+  {
+   "doubleSided": true,
+   "name": "rock_09",
+   "normalTexture": {
+    "index": 0
+   },
+   "pbrMetallicRoughness": {
+    "baseColorTexture": {
+     "index": 1
+    },
+    "metallicFactor": 0,
+    "metallicRoughnessTexture": {
+     "index": 2
+    }
+   }
+  }
+ ],
+ "meshes": [
+  {
+   "name": "realCap_Model_1",
+   "primitives": [
+    {
+     "attributes": {
+      "POSITION": 0,
+      "NORMAL": 1,
+      "TEXCOORD_0": 2
+     },
+     "indices": 3,
+     "material": 0
+    }
+   ]
+  }
+ ],
+ "textures": [
+  {
+   "sampler": 0,
+   "source": 0
+  },
+  {
+   "sampler": 0,
+   "source": 1
+  },
+  {
+   "sampler": 0,
+   "source": 2
+  }
+ ],
+ "images": [
+  {
+   "mimeType": "image/jpeg",
+   "name": "rock_09_nor_gl_1k",
+   "uri": "textures/rock_09_nor_gl_1k.jpg"
+  },
+  {
+   "mimeType": "image/jpeg",
+   "name": "rock_09_diff_1k",
+   "uri": "textures/rock_09_diff_1k.jpg"
+  },
+  {
+   "mimeType": "image/png",
+   "name": "rock_09_arm_1k",
+   "uri": "textures/rock_09_arm_1k.png"
+  }
+ ],
+ "accessors": [
+  {
+   "bufferView": 0,
+   "componentType": 5126,
+   "count": 421,
+   "max": [
+    0.03702261298894882,
+    0.0332423560321331,
+    0.07222522050142288
+   ],
+   "min": [
+    -0.03702261298894882,
+    0,
+    -0.07222522050142288
+   ],
+   "type": "VEC3"
+  },
+  {
+   "bufferView": 1,
+   "componentType": 5126,
+   "count": 421,
+   "type": "VEC3"
+  },
+  {
+   "bufferView": 2,
+   "componentType": 5126,
+   "count": 421,
+   "type": "VEC2"
+  },
+  {
+   "bufferView": 3,
+   "componentType": 5123,
+   "count": 1800,
+   "type": "SCALAR"
+  }
+ ],
+ "bufferViews": [
+  {
+   "buffer": 0,
+   "byteLength": 5052,
+   "byteOffset": 0,
+   "target": 34962
+  },
+  {
+   "buffer": 0,
+   "byteLength": 5052,
+   "byteOffset": 5052,
+   "target": 34962
+  },
+  {
+   "buffer": 0,
+   "byteLength": 3368,
+   "byteOffset": 10104,
+   "target": 34962
+  },
+  {
+   "buffer": 0,
+   "byteLength": 3600,
+   "byteOffset": 13472,
+   "target": 34963
+  }
+ ],
+ "samplers": [
+  {
+   "magFilter": 9729,
+   "minFilter": 9987
+  }
+ ],
+ "buffers": [
+  {
+   "byteLength": 17072,
+   "uri": "SM_Stone_09.bin"
+  }
+ ]
+}

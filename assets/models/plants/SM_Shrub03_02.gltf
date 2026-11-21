@@ -1,0 +1,161 @@
+{
+ "asset": {
+  "generator": "Khronos glTF Blender I/O v5.3.43",
+  "version": "2.0"
+ },
+ "scene": 0,
+ "scenes": [
+  {
+   "name": "Scene",
+   "nodes": [
+    0
+   ]
+  }
+ ],
+ "nodes": [
+  {
+   "mesh": 0,
+   "name": "SM_Shrub03_02"
+  }
+ ],
+ "materials": [
+  {
+   "alphaMode": "MASK",
+   "doubleSided": true,
+   "name": "shrub_03",
+   "normalTexture": {
+    "index": 0
+   },
+   "pbrMetallicRoughness": {
+    "baseColorTexture": {
+     "index": 1
+    },
+    "metallicFactor": 0,
+    "metallicRoughnessTexture": {
+     "index": 2
+    }
+   }
+  }
+ ],
+ "meshes": [
+  {
+   "name": "Plane.054",
+   "primitives": [
+    {
+     "attributes": {
+      "POSITION": 0,
+      "NORMAL": 1,
+      "TEXCOORD_0": 2
+     },
+     "indices": 3,
+     "material": 0
+    }
+   ]
+  }
+ ],
+ "textures": [
+  {
+   "sampler": 0,
+   "source": 0
+  },
+  {
+   "sampler": 0,
+   "source": 1
+  },
+  {
+   "sampler": 0,
+   "source": 2
+  }
+ ],
+ "images": [
+  {
+   "mimeType": "image/jpeg",
+   "name": "shrub_03_nor_gl_1k",
+   "uri": "textures/shrub_03_nor_gl_1k.jpg"
+  },
+  {
+   "mimeType": "image/png",
+   "name": "shrub_03_diff_1k",
+   "uri": "textures/shrub_03_diff_1k.png"
+  },
+  {
+   "mimeType": "image/png",
+   "name": "shrub_03_arm_1k",
+   "uri": "textures/shrub_03_arm_1k.png"
+  }
+ ],
+ "accessors": [
+  {
+   "bufferView": 0,
+   "componentType": 5126,
+   "count": 1532,
+   "max": [
+    0.09215152263641357,
+    0.35250383615493774,
+    0.06128007918596268
+   ],
+   "min": [
+    -0.09215152263641357,
+    0,
+    -0.06128007918596268
+   ],
+   "type": "VEC3"
+  },
+  {
+   "bufferView": 1,
+   "componentType": 5126,
+   "count": 1532,
+   "type": "VEC3"
+  },
+  {
+   "bufferView": 2,
+   "componentType": 5126,
+   "count": 1532,
+   "type": "VEC2"
+  },
+  {
+   "bufferView": 3,
+   "componentType": 5123,
+   "count": 6402,
+   "type": "SCALAR"
+  }
+ ],
+ "bufferViews": [
+  {
+   "buffer": 0,
+   "byteLength": 18384,
+   "byteOffset": 0,
+   "target": 34962
+  },
+  {
+   "buffer": 0,
+   "byteLength": 18384,
+   "byteOffset": 18384,
+   "target": 34962
+  },
+  {
+   "buffer": 0,
+   "byteLength": 12256,
+   "byteOffset": 36768,
+   "target": 34962
+  },
+  {
+   "buffer": 0,
+   "byteLength": 12804,
+   "byteOffset": 49024,
+   "target": 34963
+  }
+ ],
+ "samplers": [
+  {
+   "magFilter": 9729,
+   "minFilter": 9987
+  }
+ ],
+ "buffers": [
+  {
+   "byteLength": 61828,
+   "uri": "SM_Shrub03_02.bin"
+  }
+ ]
+}

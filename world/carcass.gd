@@ -16,7 +16,7 @@ func _ready() -> void:
 	collision_mask = 0
 	add_to_group("interactable")
 	add_to_group("persistent")
-	var fur := Color(0.45, 0.32, 0.2)
+	var fur := Color(0.45, 0.32, 0.2)  # PLACEHOLDER: replaced by a deer model in Phase 3 (animals)
 	_body_parts.append(Graybox.part(self, Graybox.sphere(0.5, 8), fur, Vector3(0, 0.35, 0), Vector3(0, 0, 90), Vector3(0.75, 1.5, 0.75)))
 	_body_parts.append(Graybox.part(self, Graybox.sphere(0.2, 7), fur.darkened(0.1), Vector3(0, 0.25, 0.95), Vector3.ZERO, Vector3(1, 1, 1.5)))
 	for p: Vector3 in [Vector3(0.25, 0.12, 0.45), Vector3(-0.25, 0.12, 0.45), Vector3(0.25, 0.12, -0.45), Vector3(-0.25, 0.12, -0.45)]:

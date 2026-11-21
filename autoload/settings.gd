@@ -5,7 +5,8 @@ signal changed(section: String, key: String)
 
 const PATH := "user://settings.cfg"
 const DEFAULTS := {
-	"video": {"fullscreen": false, "vsync": true, "fov": 80.0, "render_scale": 1.0, "shadows": true, "max_fps": 0},
+	"video": {"fullscreen": false, "vsync": true, "fov": 80.0, "render_scale": 1.0, "shadows": true, "max_fps": 0,
+		"quality": 1, "aa": 3, "upscaler": 0},
 	"audio": {"master": 0.8, "music": 0.6, "sfx": 0.9},
 	"gameplay": {
 		"mouse_sensitivity": 1.0, "invert_y": false, "difficulty": 1, "toggle_sprint": false,
@@ -14,6 +15,12 @@ const DEFAULTS := {
 	"accessibility": {"hud_scale": 1.0, "high_contrast": false, "reduce_motion": false, "subtitles": true},
 }
 const DIFFICULTY_MULT := [0.6, 1.0, 1.45]
+## Graphics presets (index = video.quality): low / medium / high.
+const QUALITY := [
+	{"shadow_dist": 45.0, "shadow_atlas": 2048, "splits": 2, "volfog": false, "ssao": false, "grass_range": 26.0, "fern_range": 45.0},
+	{"shadow_dist": 65.0, "shadow_atlas": 2048, "splits": 2, "volfog": true, "ssao": true, "grass_range": 34.0, "fern_range": 60.0},
+	{"shadow_dist": 120.0, "shadow_atlas": 4096, "splits": 4, "volfog": true, "ssao": true, "grass_range": 55.0, "fern_range": 90.0},
+]
 const AUDIO_BUSES := ["Music", "SFX"]
 
 var _cfg := ConfigFile.new()
@@ -73,6 +80,10 @@ func reset_bindings() -> void:
 	changed.emit("controls", "")
 
 
+func quality() -> Dictionary:
+	return QUALITY[clampi(int(get_value("video", "quality")), 0, 2)]
+
+
 func difficulty_mult() -> float:
 	return DIFFICULTY_MULT[clampi(int(get_value("gameplay", "difficulty")), 0, 2)]
 
@@ -95,6 +106,16 @@ func _apply(section: String, key: String) -> void:
 				DisplayServer.VSYNC_ENABLED if v else DisplayServer.VSYNC_DISABLED)
 		["video", "render_scale"]:
 			get_tree().root.scaling_3d_scale = clampf(float(v), 0.5, 1.0)
+		["video", "aa"]:
+			var vp := get_tree().root
+			var mode := int(v)  # 0 off, 1 FXAA, 2 SMAA, 3 TAA, 4 MSAA 2x
+			vp.use_taa = mode == 3
+			vp.msaa_3d = Viewport.MSAA_2X if mode == 4 else Viewport.MSAA_DISABLED
+			vp.screen_space_aa = [Viewport.SCREEN_SPACE_AA_DISABLED, Viewport.SCREEN_SPACE_AA_FXAA,
+				Viewport.SCREEN_SPACE_AA_SMAA, Viewport.SCREEN_SPACE_AA_DISABLED, Viewport.SCREEN_SPACE_AA_DISABLED][clampi(mode, 0, 4)]
+		["video", "upscaler"]:
+			get_tree().root.scaling_3d_mode = [Viewport.SCALING_3D_MODE_BILINEAR, Viewport.SCALING_3D_MODE_FSR2,
+				Viewport.SCALING_3D_MODE_METALFX_TEMPORAL][clampi(int(v), 0, 2)]
 		["video", "max_fps"]:
 			Engine.max_fps = int(v)
 		["audio", "master"]:

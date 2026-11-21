@@ -1,0 +1,160 @@
+{
+ "asset": {
+  "generator": "Khronos glTF Blender I/O v5.3.43",
+  "version": "2.0"
+ },
+ "scene": 0,
+ "scenes": [
+  {
+   "name": "Scene",
+   "nodes": [
+    0
+   ]
+  }
+ ],
+ "nodes": [
+  {
+   "mesh": 0,
+   "name": "SM_RockMoss_B03"
+  }
+ ],
+ "materials": [
+  {
+   "doubleSided": true,
+   "name": "rock_moss_set_02",
+   "normalTexture": {
+    "index": 0
+   },
+   "pbrMetallicRoughness": {
+    "baseColorTexture": {
+     "index": 1
+    },
+    "metallicFactor": 0,
+    "metallicRoughnessTexture": {
+     "index": 2
+    }
+   }
+  }
+ ],
+ "meshes": [
+  {
+   "name": "moss rock 10.001",
+   "primitives": [
+    {
+     "attributes": {
+      "POSITION": 0,
+      "NORMAL": 1,
+      "TEXCOORD_0": 2
+     },
+     "indices": 3,
+     "material": 0
+    }
+   ]
+  }
+ ],
+ "textures": [
+  {
+   "sampler": 0,
+   "source": 0
+  },
+  {
+   "sampler": 0,
+   "source": 1
+  },
+  {
+   "sampler": 0,
+   "source": 2
+  }
+ ],
+ "images": [
+  {
+   "mimeType": "image/jpeg",
+   "name": "rock_moss_set_02_nor_gl_1k",
+   "uri": "textures/rock_moss_set_02_nor_gl_1k.jpg"
+  },
+  {
+   "mimeType": "image/jpeg",
+   "name": "rock_moss_set_02_diff_1k",
+   "uri": "textures/rock_moss_set_02_diff_1k.jpg"
+  },
+  {
+   "mimeType": "image/png",
+   "name": "rock_moss_set_02_rough_1k",
+   "uri": "textures/rock_moss_set_02_rough_1k.png"
+  }
+ ],
+ "accessors": [
+  {
+   "bufferView": 0,
+   "componentType": 5126,
+   "count": 1355,
+   "max": [
+    0.8131643533706665,
+    0.6085650324821472,
+    0.5073772668838501
+   ],
+   "min": [
+    -0.8131642937660217,
+    0,
+    -0.5073773264884949
+   ],
+   "type": "VEC3"
+  },
+  {
+   "bufferView": 1,
+   "componentType": 5126,
+   "count": 1355,
+   "type": "VEC3"
+  },
+  {
+   "bufferView": 2,
+   "componentType": 5126,
+   "count": 1355,
+   "type": "VEC2"
+  },
+  {
+   "bufferView": 3,
+   "componentType": 5123,
+   "count": 7500,
+   "type": "SCALAR"
+  }
+ ],
+ "bufferViews": [
+  {
+   "buffer": 0,
+   "byteLength": 16260,
+   "byteOffset": 0,
+   "target": 34962
+  },
+  {
+   "buffer": 0,
+   "byteLength": 16260,
+   "byteOffset": 16260,
+   "target": 34962
+  },
+  {
+   "buffer": 0,
+   "byteLength": 10840,
+   "byteOffset": 32520,
+   "target": 34962
+  },
+  {
+   "buffer": 0,
+   "byteLength": 15000,
+   "byteOffset": 43360,
+   "target": 34963
+  }
+ ],
+ "samplers": [
+  {
+   "magFilter": 9729,
+   "minFilter": 9987
+  }
+ ],
+ "buffers": [
+  {
+   "byteLength": 58360,
+   "uri": "SM_RockMoss_B03.bin"
+  }
+ ]
+}

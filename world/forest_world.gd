@@ -33,6 +33,8 @@ var _occupied: Dictionary = {}  # Vector2i cell -> Array[Vector3] (x, z, radius)
 var _rng := RandomNumberGenerator.new()
 
 var nodes_root: Node3D
+var forest_mask: Image
+var _terrain_mat: ShaderMaterial
 var structures_root: Node3D
 var pickups_root: Node3D
 
@@ -55,6 +57,11 @@ func _ready() -> void:
 	_build_bounds()
 	_build_pois()
 	_scatter()
+	_build_forest_mask()
+	var veg := Vegetation.new()
+	veg.name = "Vegetation"
+	add_child(veg)
+	veg.build(self, forest_mask)
 	if menu_mode:
 		day_night.frozen = true
 
@@ -151,15 +158,26 @@ func _build_terrain() -> void:
 			st.add_index(b)
 			st.add_index(d)
 			st.add_index(c)
+	st.generate_tangents()
 	var mesh := st.commit()
-	var m := StandardMaterial3D.new()
-	m.vertex_color_use_as_albedo = true
-	m.roughness = 0.95
-	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	_terrain_mat = ShaderMaterial.new()
+	_terrain_mat.shader = preload("res://world/shaders/terrain.gdshader")
+	_terrain_mat.set_shader_parameter("albedo_tex", load("res://assets/textures/terrain/T_Terrain_albedo.jpg"))
+	_terrain_mat.set_shader_parameter("normal_tex", load("res://assets/textures/terrain/T_Terrain_normal.jpg"))
+	_terrain_mat.set_shader_parameter("arm_tex", load("res://assets/textures/terrain/T_Terrain_arm.jpg"))
+	_terrain_mat.set_shader_parameter("map_size", SIZE)
+	_terrain_mat.set_shader_parameter("water_level", WATER_LEVEL)
+	var macro := FastNoiseLite.new()
+	macro.seed = SEED + 5
+	macro.frequency = 0.02
+	macro.fractal_octaves = 3
+	var macro_img := macro.get_seamless_image(256, 256)
+	macro_img.generate_mipmaps()
+	_terrain_mat.set_shader_parameter("macro_noise", ImageTexture.create_from_image(macro_img))
 	var mi := MeshInstance3D.new()
 	mi.name = "Terrain"
 	mi.mesh = mesh
-	mi.material_override = m
+	mi.material_override = _terrain_mat
 	add_child(mi)
 	var body := StaticBody3D.new()
 	body.name = "TerrainBody"
@@ -175,11 +193,22 @@ func _build_terrain() -> void:
 func _build_water() -> void:
 	var plane := PlaneMesh.new()
 	plane.size = Vector2(SIZE, SIZE)
-	var m := StandardMaterial3D.new()
-	m.albedo_color = Color(0.16, 0.27, 0.3, 0.78)
-	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	m.roughness = 0.08
-	m.metallic = 0.3
+	plane.subdivide_width = 64
+	plane.subdivide_depth = 64
+	var m := ShaderMaterial.new()
+	m.shader = preload("res://world/shaders/water.gdshader")
+	for key in ["wave_a", "wave_b"]:
+		var nt := NoiseTexture2D.new()
+		nt.width = 512
+		nt.height = 512
+		nt.seamless = true
+		nt.as_normal_map = true
+		nt.bump_strength = 6.0
+		var fn := FastNoiseLite.new()
+		fn.seed = SEED + (11 if key == "wave_a" else 23)
+		fn.frequency = 0.012 if key == "wave_a" else 0.03
+		nt.noise = fn
+		m.set_shader_parameter(key, nt)
 	var mi := MeshInstance3D.new()
 	mi.name = "WaterSurface"
 	mi.mesh = plane
@@ -298,6 +327,36 @@ func _scatter() -> void:
 	_scatter_kind(&"mushroom", 30, 0.6, anywhere)
 
 
+## Forest density mask (0 clearing … 1 dense forest) from tree positions; drives terrain layers
+## (needles vs grass) and decorative scatter.
+func _build_forest_mask() -> void:
+	const RES := 256
+	var acc := PackedFloat32Array()
+	acc.resize(RES * RES)
+	var px_per_m := RES / SIZE
+	var radius := 7
+	for n: Node in _nodes.values():
+		if not (n is ResourceNode and String((n as ResourceNode).kind).begins_with("tree")):
+			continue
+		var p := (n as Node3D).position
+		var cx := int((p.x / SIZE + 0.5) * RES)
+		var cy := int((p.z / SIZE + 0.5) * RES)
+		for dy in range(-radius, radius + 1):
+			for dx in range(-radius, radius + 1):
+				var x := cx + dx
+				var y := cy + dy
+				if x < 0 or y < 0 or x >= RES or y >= RES:
+					continue
+				var d2 := float(dx * dx + dy * dy) / float(radius * radius)
+				if d2 <= 1.0:
+					acc[y * RES + x] += (1.0 - d2) * 0.45
+	forest_mask = Image.create(RES, RES, false, Image.FORMAT_L8)
+	for y in RES:
+		for x in RES:
+			forest_mask.set_pixel(x, y, Color(clampf(acc[y * RES + x], 0.0, 1.0), 0, 0))
+	_terrain_mat.set_shader_parameter("forest_mask", ImageTexture.create_from_image(forest_mask))
+
+
 # ---------------------------------------------------------------- POIs
 
 func _build_pois() -> void:
@@ -307,15 +366,18 @@ func _build_pois() -> void:
 	camp.position = ground_point(OLD_CAMP.x, OLD_CAMP.y)
 	add_child(camp)
 	_occupy(OLD_CAMP.x, OLD_CAMP.y, 7.0)
-	var wood := Color(0.38, 0.29, 0.2)
+	var wood := Graybox.tex("Log", Color(0.85, 0.8, 0.75), 1.5)
 	for i in 6:
-		Graybox.part(camp, Graybox.cylinder(0.05, 0.06, 3.2, 5), wood,
+		Graybox.part_mat(camp, Graybox.cylinder(0.05, 0.06, 3.2, 7), wood,
 			Vector3(-1.6 + i * 0.65, 1.1, -1.2), Vector3(-35, 0, 4.0 * (i % 3)))
-	Graybox.part(camp, Graybox.cylinder(0.06, 0.06, 4.2, 5), wood, Vector3(0, 1.9, -0.3), Vector3(0, 0, 90))
-	Graybox.part(camp, Graybox.box(Vector3(2.4, 1.8, 0.05)), Color(0.5, 0.4, 0.28), Vector3(0.3, 1.25, -1.0), Vector3(-35, 0, 6))
+	Graybox.part_mat(camp, Graybox.cylinder(0.06, 0.06, 4.2, 7), wood, Vector3(0, 1.9, -0.3), Vector3(0, 0, 90))
+	Graybox.part_mat(camp, Graybox.box(Vector3(2.4, 1.8, 0.04)), Graybox.tex("Leather", Color(0.7, 0.62, 0.55), 0.8), Vector3(0.3, 1.25, -1.0), Vector3(-35, 0, 6))
 	for i in 7:
 		var a := TAU * i / 7.0
-		Graybox.part(camp, Graybox.sphere(0.15, 6), Color(0.3, 0.29, 0.27), Vector3(2.5 + cos(a) * 0.5, 0.06, 1.5 + sin(a) * 0.5))
+		var hs := AssetLib.instance(AssetLib.ROCKS[&"small"][i % 3])
+		hs.scale = Vector3.ONE * 2.2
+		hs.position = Vector3(2.5 + cos(a) * 0.5, 0.0, 1.5 + sin(a) * 0.5)
+		camp.add_child(hs)
 	Graybox.part(camp, Graybox.cylinder(0.4, 0.4, 0.02, 10), Color(0.1, 0.1, 0.1), Vector3(2.5, 0.02, 1.5))
 	var stash := Stash.new()
 	stash.name = "Stash"

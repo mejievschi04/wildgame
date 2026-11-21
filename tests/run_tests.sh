@@ -6,9 +6,9 @@ GODOT="${GODOT:-/Applications/Godot.app/Contents/MacOS/Godot}"
 LOG="$(mktemp -t wildbound_tests)"
 "$GODOT" --headless --path . res://tests/test_runner.tscn >"$LOG" 2>&1 &
 PID=$!
-( sleep 240; kill $PID 2>/dev/null ) & WATCH=$!
+for i in $(seq 1 300); do kill -0 $PID 2>/dev/null || break; sleep 1; done
+kill $PID 2>/dev/null
 wait $PID; CODE=$?
-kill $WATCH 2>/dev/null; wait $WATCH 2>/dev/null
 grep -E "PASS|FAIL|tests,|SCRIPT ERROR|Parse Error|   at: " "$LOG" | grep -v "^   at: push_error"
 if [ $CODE -ne 0 ] || grep -q "SCRIPT ERROR" "$LOG"; then
 	echo "RESULT: FAILED (exit $CODE) — full log: $LOG"

@@ -99,6 +99,9 @@ func _options(section: String, key: String, labels: Array, values: Array) -> Opt
 
 func _video_tab() -> Control:
 	var p := _page()
+	_row(p, "SET_QUALITY", _options("video", "quality", ["QUALITY_LOW", "QUALITY_MEDIUM", "QUALITY_HIGH"], [0, 1, 2]))
+	_row(p, "SET_AA", _options("video", "aa", ["AA_OFF", "AA_FXAA", "AA_SMAA", "AA_TAA", "AA_MSAA"], [0, 1, 2, 3, 4]))
+	_row(p, "SET_UPSCALER", _options("video", "upscaler", ["UPSCALE_BILINEAR", "UPSCALE_FSR2", "UPSCALE_METALFX"], [0, 1, 2]))
 	_row(p, "SET_FULLSCREEN", _check("video", "fullscreen"))
 	_row(p, "SET_VSYNC", _check("video", "vsync"))
 	_row(p, "SET_FOV", _slider("video", "fov", 60, 110, 1, "%.0f°"))

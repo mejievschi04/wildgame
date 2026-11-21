@@ -1,0 +1,161 @@
+{
+ "asset": {
+  "generator": "Khronos glTF Blender I/O v5.3.43",
+  "version": "2.0"
+ },
+ "scene": 0,
+ "scenes": [
+  {
+   "name": "Scene",
+   "nodes": [
+    0
+   ]
+  }
+ ],
+ "nodes": [
+  {
+   "mesh": 0,
+   "name": "SM_Fern_03"
+  }
+ ],
+ "materials": [
+  {
+   "alphaMode": "MASK",
+   "doubleSided": true,
+   "name": "fern_02",
+   "normalTexture": {
+    "index": 0
+   },
+   "pbrMetallicRoughness": {
+    "baseColorTexture": {
+     "index": 1
+    },
+    "metallicFactor": 0,
+    "metallicRoughnessTexture": {
+     "index": 2
+    }
+   }
+  }
+ ],
+ "meshes": [
+  {
+   "name": "Plane.044",
+   "primitives": [
+    {
+     "attributes": {
+      "POSITION": 0,
+      "NORMAL": 1,
+      "TEXCOORD_0": 2
+     },
+     "indices": 3,
+     "material": 0
+    }
+   ]
+  }
+ ],
+ "textures": [
+  {
+   "sampler": 0,
+   "source": 0
+  },
+  {
+   "sampler": 0,
+   "source": 1
+  },
+  {
+   "sampler": 0,
+   "source": 2
+  }
+ ],
+ "images": [
+  {
+   "mimeType": "image/jpeg",
+   "name": "fern_02_nor_gl_1k",
+   "uri": "textures/fern_02_nor_gl_1k.jpg"
+  },
+  {
+   "mimeType": "image/png",
+   "name": "fern_02_diff_1k",
+   "uri": "textures/fern_02_diff_1k.png"
+  },
+  {
+   "mimeType": "image/png",
+   "name": "fern_02_arm_1k",
+   "uri": "textures/fern_02_arm_1k.png"
+  }
+ ],
+ "accessors": [
+  {
+   "bufferView": 0,
+   "componentType": 5126,
+   "count": 1365,
+   "max": [
+    0.4371628761291504,
+    0.3490203619003296,
+    0.38261282444000244
+   ],
+   "min": [
+    -0.43716293573379517,
+    0,
+    -0.38261282444000244
+   ],
+   "type": "VEC3"
+  },
+  {
+   "bufferView": 1,
+   "componentType": 5126,
+   "count": 1365,
+   "type": "VEC3"
+  },
+  {
+   "bufferView": 2,
+   "componentType": 5126,
+   "count": 1365,
+   "type": "VEC2"
+  },
+  {
+   "bufferView": 3,
+   "componentType": 5123,
+   "count": 6000,
+   "type": "SCALAR"
+  }
+ ],
+ "bufferViews": [
+  {
+   "buffer": 0,
+   "byteLength": 16380,
+   "byteOffset": 0,
+   "target": 34962
+  },
+  {
+   "buffer": 0,
+   "byteLength": 16380,
+   "byteOffset": 16380,
+   "target": 34962
+  },
+  {
+   "buffer": 0,
+   "byteLength": 10920,
+   "byteOffset": 32760,
+   "target": 34962
+  },
+  {
+   "buffer": 0,
+   "byteLength": 12000,
+   "byteOffset": 43680,
+   "target": 34963
+  }
+ ],
+ "samplers": [
+  {
+   "magFilter": 9729,
+   "minFilter": 9987
+  }
+ ],
+ "buffers": [
+  {
+   "byteLength": 55680,
+   "uri": "SM_Fern_03.bin"
+  }
+ ]
+}
