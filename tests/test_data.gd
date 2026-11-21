@@ -65,9 +65,9 @@ func test_dynamic_keys_translated() -> void:
 			keys.append("TAG_%s" % String(r.required_tag).to_upper())
 		if r.station != &"":
 			keys.append("REQ_STATION_%s" % String(r.station).to_upper())
-	for cause in ["starvation", "dehydration", "hypothermia", "bleeding", "food_poisoning", "fall", "injury"]:
+	for cause in ["starvation", "dehydration", "hypothermia", "bleeding", "food_poisoning", "fall", "injury", "wolf"]:
 		keys.append("DEATH_%s" % cause.to_upper())
-	for j in ["START", "WATER", "FIRE", "FIRST_NIGHT", "OLD_CAMP", "CARCASS", "SHELTER", "RAIN"]:
+	for j in ["START", "WATER", "FIRE", "FIRST_NIGHT", "OLD_CAMP", "CARCASS", "SHELTER", "RAIN", "HUNT", "WOLF"]:
 		keys.append("JOURNAL_%s" % j)
 		keys.append("JOURNAL_%s_TITLE" % j)
 	for s in SaveManager.SLOTS:

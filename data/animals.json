@@ -1,0 +1,18 @@
+{
+	"deer": {
+		"model": "res://assets/models/animals/SK_Deer.gltf", "diet": "prey", "health": 80,
+		"walk": 1.5, "run": 9.5, "turn": 3.2, "sight": 48, "fov": 300, "hearing": 32, "smell": 60,
+		"radius": 0.35, "height": 1.5, "length": 1.4,
+		"loot": {"meat_raw": 6, "hide": 2, "bone": 3}, "group": [2, 4], "max": 8, "track": "hoof",
+		"spawn_min": 55, "spawn_max": 95
+	},
+	"wolf": {
+		"model": "res://assets/models/animals/SK_Wolf.gltf", "diet": "predator", "health": 70,
+		"walk": 1.7, "run": 8.2, "turn": 4.5, "sight": 42, "fov": 230, "hearing": 38, "smell": 75,
+		"radius": 0.3, "height": 0.9, "length": 1.1,
+		"damage": 14, "attack_range": 1.7, "attack_windup": 0.45, "attack_cooldown": 1.6, "bleed_chance": 0.35,
+		"give_up": 22.0, "flee_health": 0.4, "fire_fear": 7.0,
+		"loot": {"meat_raw": 3, "hide": 1, "bone": 2}, "group": [2, 3], "max": 3, "track": "paw",
+		"spawn_min": 75, "spawn_max": 110
+	}
+}

@@ -5,6 +5,7 @@ const ITEMS_PATH := "res://data/items.json"
 const RECIPES_PATH := "res://data/recipes.json"
 const NODES_PATH := "res://data/resource_nodes.json"
 const PIECES_PATH := "res://data/building_pieces.json"
+const ANIMALS_PATH := "res://data/animals.json"
 
 var items: Dictionary = {}  # StringName -> ItemData
 var recipes: Dictionary = {}  # StringName -> RecipeData
@@ -12,6 +13,7 @@ var recipe_order: Array[StringName] = []
 var node_kinds: Dictionary = {}  # StringName -> Dictionary
 var pieces: Dictionary = {}  # StringName -> Dictionary (building piece definitions)
 var piece_order: Array[StringName] = []
+var animals: Dictionary = {}  # StringName -> Dictionary (species definitions)
 
 
 func _ready() -> void:
@@ -37,6 +39,10 @@ func reload() -> void:
 	var kinds: Dictionary = _load_json(NODES_PATH, {})
 	for k: String in kinds.keys():
 		node_kinds[StringName(k)] = kinds[k]
+	animals.clear()
+	var adefs: Dictionary = _load_json(ANIMALS_PATH, {})
+	for k: String in adefs.keys():
+		animals[StringName(k)] = adefs[k]
 	var pdefs: Dictionary = _load_json(PIECES_PATH, {})
 	for k: String in pdefs.keys():
 		pieces[StringName(k)] = pdefs[k]
@@ -69,6 +75,10 @@ func piece_cost(id: StringName) -> Dictionary:
 	for k: String in c.keys():
 		out[StringName(k)] = int(c[k])
 	return out
+
+
+func get_animal(id: StringName) -> Dictionary:
+	return animals.get(id, {})
 
 
 func get_node_kind(kind: StringName) -> Dictionary:
@@ -107,6 +117,10 @@ func validate() -> PackedStringArray:
 		for id: String in pd.get("cost", {}).keys():
 			if not items.has(StringName(id)):
 				errors.append("piece %s: unknown cost item %s" % [pid, id])
+	for aid: StringName in animals.keys():
+		for id: String in (animals[aid] as Dictionary).get("loot", {}).keys():
+			if not items.has(StringName(id)):
+				errors.append("animal %s: unknown loot %s" % [aid, id])
 	return errors
 
 

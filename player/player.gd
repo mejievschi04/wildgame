@@ -5,6 +5,7 @@ extends CharacterBody3D
 
 signal died(cause: StringName)
 signal slept(hours: float)
+signal hurt(amount: float)
 
 const WALK_SPEED := 3.6
 const SPRINT_SPEED := 6.2
@@ -54,11 +55,18 @@ var _hand_item_id: StringName = &""
 var _hand_visual: Node3D
 var _torch_light: OmniLight3D
 var _torch_wear_accum := 0.0
+var _noise_burst := 0.0
+var _move_noise := 0.05
+var aiming := false
+var _shake := 0.0
+## Footprint under the crosshair (read by the HUD): {species, age, yaw} or {}.
+var look_track: Dictionary = {}
 
 
 func _ready() -> void:
 	collision_layer = 2
-	collision_mask = 1
+	collision_mask = 1 | Animal.LAYER_CREATURE
+	add_to_group("player")
 	floor_snap_length = 0.4
 	floor_max_angle = deg_to_rad(50.0)
 	var cs := CollisionShape3D.new()
@@ -79,7 +87,7 @@ func _ready() -> void:
 	head.add_child(camera)
 	ray = RayCast3D.new()
 	ray.target_position = Vector3(0, 0, -INTERACT_RANGE)
-	ray.collision_mask = 1 | 4 | 8
+	ray.collision_mask = 1 | 4 | 8 | Animal.LAYER_CREATURE
 	ray.collide_with_areas = true
 	ray.add_exception(self)
 	camera.add_child(ray)
@@ -136,6 +144,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			build.confirm()
 		elif placement.active:
 			placement.confirm()
+		elif aiming:
+			throw_spear()
 		else:
 			swing()
 	if event.is_action_pressed("secondary_action"):
@@ -143,6 +153,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			build.cancel()
 		elif placement.active:
 			placement.cancel()
+		elif inventory.hand != null and inventory.hand.id == &"spear":
+			aiming = true
+	if event.is_action_released("secondary_action"):
+		aiming = false
 
 
 func _look(rel: Vector2) -> void:
@@ -183,6 +197,12 @@ func _physics_process(delta: float) -> void:
 	velocity.z = move_toward(velocity.z, dir.z * speed, accel * speed * delta)
 	if active and is_on_floor() and Input.is_action_just_pressed("jump") and stats.use_stamina(JUMP_COST):
 		velocity.y = JUMP_VELOCITY
+		_noise_burst = maxf(_noise_burst, 0.4)
+	var moving := move.length() > 0.1
+	_move_noise = 0.05 if not moving else (1.0 if sprinting else (0.12 if _crouching else 0.45))
+	_noise_burst = maxf(_noise_burst - delta, 0.0)
+	if inventory.hand == null or inventory.hand.id != &"spear":
+		aiming = false
 	var was_on_floor := is_on_floor()
 	move_and_slide()
 	if is_on_floor() and not was_on_floor:
@@ -212,6 +232,57 @@ func survival_env(sleeping: bool = false, sprinting: bool = false) -> Dictionary
 	}
 
 
+## How audible the player is right now (0..1): movement + recent actions (chopping, gathering, jumping).
+func noise_level() -> float:
+	return clampf(maxf(_move_noise, _noise_burst), 0.0, 1.0)
+
+
+## How visible the player is (multiplies animal sight range).
+func visibility_factor() -> float:
+	var v := 1.0
+	if _crouching:
+		v *= 0.55
+	var torch := inventory.hand != null and inventory.hand.id == &"torch"
+	if world and world.day_night.is_night():
+		v *= 1.3 if torch else 0.5
+	if world and world.weather:
+		v *= 1.0 - 0.35 * clampf(world.weather.fog_extra / 0.018, 0.0, 1.0)
+	return v
+
+
+## Damage from a creature (wolf bite): may cause bleeding.
+func take_hit(amount: float, cause: StringName, bleed_chance: float = 0.0, from_pos: Vector3 = Vector3.ZERO) -> void:
+	if dead:
+		return
+	stats.damage(amount, cause)
+	if randf() < bleed_chance:
+		stats.add_condition(&"bleeding")
+		Events.toast(Loc.t("MSG_BLEEDING"), &"danger")
+	if not bool(Settings.get_value("accessibility", "reduce_motion")):
+		_shake = 1.0
+	if from_pos != Vector3.ZERO:
+		var push := (global_position - from_pos)
+		push.y = 0.0
+		velocity += push.normalized() * 2.5
+	Sfx.play(&"hurt", null)
+	hurt.emit(amount)
+
+
+func throw_spear() -> void:
+	if inventory.hand == null or inventory.hand.id != &"spear" or not stats.use_stamina(12.0):
+		return
+	var st := inventory.hand
+	inventory.hand = null
+	inventory.changed.emit()
+	aiming = false
+	var spear := ThrownSpear.new()
+	world.pickups_root.add_child(spear)
+	var fwd := -camera.global_transform.basis.z
+	spear.launch(st, camera.global_position + fwd * 0.7, fwd * 24.0 + Vector3(velocity.x, 0, velocity.z), self)
+	_noise_burst = maxf(_noise_burst, 0.6)
+	Sfx.play(&"whoosh", null, -4.0)
+
+
 func _on_landed(speed: float) -> void:
 	if speed <= SAFE_FALL_SPEED:
 		return
@@ -223,6 +294,15 @@ func _on_landed(speed: float) -> void:
 
 
 func _update_head(delta: float, moving: bool, sprinting: bool) -> void:
+	var base_fov := float(Settings.get_value("video", "fov"))
+	camera.fov = lerpf(camera.fov, base_fov * (0.72 if aiming else 1.0), 1.0 - exp(-10.0 * delta))
+	if _shake > 0.0:
+		_shake = maxf(_shake - delta * 3.0, 0.0)
+		camera.h_offset = randf_range(-1, 1) * _shake * 0.05
+		camera.v_offset = randf_range(-1, 1) * _shake * 0.05
+	else:
+		camera.h_offset = 0.0
+		camera.v_offset = 0.0
 	var target := EYE_CROUCH if _crouching else EYE_STAND
 	var reduce := bool(Settings.get_value("accessibility", "reduce_motion"))
 	var bob := 0.0
@@ -266,6 +346,10 @@ func _update_interaction(delta: float) -> void:
 		target = _find_interactable(ray.get_collider() as Node)
 	look_target = target
 	look_options = target.get_interactions(self) if target else []
+	look_track = {}
+	if target == null and input_enabled and ray.is_colliding() and world and world.tracks \
+			and (ray.get_collider() as Node).is_in_group("terrain"):
+		look_track = world.tracks.nearest(ray.get_collision_point(), 0.8)
 	var pressed_opt := {}
 	for opt: Dictionary in look_options:
 		if opt.get("swing", false) or not opt.enabled:
@@ -290,6 +374,7 @@ func _update_interaction(delta: float) -> void:
 	hold_ratio = clampf(_hold_time / float(pressed_opt.hold), 0.0, 1.0)
 	if hold_ratio >= 1.0:
 		target.perform_interaction(self, pressed_opt.action)
+		_noise_burst = maxf(_noise_burst, 0.5)
 		_hold_time = 0.0  # holding keeps repeating (e.g. gathering several times)
 		hold_ratio = 0.0
 
@@ -321,9 +406,18 @@ func swing() -> void:
 	_animate_swing()
 	Sfx.play(&"whoosh", null, -10.0)
 	var item := inventory.hand.get_data() if inventory.hand else null
+	_noise_burst = maxf(_noise_burst, 0.7)
 	if not ray.is_colliding():
 		return
-	var target := _find_interactable(ray.get_collider() as Node)
+	var hit := ray.get_collider()
+	if hit is Animal and not (hit as Animal).is_dead():
+		var dmg := item.damage if item and item.damage > 0.0 else 3.0
+		(hit as Animal).take_damage(dmg, self)
+		Sfx.play(&"chop", ray.get_collision_point(), -6.0)
+		if item and inventory.wear_hand(1):
+			Events.toast(Loc.t("MSG_TOOL_BROKE", {"item": item.display_name()}), &"danger")
+		return
+	var target := _find_interactable(hit as Node)
 	if target and target.has_method("on_hit") and target.on_hit(self, item):
 		if inventory.wear_hand(1):
 			Events.toast(Loc.t("MSG_TOOL_BROKE", {"item": item.display_name()}), &"danger")

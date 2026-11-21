@@ -22,6 +22,8 @@ const STRUCTURE_SCRIPTS := {
 var menu_mode := false
 var day_night: DayNight
 var weather: Weather
+var tracks: Tracks
+var wildlife: Wildlife
 var journal: Array[String] = []
 var player: Node = null
 
@@ -63,6 +65,13 @@ func _ready() -> void:
 	_build_pois()
 	_scatter()
 	_build_forest_mask()
+	tracks = Tracks.new()
+	tracks.name = "Tracks"
+	add_child(tracks)
+	wildlife = Wildlife.new()
+	wildlife.name = "Wildlife"
+	wildlife.world = self
+	add_child(wildlife)
 	var veg := Vegetation.new()
 	veg.name = "Vegetation"
 	add_child(veg)
@@ -577,7 +586,7 @@ func collect_save() -> Dictionary:
 	return {
 		"time_hours": day_night.time_hours, "day": day_night.day, "journal": journal.duplicate(),
 		"nodes": nodes, "pickups": pickups, "structures": structures, "structure_counter": _structure_counter,
-		"weather": weather.save_state(),
+		"weather": weather.save_state(), "carcasses": wildlife.save_state(),
 	}
 
 
@@ -586,6 +595,7 @@ func apply_save(d: Dictionary) -> void:
 	day_night.day = int(d.get("day", 1))
 	if d.has("weather"):
 		weather.load_state(d.weather)
+	wildlife.load_state(d.get("carcasses", []))
 	journal.clear()
 	for k: Variant in d.get("journal", []):
 		journal.append(str(k))

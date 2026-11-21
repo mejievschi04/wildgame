@@ -65,6 +65,31 @@ func _ready() -> void:
 		_build_demo(session)
 	if scenario in ["rain", "storm", "fog", "cloudy"]:
 		session.world.weather.set_state(StringName(scenario), true)
+	if scenario == "wildlife":
+		var wl := session.world.wildlife
+		wl.enabled = false
+		var fwd := -p.global_transform.basis.z
+		var c := p.global_position + fwd * 9.0
+		var herd := wl.spawn_group(&"deer", 3, c)
+		for i in herd.size():
+			var pos := c + p.global_transform.basis.x * (i - 1) * 3.0
+			herd[i].global_position = session.world.ground_point(pos.x, pos.z) + Vector3.UP * 0.2
+			herd[i].rotation.y = p.rotation.y + PI * 0.5 + i * 0.4
+			herd[i].set_physics_process(false)  # pose for the screenshot
+			herd[i]._play(["graze", "walk", "alert"][i])
+		var wc := p.global_position + fwd * 15.0 + p.global_transform.basis.x * 5.0
+		for i in 2:
+			var w := wl.spawn(&"wolf", session.world.ground_point(wc.x + i * 2.0, wc.z) + Vector3.UP * 0.2)
+			w.rotation.y = p.rotation.y + PI * 0.8
+			w.set_physics_process(false)
+			w._play("walk" if i == 0 else "idle")
+		p.head.rotation.x = -0.12
+	if scenario == "carcass":
+		var cpos: Vector3 = session.world.get_node("POI_Carcass").global_position
+		p.global_position = cpos + Vector3(3.0, 0.5, 2.0)
+		p.look_at(Vector3(cpos.x, p.global_position.y, cpos.z))
+		p.rotation.x = 0
+		p.head.rotation.x = -0.35
 	if scenario == "kit":
 		session.world.add_journal("JOURNAL_WATER")
 

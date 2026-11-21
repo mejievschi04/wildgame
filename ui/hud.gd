@@ -75,6 +75,7 @@ func bind(p: Player) -> void:
 	for s in _hotbar_slots:
 		s.inventory = p.inventory
 	p.slept.connect(func(_h: float) -> void: fade_flash())
+	p.hurt.connect(func(_a: float) -> void: _hit_flash())
 
 
 func _build_vignette() -> void:
@@ -155,6 +156,14 @@ func _draw_reticle() -> void:
 	_reticle.draw_circle(Vector2.ZERO, 2.2, c)
 	if has_target:
 		_reticle.draw_arc(Vector2.ZERO, 9.0, 0, TAU, 28, Color(UITheme.BONE, 0.35), 1.5, true)
+	if player != null and player.world and player.world.wildlife:
+		var aw: Dictionary = player.world.wildlife.max_awareness()
+		if float(aw.value) > 0.15:
+			var col := UITheme.DANGER if aw.hostile else UITheme.OCHRE
+			_reticle.draw_arc(Vector2.ZERO, 18.0, PI * 1.15, PI * 1.85, 24, Color(col, clampf(float(aw.value), 0.2, 0.85)), 2.0, true)
+	if player != null and player.aiming:
+		_reticle.draw_line(Vector2(-6, 0), Vector2(6, 0), Color(UITheme.BONE, 0.8), 1.0)
+		_reticle.draw_line(Vector2(0, -6), Vector2(0, 6), Color(UITheme.BONE, 0.8), 1.0)
 	if player != null and player.hold_ratio > 0.0:
 		_reticle.draw_arc(Vector2.ZERO, 12.0, -PI / 2, -PI / 2 + TAU * player.hold_ratio, 32, UITheme.OCHRE, 3.0, true)
 
@@ -303,6 +312,16 @@ func _on_caption(text: String) -> void:
 	tw.tween_property(_caption, "modulate:a", 0.0, 0.4)
 
 
+func _hit_flash() -> void:
+	var m := _vignette.material as ShaderMaterial
+	m.set_shader_parameter("tint", UITheme.DANGER)
+	m.set_shader_parameter("strength", 0.9)
+	_hit_t = 0.35
+
+
+var _hit_t := 0.0
+
+
 func fade_flash() -> void:
 	_fade.color.a = 1.0
 	var tw := create_tween()
@@ -323,6 +342,9 @@ func _process(_delta: float) -> void:
 	_update_prompt()
 	_update_build_hint()
 	_reticle.queue_redraw()
+	if _hit_t > 0.0:
+		_hit_t -= _delta
+		return
 	var low_health := clampf((40.0 - s.health) / 40.0, 0.0, 1.0)
 	var cold := clampf((36.2 - s.body_temp) / 1.5, 0.0, 1.0)
 	var m := _vignette.material as ShaderMaterial
@@ -360,6 +382,17 @@ func _update_prompt() -> void:
 	var t := player.look_target
 	var options := player.look_options
 	_prompt_box.visible = t != null and not options.is_empty()
+	if t == null and not player.look_track.is_empty():
+		var tr: Dictionary = player.look_track
+		_prompt_box.visible = true
+		_target_label.text = Loc.t("TRACKS_OF", {"name": Loc.t("ANIMAL_%s" % String(tr.species).to_upper())})
+		var mins := int(float(tr.age) / 60.0)
+		_status_label.text = Loc.t("TRACK_FRESH") if mins < 2 else Loc.t("TRACK_AGE", {"m": mins})
+		_status_label.visible = true
+		for l in _option_labels:
+			l.visible = false
+		_hold_bar.visible = false
+		return
 	if not _prompt_box.visible:
 		if t != null and options.is_empty():
 			_prompt_box.visible = true

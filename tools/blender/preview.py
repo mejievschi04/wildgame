@@ -7,7 +7,12 @@ x = 0.0
 for p in paths:
     bpy.ops.import_scene.gltf(filepath=p)
     objs = [o for o in bpy.context.selected_objects if o.type == "MESH"]
-    w = max(max(o.dimensions.x, o.dimensions.y) for o in objs)
+    if "animals" in p:
+        for o in bpy.context.selected_objects:
+            if o.parent is None:
+                o.rotation_euler.z = -1.35
+        bpy.context.view_layer.update()
+    w = max(max(o.dimensions.x, o.dimensions.y) for o in objs) + 0.8
     for o in objs:
         o.location.x += x + w / 2
     x += w + 1.0
