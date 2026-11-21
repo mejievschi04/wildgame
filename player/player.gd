@@ -396,19 +396,75 @@ func give_item(id: StringName, count: int, durability: int = -1) -> void:
 			world.spawn_pickup(ItemStack.new(id, leftover, durability), global_position + Vector3(0, 0.6, 0) - transform.basis.z * 0.6)
 
 
+## Swing styles: [windup rot, windup pos, strike rot, strike pos, windup s, strike s, recover s]
+const SWING_STYLES := {
+	# Over the right shoulder, then a diagonal strike that brings the head to the crosshair.
+	&"chop": [Vector3(38, -18, -28), Vector3(0.06, 0.3, 0.14), Vector3(-78, 14, 38), Vector3(-0.32, 0.04, -0.34), 0.26, 0.1, 0.34],
+	&"slash": [Vector3(20, 35, 20), Vector3(0.1, 0.06, 0.05), Vector3(-30, -45, -20), Vector3(-0.14, -0.04, -0.12), 0.14, 0.08, 0.22],
+	&"thrust": [Vector3(6, 0, 0), Vector3(0.0, -0.02, 0.22), Vector3(-4, 0, 0), Vector3(0.0, 0.03, -0.42), 0.22, 0.09, 0.3],
+	&"punch": [Vector3(10, 0, 0), Vector3(0.0, -0.05, 0.1), Vector3(-10, 0, 0), Vector3(0.0, 0.0, -0.25), 0.12, 0.07, 0.18],
+}
+
+var _swinging := false
+
+
+func _swing_style() -> StringName:
+	var id: StringName = inventory.hand.id if inventory.hand else &""
+	match id:
+		&"stone_axe", &"stone": return &"chop"
+		&"flint_knife", &"torch": return &"slash"
+		&"spear": return &"thrust"
+	return &"punch"
+
+
+## Phased swing: wind-up → fast strike → impact (hit resolved NOW, not on click) → recoil → recover.
 func swing() -> void:
-	if _swing_cd > 0.0 or dead:
+	if _swing_cd > 0.0 or dead or _swinging:
 		return
 	if not stats.use_stamina(SWING_COST):
 		Events.toast(Loc.t("MSG_NO_STAMINA"), &"warn")
 		return
-	_swing_cd = SWING_COOLDOWN
-	_animate_swing()
-	Sfx.play(&"whoosh", null, -10.0)
-	var item := inventory.hand.get_data() if inventory.hand else null
+	var st: Array = SWING_STYLES[_swing_style()]
+	var windup: float = st[4]
+	var strike: float = st[5]
+	var recover: float = st[6]
+	_swing_cd = windup + strike + recover + 0.05
+	_swinging = true
 	_noise_burst = maxf(_noise_burst, 0.7)
-	if not ray.is_colliding():
-		return
+	var v := _hand_visual if _hand_visual else hand_root
+	var rest_rot := Vector3.ZERO if _hand_visual else hand_root.rotation_degrees
+	var rest_pos := Vector3.ZERO if _hand_visual else hand_root.position
+	var tw := create_tween()
+	tw.tween_property(v, "rotation_degrees", rest_rot + st[0], windup).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	tw.parallel().tween_property(v, "position", rest_pos + st[1], windup).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	tw.tween_callback(func() -> void: Sfx.play(&"whoosh", null, -8.0, 0.1))
+	tw.tween_property(v, "rotation_degrees", rest_rot + st[2], strike).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tw.parallel().tween_property(v, "position", rest_pos + st[3], strike).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tw.tween_callback(func() -> void:
+		if _resolve_swing():
+			_kick(v, rest_rot, st))
+	tw.tween_property(v, "rotation_degrees", rest_rot, recover).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	tw.parallel().tween_property(v, "position", rest_pos, recover).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	tw.tween_callback(func() -> void: _swinging = false)
+
+
+## Impact: the tool stops in the wood/body — small rebound and a camera nudge.
+func _kick(v: Node3D, rest_rot: Vector3, st: Array) -> void:
+	var tw := create_tween()
+	tw.tween_property(v, "rotation_degrees", rest_rot + (st[2] as Vector3) * 0.82, 0.05)
+	if not bool(Settings.get_value("accessibility", "reduce_motion")):
+		_shake = maxf(_shake, 0.25)
+		var base_pitch := head.rotation.x
+		var t2 := create_tween()
+		t2.tween_property(head, "rotation:x", base_pitch - 0.012, 0.04)
+		t2.tween_property(head, "rotation:x", base_pitch, 0.12)
+
+
+## Returns true when the swing hit something solid.
+func _resolve_swing() -> bool:
+	if dead or not ray.is_colliding():
+		return false
+	var item := inventory.hand.get_data() if inventory.hand else null
 	var hit := ray.get_collider()
 	if hit is Animal and not (hit as Animal).is_dead():
 		var dmg := item.damage if item and item.damage > 0.0 else 3.0
@@ -416,20 +472,19 @@ func swing() -> void:
 		Sfx.play(&"chop", ray.get_collision_point(), -6.0)
 		if item and inventory.wear_hand(1):
 			Events.toast(Loc.t("MSG_TOOL_BROKE", {"item": item.display_name()}), &"danger")
-		return
+		return true
 	var target := _find_interactable(hit as Node)
 	if target and target.has_method("on_hit") and target.on_hit(self, item):
 		if inventory.wear_hand(1):
 			Events.toast(Loc.t("MSG_TOOL_BROKE", {"item": item.display_name()}), &"danger")
 			Sfx.play(&"tool_break", null)
+		return true
+	return hit is StaticBody3D
 
 
-func _animate_swing() -> void:
-	if _hand_visual == null:
-		return
-	var tw := create_tween()
-	tw.tween_property(_hand_visual, "rotation_degrees", Vector3(-70, 10, 0), 0.12).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-	tw.tween_property(_hand_visual, "rotation_degrees", Vector3.ZERO, 0.22).set_trans(Tween.TRANS_SINE)
+func shake(strength: float) -> void:
+	if not bool(Settings.get_value("accessibility", "reduce_motion")):
+		_shake = maxf(_shake, strength)
 
 
 # ---------------------------------------------------------------- items

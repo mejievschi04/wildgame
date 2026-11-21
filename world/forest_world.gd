@@ -272,7 +272,7 @@ func _occupy(x: float, z: float, r: float) -> void:
 
 func _spawn_node(kind: StringName, x: float, z: float, s: float = 1.0) -> ResourceNode:
 	var id := "%s_%03d" % [kind, _count_kind(kind)]
-	var n := ResourceNode.new()
+	var n: ResourceNode = TreeNode.new() if String(kind).begins_with("tree") else ResourceNode.new()
 	n.setup(id, kind, s, _rng.randf() * TAU)
 	n.position = ground_point(x, z) + Vector3(0, -0.05, 0)
 	nodes_root.add_child(n)

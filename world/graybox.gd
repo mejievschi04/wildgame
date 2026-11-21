@@ -43,6 +43,7 @@ static func tex(name: String, tint: Color = Color.WHITE, scale: float = 1.0) -> 
 	m.ao_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_RED
 	m.uv1_triplanar = true
 	m.uv1_scale = Vector3.ONE * scale
+	m.vertex_color_use_as_albedo = name == "CutWood"
 	m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
 	_materials[key] = m
 	return m

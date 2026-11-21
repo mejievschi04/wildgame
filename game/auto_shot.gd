@@ -7,6 +7,8 @@ extends Node
 
 var out_path := ""
 var frames := 120
+var shot_list: Array[int] = []
+var _chop_tree: TreeNode
 var hour := -1.0
 var scenario := ""
 var bench_off := PackedStringArray()
@@ -24,7 +26,10 @@ static func attach_if_requested(parent: Node) -> void:
 		return
 	var s := AutoShot.new()
 	s.out_path = args.autoshot
-	s.frames = int(args.get("shot-frames", "120"))
+	var fl := str(args.get("shot-frames", "120")).split(",", false)
+	for f in fl:
+		s.shot_list.append(int(f))
+	s.frames = s.shot_list.max()
 	s.hour = float(args.get("shot-hour", "-1"))
 	s.scenario = args.get("shot-scenario", "")
 	s.bench_off = str(args.get("bench-off", "")).split(",", false)
@@ -90,6 +95,21 @@ func _ready() -> void:
 		p.look_at(Vector3(cpos.x, p.global_position.y, cpos.z))
 		p.rotation.x = 0
 		p.head.rotation.x = -0.35
+	if scenario == "chop":
+		var best: TreeNode = null
+		for n in session.get_tree().get_nodes_in_group("resource_node"):
+			if n is TreeNode and (best == null or n.global_position.distance_to(p.global_position) < best.global_position.distance_to(p.global_position)) \
+					and n.global_position.distance_to(p.global_position) > 6.0:
+				best = n
+		_chop_tree = best
+		var side := (p.global_position - best.global_position)
+		side.y = 0.0
+		p.global_position = best.global_position + side.normalized().rotated(Vector3.UP, 1.2) * 1.35 + Vector3.UP * 0.3
+		p.look_at(Vector3(best.global_position.x, p.global_position.y, best.global_position.z))
+		p.rotation = Vector3(0, p.rotation.y + 0.18, 0)
+		p.head.rotation.x = -0.32
+		p.inventory.add_item(&"stone_axe")
+		p.inventory.equip_slot(p.inventory.first_slot_of(&"stone_axe"))
 	if scenario == "kit":
 		session.world.add_journal("JOURNAL_WATER")
 
@@ -160,6 +180,16 @@ func _process(delta: float) -> void:
 			"journal": session.open_inventory(1)
 			"pause": session.open_pause()
 			"buildmenu": session.open_build_menu()
+	if scenario == "chop" and _chop_tree and _chop_tree.stage == TreeNode.Stage.STANDING and _n > 30 and _n % 45 == 0:
+		var pl := (get_parent() as GameSession).player
+		pl.stats.stamina = 100.0
+		pl.swing()
+	if scenario == "chop" and _chop_tree and _chop_tree.stage == TreeNode.Stage.FALLING and _n % 20 == 0:
+		# Look at the falling crown.
+		var pl2 := (get_parent() as GameSession).player
+		pl2.head.rotation.x = lerpf(pl2.head.rotation.x, 0.25, 0.4)
+	if _n in shot_list and _n < frames:
+		get_viewport().get_texture().get_image().save_png(out_path.get_basename() + "_%d.png" % _n)
 	if _n >= frames:
 		var img := get_viewport().get_texture().get_image()
 		img.save_png(out_path)

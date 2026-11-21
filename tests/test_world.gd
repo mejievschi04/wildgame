@@ -56,7 +56,7 @@ func test_core_loop_gather_craft_fire_cook() -> void:
 	eq(stones.remaining, 0, "stone pile depleted")
 	check(stones.get_interactions(p)[0].enabled == false, "depleted pile not interactable")
 	# Tool-gated harvesting.
-	var tree_node: ResourceNode = w.get_node_by_save_id("tree_pine_000")
+	var tree_node: TreeNode = w.get_node_by_save_id("tree_pine_000")
 	check(not tree_node.on_hit(p, null), "cannot chop barehanded")
 	p.inventory.add_item(&"fiber", 10)
 	p.inventory.add_item(&"stone", 6)
@@ -64,7 +64,12 @@ func test_core_loop_gather_craft_fire_cook() -> void:
 	var res := Crafting.craft(ItemDB.get_recipe(&"stone_axe"), p.inventory, [])
 	check(res.ok, "crafted axe")
 	p.inventory.equip_slot(p.inventory.first_slot_of(&"stone_axe"))
-	check(tree_node.on_hit(p, p.inventory.hand.get_data()), "chop with axe")
+	var axe := p.inventory.hand.get_data()
+	for i in tree_node.fell_hits:
+		check(tree_node.on_hit(p, axe), "chop with axe")
+	eq(tree_node.stage, TreeNode.Stage.FALLING, "tree starts falling after enough hits")
+	tree_node.complete_fall()
+	check(tree_node.on_hit(p, axe), "buck the fallen trunk")
 	eq(p.inventory.count_of(&"wood"), 1, "got wood")
 	# Campfire: place, fuel, ignite, warmth, cook.
 	check(Crafting.craft(ItemDB.get_recipe(&"campfire_kit"), p.inventory, []).ok, "crafted campfire kit")
