@@ -154,11 +154,12 @@ func _get_drag_data(_pos: Vector2) -> Variant:
 	preview.size = Vector2(44, 44)
 	preview.add_theme_stylebox_override("panel", UITheme.flat(s.get_data().icon_color, UITheme.OCHRE, 1, 6, 0.0))
 	set_drag_preview(preview)
-	return {"slot_index": index}
+	return {"slot_index": index, "inv": inventory}
 
 
 func _can_drop_data(_pos: Vector2, data: Variant) -> bool:
-	return data is Dictionary and (data as Dictionary).has("slot_index") and inventory != null
+	return data is Dictionary and (data as Dictionary).has("slot_index") and inventory != null \
+		and (data as Dictionary).get("inv") == inventory
 
 
 func _drop_data(_pos: Vector2, data: Variant) -> void:

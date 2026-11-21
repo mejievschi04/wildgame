@@ -29,6 +29,7 @@ var camera: Camera3D
 var ray: RayCast3D
 var hand_root: Node3D
 var placement: PlacementController
+var build: BuildController
 
 var input_enabled := true
 var is_sleeping := false
@@ -96,6 +97,9 @@ func _ready() -> void:
 	placement = PlacementController.new()
 	placement.player = self
 	add_child(placement)
+	build = BuildController.new()
+	build.player = self
+	add_child(build)
 
 	stats.difficulty = Settings.difficulty_mult()
 	stats.died.connect(_on_died)
@@ -127,12 +131,17 @@ func _unhandled_input(event: InputEvent) -> void:
 		if bool(Settings.get_value("gameplay", "toggle_crouch")):
 			_crouching = not _crouching
 	if event.is_action_pressed("primary_action"):
-		if placement.active:
+		if build.active:
+			build.confirm()
+		elif placement.active:
 			placement.confirm()
 		else:
 			swing()
-	if event.is_action_pressed("secondary_action") and placement.active:
-		placement.cancel()
+	if event.is_action_pressed("secondary_action"):
+		if build.active:
+			build.cancel()
+		elif placement.active:
+			placement.cancel()
 
 
 func _look(rel: Vector2) -> void:
@@ -182,16 +191,23 @@ func _physics_process(delta: float) -> void:
 
 	_update_head(delta, move.length() > 0.1 and is_on_floor(), sprinting)
 	if not dead:
-		stats.tick(delta, {
-			"ambient_temp": world.ambient_temperature_at(global_position) if world else 15.0,
-			"warmth": world.get_warmth_at(global_position) if world else 0.0,
-			"insulation": INSULATION,
-			"sprinting": sprinting and move.length() > 0.1,
-			"sleeping": is_sleeping,
-		})
+		stats.tick(delta, survival_env(is_sleeping, sprinting and move.length() > 0.1))
 	_tick_torch(delta)
 	_swing_cd = maxf(_swing_cd - delta, 0.0)
 	_update_interaction(delta)
+
+
+## Environment for the survival model at the player's position (ambient, fire warmth, clothing + shelter).
+func survival_env(sleeping: bool = false, sprinting: bool = false) -> Dictionary:
+	if world == null:
+		return {"ambient_temp": 15.0, "warmth": 0.0, "insulation": INSULATION, "sleeping": sleeping, "sprinting": sprinting}
+	var pos := global_position + Vector3.UP * 0.5
+	return {
+		"ambient_temp": world.ambient_temperature_at(global_position),
+		"warmth": world.get_warmth_at(global_position),
+		"insulation": INSULATION + world.get_shelter_at(pos),
+		"sleeping": sleeping, "sprinting": sprinting,
+	}
 
 
 func _on_landed(speed: float) -> void:
@@ -225,7 +241,7 @@ func _find_interactable(n: Node) -> Node:
 
 func _update_interaction(delta: float) -> void:
 	var target: Node = null
-	if input_enabled and not dead and not is_sleeping and not placement.active and ray.is_colliding():
+	if input_enabled and not dead and not is_sleeping and not placement.active and not build.active and ray.is_colliding():
 		target = _find_interactable(ray.get_collider() as Node)
 	look_target = target
 	look_options = target.get_interactions(self) if target else []
@@ -385,7 +401,8 @@ func _tick_torch(delta: float) -> void:
 func can_sleep() -> Dictionary:
 	if stats.rest > 85.0 and not world.day_night.is_night():
 		return {"ok": false, "reason": Loc.t("SLEEP_NOT_TIRED")}
-	var eff := world.ambient_temperature_at(global_position) + world.get_warmth_at(global_position) + INSULATION
+	var env := survival_env(true)
+	var eff: float = env.ambient_temp + env.warmth + env.insulation
 	if eff < 8.0:
 		return {"ok": false, "reason": Loc.t("SLEEP_TOO_COLD")}
 	if stats.hunger < 8.0 or stats.thirst < 8.0:
@@ -409,11 +426,7 @@ func sleep_at(bed: Node3D) -> void:
 	while elapsed < total and not stats.dead:
 		var dt := minf(STEP, total - elapsed)
 		world.advance_time(dt)
-		stats.tick(dt, {
-			"ambient_temp": world.ambient_temperature_at(global_position),
-			"warmth": world.get_warmth_at(global_position),
-			"insulation": INSULATION, "sleeping": true,
-		})
+		stats.tick(dt, survival_env(true))
 		elapsed += dt
 		if stats.body_temp < 35.8:
 			woke_cold = true
@@ -434,6 +447,7 @@ func sleep_at(bed: Node3D) -> void:
 func _on_died(cause: StringName) -> void:
 	dead = true
 	placement.cancel()
+	build.cancel()
 	died.emit(cause)
 	Events.player_died.emit(cause)
 

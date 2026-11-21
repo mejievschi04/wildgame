@@ -2,7 +2,8 @@ class_name AutoShot
 extends Node
 ## DEV TOOL: deterministic screenshots for verification.
 ## Usage: godot --path . -- --autoshot=/abs/out.png [--shot-frames=120] [--shot-hour=21.5] [--shot-scenario=inventory]
-## Scenarios: none, inventory, journal, pause, camp (lit fire + bed in view), kit (starter items), prompt (aim at sticks).
+## Scenarios: none, inventory, journal, pause, camp (lit fire + bed in view), kit (starter items), prompt (aim at sticks),
+## build (hut + lean-to + blueprint + active ghost), buildmenu (radial menu).
 
 var out_path := ""
 var frames := 120
@@ -57,6 +58,8 @@ func _ready() -> void:
 		p.global_position = target.global_position + Vector3(-1.6, 0.2, 0.0)
 		p.look_at(Vector3(target.global_position.x, p.global_position.y, target.global_position.z))
 		p.head.rotation.x = -0.6
+	if scenario in ["build", "buildmenu"]:
+		_build_demo(session)
 	if scenario == "kit":
 		session.world.add_journal("JOURNAL_WATER")
 
@@ -69,8 +72,51 @@ func _process(_delta: float) -> void:
 			"inventory": session.open_inventory(0)
 			"journal": session.open_inventory(1)
 			"pause": session.open_pause()
+			"buildmenu": session.open_build_menu()
 	if _n >= frames:
 		var img := get_viewport().get_texture().get_image()
 		img.save_png(out_path)
 		print("AutoShot saved ", out_path, "  fps=", Engine.get_frames_per_second(), "  draw_calls=", RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME))
 		get_tree().quit()
+
+
+func _build_demo(session: GameSession) -> void:
+	var w := session.world
+	var p := session.player
+	var origin := p.global_position + Vector3(7, 0, -1)
+	var f: BuildingPiece = w.spawn_structure(&"piece",
+		Transform3D(Basis(), Vector3(origin.x, w.height_at(origin.x, origin.z) - 0.05, origin.z)), {"piece": "foundation"})
+	f.complete()
+	var bc := p.build
+	var plan := [[&"wall", "edge", 1], [&"wall", "edge", 2], [&"doorway", "edge", 3], [&"pillar", "corner", 0]]
+	for e: Array in plan:
+		bc.def = ItemDB.get_piece(e[0])
+		var sock: Dictionary = bc.find_sockets(e[1], f.global_position)[e[2]]
+		var piece: BuildingPiece = w.spawn_structure(&"piece", sock.xform, {"piece": String(e[0]), "on": sock.supports})
+		piece.complete()
+	bc.def = ItemDB.get_piece(&"door")
+	var ds: Dictionary = bc.find_sockets("doorway", f.global_position)[0]
+	var door: BuildingPiece = w.spawn_structure(&"piece", ds.xform, {"piece": "door", "on": ds.supports})
+	door.complete()
+	door.set_door_open(true)
+	bc.def = ItemDB.get_piece(&"roof")
+	var rs: Dictionary = bc.find_sockets("top", f.global_position)[0]
+	var roof: BuildingPiece = w.spawn_structure(&"piece", rs.xform, {"piece": "roof", "on": rs.supports})
+	roof.complete()
+	var f2 := f.global_position + Vector3(0, 0, 2)
+	var bp: BuildingPiece = w.spawn_structure(&"piece", Transform3D(Basis(), f2), {"piece": "foundation"})
+	bp.delivered[&"wood"] = 1
+	var lt_pos := p.global_position + Vector3(6, 0, -6)
+	var lt: BuildingPiece = w.spawn_structure(&"piece", Transform3D(Basis(Vector3.UP, 0.6), w.ground_point(lt_pos.x, lt_pos.z)), {"piece": "lean_to"})
+	lt.complete()
+	var rk_pos := p.global_position + Vector3(4, 0, 3.5)
+	var rack: BuildingPiece = w.spawn_structure(&"piece", Transform3D(Basis(Vector3.UP, -0.4), w.ground_point(rk_pos.x, rk_pos.z)), {"piece": "drying_rack"})
+	rack.complete()
+	rack.drying.append({"id": &"meat_raw", "t": 0.0})
+	rack.drying.append({"id": &"meat_raw", "t": 900.0})
+	p.look_at(f.global_position + Vector3(0, 1.2, 0))
+	p.rotation.x = 0.0
+	p.rotation.z = 0.0
+	p.head.rotation.x = -0.05
+	if scenario == "build":
+		bc.begin(&"fence")

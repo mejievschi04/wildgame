@@ -24,7 +24,7 @@ func _ready() -> void:
 	for i in 7:
 		Graybox.part(shelter, Graybox.cylinder(0.05, 0.06, 3.0, 5), Color(0.38, 0.29, 0.2),
 			Vector3(-1.8 + i * 0.6, 1.1, 0), Vector3(-38, 0, 0))
-	Graybox.part(shelter, Graybox.box(Vector3(3.8, 0.05, 2.4)), Color(0.55, 0.42, 0.28), Vector3(0, 1.15, 0.05), Vector3(-38, 0, 0))
+	Graybox.part(shelter, Graybox.box(Vector3(3.8, 2.8, 0.05)), Color(0.55, 0.42, 0.28), Vector3(0, 1.12, -0.08), Vector3(-38, 0, 0))
 	var bed: Node3D = world.spawn_structure(&"bed", Transform3D(Basis(Vector3.UP, 0.5), world.ground_point(-4.0, 1.2)))
 	bed.process_mode = Node.PROCESS_MODE_DISABLED
 	_cam = Camera3D.new()

@@ -21,6 +21,7 @@ var _xform := Transform3D.IDENTITY
 
 func begin(p_slot: int, data: ItemData) -> void:
 	cancel()
+	player.build.cancel()
 	slot = p_slot
 	item_id = data.id
 	structure = data.place

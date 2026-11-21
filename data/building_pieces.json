@@ -1,0 +1,12 @@
+{
+	"foundation":  {"cost": {"wood": 3, "stick": 4}, "snap": "ground_grid", "health": 300, "class": "floor", "icon": "#6b4a2b"},
+	"wall":        {"cost": {"stick": 6, "fiber": 4}, "snap": "edge", "health": 150, "class": "wall", "support": true, "icon": "#8b6a43"},
+	"doorway":     {"cost": {"stick": 5, "fiber": 4}, "snap": "edge", "health": 130, "class": "wall", "support": true, "icon": "#7d5f3c"},
+	"door":        {"cost": {"stick": 4, "fiber": 3}, "snap": "doorway", "health": 100, "class": "door", "icon": "#9b7653"},
+	"pillar":      {"cost": {"wood": 1}, "snap": "corner", "health": 200, "class": "pillar", "support": true, "icon": "#5e4128"},
+	"roof":        {"cost": {"stick": 4, "fiber": 6}, "snap": "top", "health": 120, "class": "roof", "icon": "#b8a060"},
+	"fence":       {"cost": {"stick": 4, "fiber": 2}, "snap": "ground", "health": 80, "class": "fence", "footprint": [2.0, 1.1, 0.2], "icon": "#8b6a43"},
+	"storage":     {"cost": {"stick": 6, "fiber": 6}, "snap": "ground_or_floor", "health": 80, "class": "furniture", "slots": 12, "footprint": [1.0, 0.7, 0.7], "icon": "#a58658"},
+	"drying_rack": {"cost": {"stick": 6, "fiber": 3}, "snap": "ground_or_floor", "health": 80, "class": "furniture", "footprint": [1.6, 1.6, 0.7], "icon": "#8b7350"},
+	"lean_to":     {"cost": {"stick": 10, "fiber": 6}, "snap": "ground", "health": 150, "class": "shelter", "shelter": 6.0, "footprint": [3.0, 2.0, 2.4], "icon": "#7a6040"}
+}

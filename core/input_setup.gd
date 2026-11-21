@@ -6,7 +6,7 @@ extends RefCounted
 const REMAPPABLE := [
 	&"move_forward", &"move_back", &"move_left", &"move_right", &"jump", &"sprint", &"crouch",
 	&"interact", &"alt_interact", &"primary_action", &"secondary_action", &"inventory",
-	&"journal", &"pause", &"hotbar_1", &"hotbar_2", &"hotbar_3", &"hotbar_4", &"hotbar_5", &"hotbar_6",
+	&"journal", &"build_menu", &"toggle_snap", &"pause", &"hotbar_1", &"hotbar_2", &"hotbar_3", &"hotbar_4", &"hotbar_5", &"hotbar_6",
 ]
 
 
@@ -29,6 +29,8 @@ static func defaults() -> Dictionary:
 		&"secondary_action": [_mouse(MOUSE_BUTTON_RIGHT), _axis(JOY_AXIS_TRIGGER_LEFT, 1.0)],
 		&"inventory": [_key(KEY_TAB), _button(JOY_BUTTON_BACK)],
 		&"journal": [_key(KEY_J)],
+		&"build_menu": [_key(KEY_B), _button(JOY_BUTTON_DPAD_UP)],
+		&"toggle_snap": [_key(KEY_G), _button(JOY_BUTTON_DPAD_DOWN)],
 		&"pause": [_key(KEY_ESCAPE), _button(JOY_BUTTON_START)],
 		&"hotbar_1": [_key(KEY_1)],
 		&"hotbar_2": [_key(KEY_2)],

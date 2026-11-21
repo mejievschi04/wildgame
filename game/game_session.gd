@@ -10,6 +10,8 @@ var hud: HUD
 var inventory_screen: InventoryScreen
 var pause_menu: PauseMenu
 var death_screen: DeathScreen
+var build_menu: BuildMenu
+var storage_screen: StorageScreen
 var _autosave_t := 0.0
 
 
@@ -64,6 +66,20 @@ func _build_ui() -> void:
 	layer.add_child(pause_menu)
 	pause_menu.resumed.connect(_on_ui_closed)
 	pause_menu.save_requested.connect(save_to)
+	build_menu = BuildMenu.new()
+	build_menu.player = player
+	layer.add_child(build_menu)
+	build_menu.closed.connect(_on_ui_closed)
+	build_menu.chosen.connect(func(id: StringName) -> void:
+		_on_ui_closed()
+		player.build.begin(id))
+	storage_screen = StorageScreen.new()
+	layer.add_child(storage_screen)
+	storage_screen.closed.connect(_on_ui_closed)
+	Events.open_storage.connect(open_storage)
+	Events.building_completed.connect(func(p: Node) -> void:
+		if (p as BuildingPiece).piece_class() in ["roof", "shelter"]:
+			world.add_journal("JOURNAL_SHELTER"))
 	death_screen = DeathScreen.new()
 	layer.add_child(death_screen)
 
@@ -89,7 +105,8 @@ func _process(delta: float) -> void:
 
 
 func is_ui_open() -> bool:
-	return inventory_screen.visible or pause_menu.visible or death_screen.visible
+	return inventory_screen.visible or pause_menu.visible or death_screen.visible \
+		or build_menu.visible or storage_screen.visible
 
 
 func open_inventory(tab: int = 0) -> void:
@@ -97,6 +114,20 @@ func open_inventory(tab: int = 0) -> void:
 	player.input_enabled = false
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	inventory_screen.open(tab)
+
+
+func open_build_menu() -> void:
+	player.placement.cancel()
+	player.build.cancel()
+	player.input_enabled = false
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	build_menu.open()
+
+
+func open_storage(piece: Node) -> void:
+	player.input_enabled = false
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	storage_screen.open(player, piece as BuildingPiece)
 
 
 func open_pause() -> void:
@@ -113,8 +144,8 @@ func _on_ui_closed() -> void:
 
 func _on_player_died(cause: StringName) -> void:
 	player.input_enabled = false
-	if inventory_screen.visible:
-		inventory_screen.visible = false
+	for ui: Control in [inventory_screen, build_menu, storage_screen]:
+		ui.visible = false
 	death_screen.show_death(cause)
 
 
@@ -122,7 +153,9 @@ func _unhandled_input(event: InputEvent) -> void:
 	if player.dead or is_ui_open():
 		return
 	if event.is_action_pressed("pause"):
-		if player.placement.active:
+		if player.build.active:
+			player.build.cancel()
+		elif player.placement.active:
 			player.placement.cancel()
 		else:
 			open_pause()
@@ -132,6 +165,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 	elif event.is_action_pressed("journal"):
 		open_inventory(1)
+		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed("build_menu"):
+		open_build_menu()
 		get_viewport().set_input_as_handled()
 	elif event is InputEventMouseButton and event.pressed and Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED

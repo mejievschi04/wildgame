@@ -29,6 +29,10 @@ var _hand_slot: ItemSlot
 var _toasts: VBoxContainer
 var _vignette: ColorRect
 var _fade: ColorRect
+var _build_box: VBoxContainer
+var _build_title: Label
+var _build_info: Label
+var _build_keys: Label
 
 
 func _ready() -> void:
@@ -41,6 +45,7 @@ func _ready() -> void:
 	_build_prompt()
 	_build_hotbar()
 	_build_toasts()
+	_build_build_hint()
 	_fade = ColorRect.new()
 	_fade.color = Color(0, 0, 0, 0)
 	_fade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -197,6 +202,47 @@ func _build_hotbar() -> void:
 		_hotbar_slots.append(s)
 
 
+func _build_build_hint() -> void:
+	_build_box = VBoxContainer.new()
+	_build_box.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
+	_build_box.offset_top = -200
+	_build_box.offset_bottom = -104
+	_build_box.alignment = BoxContainer.ALIGNMENT_END
+	_build_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_build_box.add_theme_constant_override("separation", 2)
+	add_child(_build_box)
+	_build_title = UITheme.label("", "HeadingLabel")
+	_build_title.add_theme_font_size_override("font_size", 22)
+	_build_info = UITheme.label("", "SmallLabel")
+	_build_keys = UITheme.label("", "MutedLabel")
+	for l in [_build_title, _build_info, _build_keys]:
+		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_build_box.add_child(l)
+	_build_box.visible = false
+
+
+func _update_build_hint() -> void:
+	var b := player.build
+	_build_box.visible = b.active
+	if not b.active:
+		return
+	_build_title.text = Loc.t("BUILD_%s" % String(b.piece_id).to_upper())
+	if b.valid:
+		var parts := PackedStringArray()
+		var cost := ItemDB.piece_cost(b.piece_id)
+		for id: StringName in cost.keys():
+			parts.append("%s %d/%d" % [ItemDB.get_item(id).display_name(), mini(player.inventory.count_of(id), int(cost[id])), int(cost[id])])
+		_build_info.text = Loc.t("BUILD_COST") + " " + ", ".join(parts)
+		_build_info.add_theme_color_override("font_color", UITheme.BONE)
+	else:
+		_build_info.text = b.reason
+		_build_info.add_theme_color_override("font_color", UITheme.DANGER.lightened(0.3))
+	_build_keys.text = Loc.t("HINT_BUILD_MODE", {
+		"place": InputSetup.label(&"primary_action"), "rotate": InputSetup.label(&"alt_interact"),
+		"snap": InputSetup.label(&"toggle_snap"), "snapstate": Loc.t("BUILD_SNAP_ON" if b.snap else "BUILD_SNAP_OFF"),
+		"cancel": InputSetup.label(&"secondary_action")})
+
+
 func _build_toasts() -> void:
 	_toasts = VBoxContainer.new()
 	_toasts.set_anchors_preset(Control.PRESET_TOP_RIGHT)
@@ -257,6 +303,7 @@ func _process(_delta: float) -> void:
 	_thirst.value = s.thirst
 	_update_context(s)
 	_update_prompt()
+	_update_build_hint()
 	_reticle.queue_redraw()
 	var low_health := clampf((40.0 - s.health) / 40.0, 0.0, 1.0)
 	var cold := clampf((36.2 - s.body_temp) / 1.5, 0.0, 1.0)

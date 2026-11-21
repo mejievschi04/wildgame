@@ -4,11 +4,14 @@ extends Node
 const ITEMS_PATH := "res://data/items.json"
 const RECIPES_PATH := "res://data/recipes.json"
 const NODES_PATH := "res://data/resource_nodes.json"
+const PIECES_PATH := "res://data/building_pieces.json"
 
 var items: Dictionary = {}  # StringName -> ItemData
 var recipes: Dictionary = {}  # StringName -> RecipeData
 var recipe_order: Array[StringName] = []
 var node_kinds: Dictionary = {}  # StringName -> Dictionary
+var pieces: Dictionary = {}  # StringName -> Dictionary (building piece definitions)
+var piece_order: Array[StringName] = []
 
 
 func _ready() -> void:
@@ -20,6 +23,8 @@ func reload() -> void:
 	recipes.clear()
 	recipe_order.clear()
 	node_kinds.clear()
+	pieces.clear()
+	piece_order.clear()
 	for row: Dictionary in _load_json(ITEMS_PATH, []):
 		var item := ItemData.from_dict(row)
 		if items.has(item.id):
@@ -32,6 +37,10 @@ func reload() -> void:
 	var kinds: Dictionary = _load_json(NODES_PATH, {})
 	for k: String in kinds.keys():
 		node_kinds[StringName(k)] = kinds[k]
+	var pdefs: Dictionary = _load_json(PIECES_PATH, {})
+	for k: String in pdefs.keys():
+		pieces[StringName(k)] = pdefs[k]
+		piece_order.append(StringName(k))
 
 
 func get_item(id: StringName) -> ItemData:
@@ -46,6 +55,19 @@ func all_recipes() -> Array[RecipeData]:
 	var out: Array[RecipeData] = []
 	for id in recipe_order:
 		out.append(recipes[id])
+	return out
+
+
+func get_piece(id: StringName) -> Dictionary:
+	return pieces.get(id, {})
+
+
+## Building piece cost as {StringName item id: int}.
+func piece_cost(id: StringName) -> Dictionary:
+	var out := {}
+	var c: Dictionary = get_piece(id).get("cost", {})
+	for k: String in c.keys():
+		out[StringName(k)] = int(c[k])
 	return out
 
 
@@ -77,6 +99,14 @@ func validate() -> PackedStringArray:
 			for id: String in y.keys():
 				if not items.has(StringName(id)):
 					errors.append("node %s: unknown %s item %s" % [kind, field, id])
+	const SNAPS := ["ground_grid", "edge", "corner", "top", "doorway", "ground", "ground_or_floor"]
+	for pid: StringName in pieces.keys():
+		var pd: Dictionary = pieces[pid]
+		if not str(pd.get("snap", "")) in SNAPS:
+			errors.append("piece %s: unknown snap mode %s" % [pid, pd.get("snap")])
+		for id: String in pd.get("cost", {}).keys():
+			if not items.has(StringName(id)):
+				errors.append("piece %s: unknown cost item %s" % [pid, id])
 	return errors
 
 

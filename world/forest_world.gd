@@ -15,6 +15,7 @@ const OLD_CAMP := Vector2(62.0, -58.0)
 const STRUCTURE_SCRIPTS := {
 	&"campfire": preload("res://world/campfire.gd"),
 	&"bed": preload("res://world/bed.gd"),
+	&"piece": preload("res://world/building_piece.gd"),
 }
 
 ## true when used as the main-menu backdrop: no gameplay simulation.
@@ -311,7 +312,7 @@ func _build_pois() -> void:
 		Graybox.part(camp, Graybox.cylinder(0.05, 0.06, 3.2, 5), wood,
 			Vector3(-1.6 + i * 0.65, 1.1, -1.2), Vector3(-35, 0, 4.0 * (i % 3)))
 	Graybox.part(camp, Graybox.cylinder(0.06, 0.06, 4.2, 5), wood, Vector3(0, 1.9, -0.3), Vector3(0, 0, 90))
-	Graybox.part(camp, Graybox.box(Vector3(2.4, 0.05, 1.6)), Color(0.5, 0.4, 0.28), Vector3(0.3, 1.25, -0.9), Vector3(-38, 0, 6))
+	Graybox.part(camp, Graybox.box(Vector3(2.4, 1.8, 0.05)), Color(0.5, 0.4, 0.28), Vector3(0.3, 1.25, -1.0), Vector3(-35, 0, 6))
 	for i in 7:
 		var a := TAU * i / 7.0
 		Graybox.part(camp, Graybox.sphere(0.15, 6), Color(0.3, 0.29, 0.27), Vector3(2.5 + cos(a) * 0.5, 0.06, 1.5 + sin(a) * 0.5))
@@ -388,11 +389,90 @@ func spawn_structure(type: StringName, xform: Transform3D, state: Dictionary = {
 		id = "s_%d" % _structure_counter
 	s.set("structure_id", id)
 	s.name = id
+	if s.has_method("pre_setup"):
+		s.pre_setup(state)
 	structures_root.add_child(s)
 	s.global_transform = xform
 	if not state.is_empty():
 		s.load_state(state)
 	return s
+
+
+# ---------------------------------------------------------------- building
+
+func get_piece(id: String) -> BuildingPiece:
+	return structures_root.get_node_or_null(id) as BuildingPiece
+
+
+func pieces_near(pos: Vector3, radius: float) -> Array[BuildingPiece]:
+	var out: Array[BuildingPiece] = []
+	for p: BuildingPiece in get_tree().get_nodes_in_group("building"):
+		if not p.is_queued_for_deletion() and p.global_position.distance_to(pos) <= radius:
+			out.append(p)
+	return out
+
+
+## Pieces resting on the given piece.
+func dependents_of(piece: BuildingPiece) -> Array[BuildingPiece]:
+	var out: Array[BuildingPiece] = []
+	for p: BuildingPiece in get_tree().get_nodes_in_group("building"):
+		if p != piece and not p.is_queued_for_deletion() and piece.structure_id in p.supported_by:
+			out.append(p)
+	return out
+
+
+## Removes a piece. Refund goes to `player` (dismantle) or is dropped as pickups (collapse).
+## Dependents that lose all support collapse recursively (25 % refund dropped on the ground).
+func remove_piece(piece: BuildingPiece, ratio: float, player: Node) -> void:
+	if piece.is_queued_for_deletion():
+		return
+	var refund := piece.refund(ratio)
+	if piece.storage:
+		for i in piece.storage.size:
+			var st := piece.storage.get_slot(i)
+			if st:
+				spawn_pickup(st.copy(), piece.global_position + Vector3(randf() * 0.6 - 0.3, 0.8 + 0.2 * i, randf() * 0.6 - 0.3))
+	for id: StringName in refund.keys():
+		if player:
+			player.give_item(id, int(refund[id]))
+		else:
+			spawn_pickup(ItemStack.new(id, int(refund[id])), piece.global_position + Vector3(0, 1.0, 0))
+	var was_dismantle := player != null
+	Events.toast(Loc.t("MSG_DISMANTLED" if was_dismantle else "MSG_COLLAPSED", {"name": piece.display_name()}),
+		&"info" if was_dismantle else &"warn")
+	Events.building_removed.emit(piece, was_dismantle)
+	piece.remove_from_group("building")
+	piece.queue_free()
+	for dep in dependents_of(piece):
+		dep.supported_by.erase(piece.structure_id)
+		if dep.needs_support() and dep.supported_by.is_empty():
+			remove_piece(dep, 0.25, null)
+
+
+## Extra insulation (°C) from shelters: inside a lean-to, or on a roofed foundation.
+func get_shelter_at(pos: Vector3) -> float:
+	var best := 0.0
+	for p: BuildingPiece in pieces_near(pos, 4.0):
+		if not p.built:
+			continue
+		var local := p.global_transform.affine_inverse() * pos
+		if p.piece_id == &"lean_to" and absf(local.x) < 1.6 and local.z > -1.4 and local.z < 1.3 and local.y < 2.2:
+			best = maxf(best, p.shelter_value())
+		elif p.piece_id == &"foundation" and absf(local.x) <= 1.05 and absf(local.z) <= 1.05 \
+				and local.y > 0.0 and local.y < BuildingPiece.WALL_H + 0.5:
+			var supports := dependents_of(p)
+			var walls := 0
+			var roofed := false
+			for sp in supports:
+				if sp.built and sp.piece_class() == "wall":
+					walls += 1
+				for r in dependents_of(sp):
+					if r.built and r.piece_class() == "roof":
+						roofed = true
+			if roofed:
+				# Roof alone shelters a bit; each wall adds more (max with 3+ walls).
+				best = maxf(best, 5.0 + 2.0 * mini(walls, 3))
+	return best
 
 
 ## Bulk time skip (sleep): advances the clock and every time-simulated system consistently.
