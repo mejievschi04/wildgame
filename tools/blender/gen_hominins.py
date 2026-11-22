@@ -13,6 +13,7 @@ from mathutils.kdtree import KDTree
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import gen_humans as gh
+import human_anim
 import fauna_lib as fl
 from bl_ext.blender_org.mpfb.services.humanservice import HumanService
 from bl_ext.blender_org.mpfb.services.targetservice import TargetService
@@ -873,7 +874,7 @@ def build(variant):
             p.shape_key_clear()
     bpy.data.objects.remove(ref)
     gh.export_parts(variant, [body] + [p for p in pieces if "Hair" not in p.name or True], {b.name for b in rig.data.bones})
-    clips = gh.make_clips(rig)
+    clips = human_anim.make_clips(rig)
     bpy.ops.object.select_all(action="DESELECT")
     for o in [body, rig] + pieces:
         o.select_set(True)
