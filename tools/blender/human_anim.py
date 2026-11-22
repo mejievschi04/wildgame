@@ -10,7 +10,7 @@ import gen_humans as gh
 
 FPS = gh.FPS
 X, Y, Z = (1, 0, 0), (0, 1, 0), (0, 0, 1)
-WALK_V, RUN_V = 1.3, 4.6
+WALK_V, RUN_V = 1.6, 4.6
 
 
 def yz_ang(v):
@@ -360,6 +360,44 @@ def clip_death(rig, b):
     return n
 
 
+MOCAP = "/".join(__file__.split("/")[:-3]) + "/art_source/mocap/"   # CMU Graphics Lab Motion Capture Database
+
+
+def mocap_extra(rig, b, fist=0.6):
+    """Per-frame additions to retargeted mocap: curled fingers (the CMU data has none) and the strip
+    skirt following the thighs."""
+    def f(u, local, W, tgt):
+        for n, ax in b.fingers.items():
+            base = 12 if n.startswith("thumb") else (14 + 6 * int(n.split("_")[1]))
+            local[n] = gh.pose_rot(rig, n, tuple(ax), base + fist * (55 if not n.startswith("thumb") else 25))
+        if "skirt_0_1" not in local:
+            return
+        rots = {}
+        for s in ("l", "r"):
+            t = "thigh_" + s
+            d = W[t] @ Vector((0, 1, 0))
+            r0 = tgt.rest[t] @ Vector((0, 1, 0))
+            pitch = math.degrees(math.atan2(d.z, d.y)) - math.degrees(math.atan2(r0.z, r0.y))
+            rots[t] = [(X, pitch)]
+        skirt_follow(rig, rots)
+        for k, parts in rots.items():
+            if k.startswith("skirt_"):
+                q = Quaternion()
+                for ax, deg in parts:
+                    q = gh.pose_rot(rig, k, ax, deg) @ q
+                local[k] = q
+    return f
+
+
+def mocap_clips(rig, b):
+    import mocap_retarget as mr
+    out = {}
+    out["walk"] = mr.cyclic_clip(rig, MOCAP + "08_01.bvh", "walk", WALK_V, FPS, 0.85, 1.4, extra=mocap_extra(rig, b, 0.15))
+    out["run"] = mr.cyclic_clip(rig, MOCAP + "09_02.bvh", "run", RUN_V, FPS, 0.5, 0.85, extra=mocap_extra(rig, b, 0.6))
+    out["attack"] = mr.segment_clip(rig, MOCAP + "02_07.bvh", "attack", 100, 238, FPS, extra=mocap_extra(rig, b, 1.0))
+    return out
+
+
 def make_clips(rig):
     b = Body(rig)
     rig.animation_data_create()
@@ -373,7 +411,17 @@ def make_clips(rig):
         "sit": lambda: clip_sit(rig, b),
         "death": lambda: clip_death(rig, b),
     }
+    try:
+        mc = mocap_clips(rig, b)
+    except Exception as e:  # mocap files missing → procedural fallbacks
+        print("MOCAP unavailable:", e)
+        mc = {}
     for name, fn in clips.items():
+        if name in mc:
+            act, frames = mc[name]
+            tr = rig.animation_data.nla_tracks.new(); tr.name = name
+            st = tr.strips.new(name, 1, act); st.action_frame_end = frames + 1
+            continue
         act = bpy_new_action(name)
         rig.animation_data.action = act
         for pb in rig.pose.bones:

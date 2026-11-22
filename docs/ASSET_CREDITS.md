@@ -38,3 +38,6 @@ game-ready versions live in `assets/`.
 | Tree Stump 01 (`tree_stump_01`) | model 1k | Rob Tuytel | https://polyhaven.com/a/tree_stump_01 |
 | Tree Stump 02 (`tree_stump_02`) | model 1k | Rob Tuytel | https://polyhaven.com/a/tree_stump_02 |
 | Wicker Basket 01 (`wicker_basket_01`) | model 1k | Kuutti Siitonen | https://polyhaven.com/a/wicker_basket_01 |
+
+## Motion capture
+- **CMU Graphics Lab Motion Capture Database** — http://mocap.cs.cmu.edu — "The data used in this project was obtained from mocap.cs.cmu.edu. The database was created with funding from NSF EIA-0196217." Free for research and commercial use with this credit. BVH conversion by Bruce Hahne (cgspeed). Files in `art_source/mocap/`: 08_01, 08_02, 16_15 (walk), 09_02, 09_03 (run), 02_07, 02_08 (swordplay → spear thrust), 14_01 (boxing). Retargeted with `tools/blender/mocap_retarget.py`.

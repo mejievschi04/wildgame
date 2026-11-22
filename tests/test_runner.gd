@@ -26,7 +26,10 @@ func _ready() -> void:
 		SaveManager.delete_slot(s)
 	var total := 0
 	var failed := 0
+	var only := OS.get_environment("TEST_ONLY")  # e.g. TEST_ONLY=wildlife runs test_wildlife.gd only
 	for path: String in SUITES:
+		if only != "" and not path.contains(only):
+			continue
 		var script: GDScript = load(path)
 		if script == null or not script.can_instantiate():
 			total += 1

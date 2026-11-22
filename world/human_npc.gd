@@ -9,7 +9,7 @@ extends CharacterBody3D
 signal died(npc: HumanNPC)
 
 enum State { IDLE, SIT, PATROL, GATHER, SUSPICIOUS, INVESTIGATE, WARN, COMBAT, FLEE, RECOVER, GREET, DEAD }
-const WALK := 1.3
+const WALK := 1.6  # matches the mocap walk cycle (human_anim.WALK_V)
 const RUN := 4.6
 const TURN := 4.0
 const SIGHT := 34.0
