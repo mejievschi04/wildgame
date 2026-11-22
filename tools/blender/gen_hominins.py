@@ -448,17 +448,17 @@ def hair_atlas(name, palette, w=1024, h=1024):
     rows = np.arange(h)
     for c in range(4):
         base = np.array(palette[c], float)
-        for _ in range(90 if c < 2 else 60):
+        for _ in range(230 if c < 2 else 170):                  # dense clumps: must survive mip-mapping + alpha test
             x0 = c * cw + rng.uniform(4, cw - 4)
             y0 = int(h * rng.uniform(0.0, 0.3))                  # staggered roots: no solid band at v=0
             L = int((h - y0) * rng.uniform(0.75, 1.0))
             ys = rows[y0:y0 + L]; t = (ys - y0) / L
             xc = x0 + rng.uniform(-0.04, 0.04) * cw * t + 2.5 * np.sin(t * rng.uniform(5, 12) + rng.uniform(0, 6))
-            wd = rng.uniform(0.9, 1.8) * (1 - 0.6 * t)
+            wd = rng.uniform(2.0, 3.6) * (1 - 0.5 * t)
             colr = base * rng.uniform(0.75, 1.3)
             shade = (0.7 + 0.45 * t)[:, None] * colr[None, :]
-            fade = np.clip((1 - t) * 1.4, 0, 1) * 0.95
-            for dx in range(-3, 4):
+            fade = np.clip((1 - t) * 2.2, 0, 1)
+            for dx in range(-5, 6):
                 xs = np.clip(np.round(xc).astype(int) + dx, c * cw, c * cw + cw - 1)
                 cov = np.clip(wd - np.abs(xs - xc) + 0.5, 0, 1) * fade
                 old = img[ys, xs, 3]
