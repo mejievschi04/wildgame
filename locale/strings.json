@@ -364,6 +364,7 @@
 		"ANIMAL_BOAR": "Кабан",
 		"ANIMAL_REINDEER": "Северный олень",
 		"ANIMAL_FOX": "Лиса",
+		"ANIMAL_HARE": "Заяц-русак",
 		"CARCASS_OF": "Туша: {name}",
 		"TRACKS_OF": "Следы: {name}",
 		"TRACK_FRESH": "совсем свежие",

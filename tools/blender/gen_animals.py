@@ -237,7 +237,7 @@ SPECIES = {"wolf": WOLF, "deer": more.DEER, "roe": more.ROE, "bear": more.BEAR, 
            "rhino": mega.RHINO, "bison": mega.BISON,
            "horse": mega.HORSE, "megaloceros": more.MEGA,
            "lion": mega.LION, "boar": mega.BOAR, "reindeer": more.REIN,
-           "fox": FOX}
+           "fox": FOX, "hare": mega.HARE}
 
 
 # ===================================================================== build

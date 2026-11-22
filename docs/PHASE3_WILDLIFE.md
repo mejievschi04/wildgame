@@ -65,5 +65,23 @@ Tests added (3): every species loads with all 7 clips and shadowless alpha fur; 
 on an attacker; bear is territorial and doesn't hunt; wolves skip mammoths but take roe.
 
 Limitations: procedural sculpts read as realistic at gameplay distance; in extreme close-ups faces are simpler than
-hand-sculpted assets. Fur cards cost ~8 % FPS with five animals in view. Next species (same pipeline): woolly rhino,
-steppe bison, wild horse, giant deer (Megaloceros), cave lion, wild boar, reindeer, fox, hare.
+hand-sculpted assets.
+
+### Pass 2b — nine more species, one commit each (2026-11-22)
+Species files: `species_mega.py` (rhino, bison, horse, lion, boar, hare), `species_more.py` (+ Megaloceros, reindeer),
+`gen_animals.py` (+ fox, a rescaled wolf).
+
+| Species | Diet | Notes |
+|---|---|---|
+| Woolly rhino «Шерстистый носорог» | defensive, charges at 12 m (poor eyesight) | flattened front horn ~1 m, 600 HP |
+| Steppe bison «Степной бизон» | defensive, charges at 6 m, herds 3–5 | dark mane/beard, tawny rear, curved horns |
+| Wild horse «Дикая лошадь» | prey, herds 3–6, fastest (12.5 m/s) | Przewalski dun, erect mane, mealy muzzle |
+| Giant deer «Большерогий олень» | prey, 220 HP — too big for wolves | palmate antlers ~3.4 m span |
+| Cave lion «Пещерный лев» | predator, territorial 10 m, hunts prey ≤ 250 HP | maneless, winter ruff, pounce |
+| Wild boar «Кабан» | defensive, charges at 7 m | bristle crest, tusks |
+| Reindeer «Северный олень» | prey, herds 3–6 | white neck mane, swept antlers |
+| Red fox «Лиса» / Brown hare «Заяц-русак» | prey, solitary | small game (1 meat / 1 hide) |
+
+Director: `Wildlife.MAX_TOTAL = 24` live animals; species flagged `"common"` (deer, roe) are topped up first, the rest
+in seeded-random order. Wolves skip prey above `max_prey_health` (160). With all 14 species in view: ~43 FPS (same as
+an empty scene on the M4 at 1600×900).

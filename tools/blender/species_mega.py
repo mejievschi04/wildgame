@@ -688,3 +688,95 @@ BOAR = {
     "parts": boar_parts, "attack": lambda rig: horn_attack(rig, 0.4, 0.8), "clips": boar_clips,
     "graze_pose": {"neck": -25, "neck2": -12, "head": -20, "arm": 4, "drop": 0.02},
 }
+
+
+# ===================================================================== BROWN HARE (Lepus europaeus)
+
+HARE_J = mirror_joints({
+    "nose": (0, 0.30, 0.255), "head": (0, 0.20, 0.30), "neck2": (0, 0.15, 0.28), "neck": (0, 0.10, 0.26),
+    "chest": (0, 0.05, 0.24), "spine": (0, -0.10, 0.27), "hips": (0, -0.22, 0.24),
+    "tail": (0, -0.28, 0.20), "tail2": (0, -0.31, 0.19), "tail3": (0, -0.32, 0.18),
+    "ear.L": (0.022, 0.17, 0.33), "ear_t.L": (0.045, 0.09, 0.52),
+    "sh.L": (0.04, 0.07, 0.17), "el.L": (0.04, 0.05, 0.10), "ca.L": (0.035, 0.08, 0.03), "fh.L": (0.035, 0.11, 0.01),
+    "hp.L": (0.05, -0.20, 0.17), "st.L": (0.06, -0.10, 0.11), "ho.L": (0.05, -0.26, 0.04), "hh.L": (0.05, -0.12, 0.01),
+})
+HARE_EYE = (0.040, 0.225, 0.30)
+
+
+def hare_sculpt(J):
+    sc = Sculpt()
+    sc.ell((0, -0.06, 0.20), (0.08, 0.17, 0.10), (-8, 0, 0), k=0.03)   # arched body
+    sc.ell((0, 0.06, 0.18), (0.065, 0.07, 0.08), k=0.03)
+    for s in (1, -1):
+        sc.ell((0.045 * s, -0.17, 0.15), (0.045, 0.09, 0.08), k=0.025)  # powerful haunch
+    sc.cone((0, 0.05, 0.22), (0, 0.16, 0.28), 0.05, 0.04, k=0.025)
+    sc.ell((0, 0.21, 0.29), (0.045, 0.07, 0.045), k=0.015)
+    sc.ell((0, 0.22, 0.275), (0.05, 0.04, 0.035), k=0.015)
+    sc.ell((0, 0.275, 0.265), (0.026, 0.032, 0.026), k=0.02)
+    for s in (1, -1):
+        sc.sphere((0.046 * s, HARE_EYE[1], HARE_EYE[2]), 0.012, k=0.005, sub=True)
+        sc.leaf((0.022 * s, 0.17, 0.32), (0.045 * s, 0.09, 0.52), 0.028, 0.006, (s * 0.6, 0.6, 0.3), k=0.008)
+        L = lambda k: X(J[k + ".L"], s)
+        sc.cone(L("sh"), L("el"), 0.022, 0.014, k=0.012)
+        sc.cone(L("el"), L("ca"), 0.012, 0.009, k=0.008)
+        sc.cone(L("ca"), L("fh"), 0.009, 0.01, k=0.005)
+        sc.ell(L("fh"), (0.012, 0.02, 0.008), k=0.005)
+        sc.cone(L("hp"), L("st"), 0.04, 0.025, k=0.015)
+        sc.cone(L("st"), L("ho"), 0.018, 0.01, k=0.01)
+        sc.ell(((0.05 * s), -0.19, 0.016), (0.014, 0.075, 0.011), k=0.008)   # long hind foot
+    sc.sphere((0, -0.29, 0.19), 0.022, k=0.01)                                  # scut
+    return sc
+
+
+def hare_coat(p, n, bone):
+    x, y, z = p
+    pb = part(bone)
+    tawny, dark, white, black = (0.54, 0.42, 0.28), (0.36, 0.28, 0.19), (0.88, 0.86, 0.80), (0.08, 0.07, 0.06)
+    fur, rough = 1.0, 0.85
+    c = mix(tawny, dark, (n[2] - 0.4) * 1.5)
+    c = mix(c, white, (-n[2] - 0.4) * 2.5)                                 # white belly
+    if pb in ("head", "snout"):
+        c = tawny
+        if y > 0.25 and z < 0.27:
+            c = mix(tawny, white, 0.4)                                      # pale whisker pads
+        if y > 0.298:
+            c, fur = (0.30, 0.22, 0.20), 0.3
+        if abs(abs(x) - HARE_EYE[0]) < 0.016 and abs(y - HARE_EYE[1]) < 0.016 and abs(z - HARE_EYE[2]) < 0.014:
+            c = mix(c, white, 0.6)                                          # pale eye ring
+    if pb == "ear":
+        c = black if z > 0.46 else mix(tawny, dark, 0.3)
+    if pb in ("tail", "tail_tip") or y < -0.26:
+        c = black if n[2] > 0.3 else white
+    return c, fur, rough
+
+
+def hare_hair(p, n, bone):
+    pb = part(bone)
+    if pb in ("ear",):
+        return 0.0, 0, 0, 0, (0, 0, -1)
+    if pb in ("tail", "tail_tip") or p[1] < -0.26:
+        return 0.025, 0.5, 0.2, 0.012, (0, -1, 0.3)
+    if pb in TORSO or pb in ("neck", "neck2", "thigh"):
+        return 0.02, 0.15, 0.4, 0.01, (0, -1, -0.3)
+    return 0.0, 0, 0, 0, (0, 0, -1)
+
+
+def hare_clips(rig):
+    walk = {"period": 0.6, "duty": 0.35, "amp_f": 25, "amp_h": 28, "lift": 50,
+            "phases": {"hL": 0.0, "hR": -0.03, "fL": -0.45, "fR": -0.55},
+            "bob": 0.015, "bob_freq": 1, "spine": 10, "yaw": 0, "head": 2, "tail": 2}
+    run = {"period": 0.3, "duty": 0.28, "amp_f": 45, "amp_h": 50, "lift": 70,
+           "phases": {"hL": 0.0, "hR": -0.03, "fL": -0.42, "fR": -0.5},
+           "bob": 0.04, "bob_freq": 1, "spine": 18, "yaw": 0, "head": 2, "tail": 2}
+    return std_clips(rig, HARE, walk, run)
+
+
+HARE = {
+    "name": "Hare", "J": HARE_J, "sculpt": hare_sculpt, "voxel": 0.003, "tris": 8000,
+    "coat": hare_coat, "hair": hare_hair, "card_density": 14000,
+    "hair_palette": [(0.54, 0.42, 0.28), (0.36, 0.28, 0.19), (0.88, 0.86, 0.80), (0.08, 0.07, 0.06)],
+    "fur_scale": 700.0, "fur_stretch": 7.0, "bump": 0.4,
+    "eyes": [((0.038, 0.225, 0.30), 0.0095)], "eye_color": (0.32, 0.20, 0.07),
+    "attack": lambda rig: horn_attack(rig, 0.05, 0.5), "clips": hare_clips,
+    "graze_pose": {"neck": -25, "neck2": -15, "head": -10, "arm": 0, "drop": 0.01},
+}
