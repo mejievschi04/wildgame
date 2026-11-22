@@ -186,7 +186,8 @@ def skin_attributes(body, spec, sex, lm, hf):
     me = body.data
     n = len(me.vertices)
     tone = np.zeros((n, 4)); dirt = np.zeros(n); paint = np.zeros(n); brow = np.zeros(n); oily = np.zeros(n); wrinkle = np.zeros(n)
-    scalp = np.zeros(n); beardz = np.zeros(n)
+    scalp = np.zeros(n); beardz = np.zeros(n); mud = np.zeros(n); soot = np.zeros(n); scar = np.zeros(n); sweat = np.zeros(n)
+    scars = spec.get("scars", [])
     base = Vector(spec["skin"][sex]); red = Vector(spec.get("skin_red", (0.62, 0.30, 0.24)))
     age = spec["macro"][sex]["age"]
     for v in me.vertices:
@@ -217,6 +218,25 @@ def skin_attributes(body, spec, sex, lm, hf):
             dirt[v.index] = max(dirt[v.index], 0.6 * max(0.0, 1 - (c.z - lm["ankle"].z) / 0.35))
         if b in ("calf_l", "calf_r") and abs(c.z - lm["knee"].z) < 0.06 and c.y < 0:
             t = t.lerp(red, 0.15)                                                 # knees
+        if c.z < lm["knee"].z + 0.05:
+            mud[v.index] = min(1.0, (lm["knee"].z + 0.05 - c.z) / 0.3)          # dried mud up the shins
+        if b == "head":
+            xx, yy, zz = hcoords(c, hf)
+            if c.x > 0 and yy < 0.4 and 0.35 < zz < 0.6 and xx > 0.45:
+                soot[v.index] = 0.8                                               # smudged cheek (one side)
+            if yy < 0.3 and 0.82 < zz < 0.9 and -0.02 < c.x < 0.05:
+                soot[v.index] = 0.6
+            if yy < 0.45 and zz > 0.7:
+                sweat[v.index] = 1.0
+        if b in ("spine_03", "spine_02") and c.y < 0:
+            sweat[v.index] = max(sweat[v.index], 0.7)
+        for a, bb, w in scars:                                                    # healed scars (body-space segments)
+            A, B = Vector(a), Vector(bb)
+            ab = B - A
+            u = max(0.0, min(1.0, (c - A).dot(ab) / ab.length_squared))
+            dd = (c - (A + ab * u)).length
+            if dd < w:
+                scar[v.index] = max(scar[v.index], 1 - dd / w)
         tone[v.index, :3] = lin(tuple(t)); tone[v.index, 3] = 1
     nb = [[] for _ in range(n)]
     for e in me.edges:
@@ -228,10 +248,11 @@ def skin_attributes(body, spec, sex, lm, hf):
             arr = np.array([0.5 * arr[i] + 0.5 * (arr[nb[i]].mean() if nb[i] else arr[i]) for i in range(n)])
         return arr
     paint = smooth(paint, 2); scalp = smooth(scalp, 3); beardz = smooth(beardz, 3); brow = smooth(brow, 2)
+    soot = smooth(soot, 3); scar = smooth(scar, 1); sweat = smooth(sweat, 3)
     ca = me.color_attributes.new("Tone", "FLOAT_COLOR", "POINT")
     ca.data.foreach_set("color", tone.astype(np.float32).ravel())
     for nm, arr in (("dirt", dirt), ("paint", paint), ("brow", np.clip(brow, 0, 1)), ("oily", oily), ("wrinkle", wrinkle),
-                    ("m_scalp", scalp), ("beardz", beardz)):
+                    ("m_scalp", scalp), ("beardz", beardz), ("mud", mud), ("soot", soot), ("scar", scar), ("sweat", sweat)):
         at = me.attributes.new(nm, "FLOAT", "POINT")
         at.data.foreach_set("value", arr.astype(np.float32))
 
@@ -243,7 +264,7 @@ def skin_bake_material(spec, sex):
     b = N["Principled BSDF"]
     tone = N.new("ShaderNodeVertexColor"); tone.layer_name = "Tone"
     A = {}
-    for nm in ("dirt", "paint", "brow", "oily", "wrinkle", "m_scalp", "beardz"):
+    for nm in ("dirt", "paint", "brow", "oily", "wrinkle", "m_scalp", "beardz", "mud", "soot", "scar", "sweat"):
         a = N.new("ShaderNodeAttribute"); a.attribute_name = nm; A[nm] = a
     tc = N.new("ShaderNodeTexCoord")
     uv = N.new("ShaderNodeUVMap"); uv.uv_map = "UVMap"
@@ -283,6 +304,19 @@ def skin_bake_material(spec, sex):
     dm = N.new("ShaderNodeMath"); dm.operation = "MULTIPLY"
     L.new(A["dirt"].outputs["Fac"], dm.inputs[0]); L.new(dn.outputs["Fac"], dm.inputs[1])
     col = mixc(dm.outputs[0], col, (0.24, 0.18, 0.12), 1.2)
+    # dried mud: splattered edge (noise threshold climbing up the shin), grey-brown
+    mn = noise(25.0, 6.0, 0.75)
+    me_ = N.new("ShaderNodeMath"); me_.operation = "MULTIPLY_ADD"
+    L.new(mn.outputs["Fac"], me_.inputs[0]); me_.inputs[1].default_value = 0.9; me_.inputs[2].default_value = -0.45
+    me2 = N.new("ShaderNodeMath"); me2.operation = "ADD"; L.new(A["mud"].outputs["Fac"], me2.inputs[0]); L.new(me_.outputs[0], me2.inputs[1])
+    me3 = N.new("ShaderNodeMapRange"); me3.clamp = True; L.new(me2.outputs[0], me3.inputs["Value"])
+    me3.inputs["From Min"].default_value = 0.45; me3.inputs["From Max"].default_value = 0.6
+    col = mixc(me3.outputs["Result"], col, (0.33, 0.27, 0.20), 0.85)
+    # soot smears and healed scars
+    sn = noise(60.0, 4.0, 0.6)
+    sm = N.new("ShaderNodeMath"); sm.operation = "MULTIPLY"; L.new(A["soot"].outputs["Fac"], sm.inputs[0]); L.new(sn.outputs["Fac"], sm.inputs[1])
+    col = mixc(sm.outputs[0], col, (0.10, 0.09, 0.08), 1.2)
+    col = mixc(A["scar"].outputs["Fac"], col, (0.72, 0.52, 0.46), 0.75)
     # lips & eyelids from MPFB's UV masks
     for img, colr, k in (("mpfb_lips.jpg", spec.get("lips", (0.42, 0.22, 0.20)), 0.55), ("mpfb_eyelids.jpg", (0.30, 0.20, 0.17), 0.25)):
         p = os.path.join(MPFB_TEX, img)
@@ -334,8 +368,10 @@ def skin_bake_material(spec, sex):
     L.new(wave.outputs["Fac"], wm.inputs[0]); L.new(A["wrinkle"].outputs["Fac"], wm.inputs[1])
     wm2 = N.new("ShaderNodeMath"); wm2.operation = "MULTIPLY"; wm2.inputs[1].default_value = 0.25
     L.new(wm.outputs[0], wm2.inputs[0]); wm = wm2
-    hs = N.new("ShaderNodeMath"); hs.operation = "MULTIPLY_ADD"
-    L.new(pore.outputs["Fac"], hs.inputs[0]); hs.inputs[1].default_value = 0.6; L.new(wm.outputs[0], hs.inputs[2])
+    hs0 = N.new("ShaderNodeMath"); hs0.operation = "MULTIPLY_ADD"
+    L.new(pore.outputs["Fac"], hs0.inputs[0]); hs0.inputs[1].default_value = 0.6; L.new(wm.outputs[0], hs0.inputs[2])
+    hs = N.new("ShaderNodeMath"); hs.operation = "MULTIPLY_ADD"                      # raised scar tissue
+    L.new(A["scar"].outputs["Fac"], hs.inputs[0]); hs.inputs[1].default_value = 0.8; L.new(hs0.outputs[0], hs.inputs[2])
     bump = N.new("ShaderNodeBump"); bump.inputs["Strength"].default_value = 0.35; bump.inputs["Distance"].default_value = 0.0015
     bump.inputs["Strength"].default_value = 0.22
     L.new(hs.outputs[0], bump.inputs["Height"]); L.new(bump.outputs["Normal"], b.inputs["Normal"])
@@ -346,7 +382,13 @@ def skin_bake_material(spec, sex):
     L.new(A["dirt"].outputs["Fac"], r2.inputs[0]); r2.inputs[1].default_value = 0.2; L.new(r1.outputs[0], r2.inputs[2])
     r3 = N.new("ShaderNodeMath"); r3.operation = "MULTIPLY_ADD"
     L.new(A["m_scalp"].outputs["Fac"], r3.inputs[0]); r3.inputs[1].default_value = 0.4; L.new(r2.outputs[0], r3.inputs[2])
-    L.new(r3.outputs[0], b.inputs["Roughness"])
+    swn = noise(120.0, 3.0, 0.6)                                                   # sweat sheen in patches
+    swm = N.new("ShaderNodeMath"); swm.operation = "MULTIPLY"; L.new(A["sweat"].outputs["Fac"], swm.inputs[0]); L.new(swn.outputs["Fac"], swm.inputs[1])
+    r4 = N.new("ShaderNodeMath"); r4.operation = "MULTIPLY_ADD"; r4.use_clamp = True
+    L.new(swm.outputs[0], r4.inputs[0]); r4.inputs[1].default_value = -0.45; L.new(r3.outputs[0], r4.inputs[2])
+    r5 = N.new("ShaderNodeMath"); r5.operation = "MULTIPLY_ADD"; r5.use_clamp = True    # mud is matte
+    L.new(A["mud"].outputs["Fac"], r5.inputs[0]); r5.inputs[1].default_value = 0.25; L.new(r4.outputs[0], r5.inputs[2])
+    L.new(r5.outputs[0], b.inputs["Roughness"])
     return m
 
 
@@ -396,7 +438,7 @@ def bake_skin(body, spec, sex, name, size=2048):
     L.new(tr.outputs["Color"], b.inputs["Roughness"])
     b.inputs["Specular IOR Level"].default_value = 0.45
     body.data.materials.clear(); body.data.materials.append(fm)
-    for nm in ("dirt", "paint", "brow", "oily", "wrinkle", "m_scalp", "beardz"):
+    for nm in ("dirt", "paint", "brow", "oily", "wrinkle", "m_scalp", "beardz", "mud", "soot", "scar", "sweat"):
         if nm in body.data.attributes:
             body.data.attributes.remove(body.data.attributes[nm])
     body.data.color_attributes.remove(body.data.color_attributes["Tone"])
@@ -570,8 +612,9 @@ def strand_cards(name, src, region, style, palette, collide, weight_src, density
                     want = layer + 0.002
                     if off < want:
                         q = q + nrm * (want - off)
-                    elif st.get("hug") and off < st["hug"] and q.z > st.get("hug_min_z", -1e9):
-                        q = loc + nrm * want                   # lie along the scalp while over the head
+                    elif st.get("hug") and off < st["hug"] and q.z > st.get("hug_min_z", -1e9) \
+                            and not (st.get("face_box") and st["face_box"](q)):
+                        q = loc + nrm * want                   # lie along the scalp while over the head (never over the face)
                 pts.append(q.copy())
             for i, q in enumerate(pts):
                 verts += [q - side * wd / 2, q + side * wd / 2]
@@ -889,6 +932,88 @@ def smooth01(x):
     return x * x * (3 - 2 * x)
 
 
+# ============================================================== accessories (asymmetric clutter, as in the concept)
+
+def blob(name, c, radii, mat, rot=(0, 0, 0)):
+    from mathutils import Euler
+    bm = bmesh.new()
+    bmesh.ops.create_uvsphere(bm, u_segments=14, v_segments=10, radius=1.0)
+    R = Euler([math.radians(a) for a in rot], "XYZ").to_matrix()
+    for v in bm.verts:
+        v.co = R @ Vector((v.co.x * radii[0], v.co.y * radii[1], v.co.z * radii[2])) + Vector(c)
+    uvl = bm.loops.layers.uv.new("UVMap")
+    for f in bm.faces:
+        for lp in f.loops:
+            lp[uvl].uv = (lp.vert.co.x * 8 + lp.vert.co.y * 8, lp.vert.co.z * 8)
+    me = bpy.data.meshes.new(name); bm.to_mesh(me); bm.free()
+    o = bpy.data.objects.new(name, me); bpy.context.scene.collection.objects.link(o)
+    o.data.materials.append(mat)
+    for p in o.data.polygons:
+        p.use_smooth = True
+    return o
+
+
+def accessories(body, sex, lm, hf, spec):
+    tree, _ = bvh_of([body])
+    t = spec["leather"]
+    strap = leather("M_StrapAcc", tuple(x * 0.45 for x in t), 4.0)
+    hide = leather("M_Pouch", tuple(x * 0.7 for x in t), 3.0)
+    bone = gh.mat_flat("M_Bone", (0.74, 0.68, 0.56), 0.5)
+    feather = gh.mat_flat("M_Feather", (0.30, 0.24, 0.18), 0.7)
+    out = []
+    hip = lm["hip"].z
+    # pouch on the right hip, hanging from the belt
+    loc, nrm, _, _ = tree.find_nearest(Vector((-0.2, lm["hip"].y + 0.03, hip + 0.02)))
+    pc = loc + nrm * 0.045
+    out.append(blob("Pouch", tuple(pc), (0.03, 0.05, 0.06), hide, rot=(0, 0, 15)))
+    out.append(blob("PouchFlap", tuple(pc + nrm * 0.022 + Vector((0, 0, 0.035))), (0.028, 0.05, 0.025), strap, rot=(0, 0, 15)))
+    # bone talismans on the left hip
+    loc, nrm, _, _ = tree.find_nearest(Vector((0.2, lm["hip"].y - 0.02, hip + 0.08)))
+    top = loc + nrm * 0.03
+    for k, (dx, ln) in enumerate(((0.0, 0.11), (0.025, 0.08), (-0.02, 0.09))):
+        a = top + Vector((dx, 0, 0))
+        out.append(fl.tube("Cord", [tuple(a), tuple(a + Vector((0, 0, -0.04)) + nrm * 0.01)], 0.002, 0.002, ring=5, n=4, mat=strap))
+        b0 = a + Vector((0, 0, -0.04)) + nrm * 0.012
+        out.append(fl.tube("Talisman", [tuple(b0), tuple(b0 + Vector((0.005, 0, -ln * 0.5)) + nrm * 0.004), tuple(b0 + Vector((0, 0, -ln)) + nrm * 0.006)],
+                           0.009, 0.006, ring=7, n=7, mat=bone))
+    # armband with teeth on the right upper arm
+    sh, el = Vector((-lm["shoulder"].x, lm["shoulder"].y, lm["shoulder"].z)), Vector((-lm["elbow_l"].x, lm["elbow_l"].y, lm["elbow_l"].z))
+    ax = (el - sh).normalized(); u = ax.orthogonal().normalized(); w = ax.cross(u)
+    c = sh + (el - sh) * 0.55
+    pts = [tuple(c + (u * math.cos(q) + w * math.sin(q)) * 0.12) for q in (i / 20 * math.tau for i in range(20))]
+    band = ribbon("Armband", tree, pts, 0.025, strap, lift=0.004, closed=True)
+    out.append(band)
+    for k in range(4):
+        q = -0.6 + k * 0.4
+        p0 = c + (u * math.cos(q) + w * math.sin(q)) * 0.12
+        loc, nrm, _, _ = tree.find_nearest(p0)
+        base = loc + nrm * 0.012
+        out.append(fl.tube("ArmTooth", [tuple(base), tuple(base + ax * 0.012 + nrm * 0.004), tuple(base + ax * 0.028 + nrm * 0.006)],
+                           0.0045, 0.001, ring=5, n=5, mat=bone, power=0.7))
+    # leather strips spiralling up both shins above the boots
+    for sx in (1, -1):
+        knee = Vector((lm["knee"].x * sx, lm["knee"].y, lm["knee"].z))
+        ank = Vector((lm["ankle"].x * sx, lm["ankle"].y, lm["ankle"].z))
+        ax = (knee - ank).normalized(); u = ax.orthogonal().normalized(); w = ax.cross(u)
+        pts = []
+        for i in range(70):
+            tt = i / 69
+            cc = ank + (knee - ank) * (0.62 + 0.3 * tt)
+            q = tt * 3.0 * math.tau * sx
+            pts.append(tuple(cc + (u * math.cos(q) + w * math.sin(q)) * 0.12))
+        out.append(ribbon("LegWrap", tree, pts, 0.022, strap, lift=0.006))
+    # a feather tied in the hair behind the left ear
+    hb = Vector((0.075, hf["y"][1] - 0.04, hf["z"][0] + 0.62 * (hf["z"][1] - hf["z"][0])))
+    fobj = fl.tube("Feather", [tuple(hb), tuple(hb + Vector((0.02, 0.05, -0.06))), tuple(hb + Vector((0.03, 0.08, -0.15)))], 0.016, 0.003,
+                   ring=8, n=12, mat=feather, power=0.6)
+    for v in fobj.data.vertices:                        # flatten into a vane
+        d = v.co - hb
+        side = Vector((1, -0.4, 0)).normalized()
+        v.co = hb + d - side * d.dot(side) * 0.85
+    out.append(fobj)
+    return out
+
+
 # ============================================================== species (concept sheet)
 
 def soft(d, w):
@@ -926,6 +1051,9 @@ SAPIENS = {
     "paint": paint_sapiens,
     "hair_len": {"M": 0.34, "F": 0.46}, "beard": {"M": 0.07, "F": 0.0},
     "garments": garments_sapiens, "necklace": True,
+    "scars": [((-0.055, -0.10, 1.60), (-0.035, -0.11, 1.57), 0.006),      # cheek
+              ((0.27, -0.03, 1.22), (0.30, -0.06, 1.13), 0.008),          # left upper arm
+              ((-0.06, -0.13, 1.28), (0.05, -0.14, 1.22), 0.007)],        # chest slash
 }
 SPECIES = {"Sapiens": SAPIENS}
 
@@ -950,6 +1078,8 @@ def build(variant):
     eye_objs = make_eyes(eyes, f"Human_{variant}", spec["iris"])
     gar = spec["garments"](ref, sex, lm, spec)
     pieces += list(gar.values())
+    acc_objs = accessories(ref, sex, lm, hf, spec) if spec.get("accessories", True) else []
+    pieces += acc_objs
     collide = bvh_of([ref] + pieces)
     # head hair: scalp from a hairline (low at the back, high on the forehead), drapes over shoulders
     hl = spec["hair_len"][sex]
@@ -965,11 +1095,16 @@ def build(variant):
             flow = Vector((math.copysign(0.8, c.x), 1.0, 0.2))
         else:
             flow = (out.normalized() if out.length > 1e-3 else Vector((0, 1, 0))) * 0.6 + Vector((0, 0.5, -0.6))
-        return {"length": hl * (0.75 if front else 1.0), "width": 0.013, "lift": 0.0, "droop": 0.9 if not front else 0.7,
+        return {"face_box": face_box, "length": hl * (0.75 if front else 1.0), "width": 0.013, "lift": 0.0, "droop": 0.9 if not front else 0.7,
                 "flow": tuple(flow), "segs": 7, "layer": 0.003 + 0.006 * (1 - zz), "follow": 0.9,
                 "hug": 0.15, "hug_min_z": hf["z"][0] + 0.45 * (hf["z"][1] - hf["z"][0])}
     hair_pal = [tuple(x * k for x in spec["hair"][sex]) for k in (1.0, 1.35, 0.75, 1.6)]
     face_y = hf["y"][0]
+    hairline_z = hf["z"][0] + 0.8 * (hf["z"][1] - hf["z"][0])
+
+    def face_box(q):   # the face: forehead below the hairline down to the chin, front half of the head
+        return q.y < face_y + 0.09 and q.z < hairline_z and abs(q.x) < 0.075
+
     def avoid(q):   # keep strands off the face: anything in front of it slides out to the side
         zz = (q.z - hf["z"][0]) / (hf["z"][1] - hf["z"][0])
         if q.y < face_y + 0.06 and -0.1 < zz < 0.8 and abs(q.x) < 0.085:
@@ -1003,6 +1138,8 @@ def build(variant):
             fl.rigid_to_bone(o, bone)
             extra.append(o)
     for o in pieces:
+        if o.name.startswith("Feather") and not o.vertex_groups:
+            fl.rigid_to_bone(o, "head")
         if not o.vertex_groups:
             bone_weights_rigid(o, ref, BONE_NAMES)
     for o in eye_objs + extra:
