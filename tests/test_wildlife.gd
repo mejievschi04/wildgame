@@ -218,4 +218,8 @@ func test_bear_is_territorial_and_wolves_skip_megafauna() -> void:
 	var prey := wolf._find_prey()
 	check(prey != mam, "wolves don't pick a mammoth as prey")
 	check(prey == null or prey == roe, "roe deer are valid wolf prey")
+	var stag := _spawn(s, &"megaloceros", Vector3(58, 0, 3))
+	roe.queue_free()
+	await tree.physics_frame
+	check(wolf._find_prey() != stag, "a giant deer is too big for a wolf")
 	await _teardown(s)

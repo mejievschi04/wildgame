@@ -479,3 +479,71 @@ MAMMOTH = {
     "graze_extra": lambda r, t: r.update({"snout2": (25, 0, 5 * math.sin(t * math.tau)), "snout3": (35, 0, 0), "snout4": (50 + 10 * math.sin(t * math.tau * 2), 0, 0)}),
     "alert_tail": 30,
 }
+
+
+# ===================================================================== GIANT DEER (Megaloceros giganteus) stag
+
+MEGA_F = 1.45
+
+
+def megaloceros_sculpt(J):
+    f = MEGA_F
+    sc = deer_sculpt(DEER_J).scaled(f)
+    sc.ell((0, 0.40 * f, 1.18 * f), (0.11 * f, 0.20 * f, 0.10 * f), (-10, 0, 0), k=0.1)   # withers hump
+    sc.cone((0, 0.36 * f, 0.99 * f), (0, 0.77 * f, 1.46 * f), 0.18 * f, 0.085 * f, k=0.1)  # bull neck
+    return sc
+
+
+def ellipsoid_mesh(name, c, radii, rot, mat):
+    import bpy, bmesh
+    from mathutils import Euler, Vector
+    bm = bmesh.new()
+    bmesh.ops.create_uvsphere(bm, u_segments=20, v_segments=12, radius=1.0)
+    R = Euler([math.radians(a) for a in rot], "XYZ").to_matrix()
+    for v in bm.verts:
+        v.co = R @ Vector((v.co.x * radii[0], v.co.y * radii[1], v.co.z * radii[2])) + Vector(c)
+    me = bpy.data.meshes.new(name); bm.to_mesh(me); bm.free()
+    obj = bpy.data.objects.new(name, me)
+    bpy.context.scene.collection.objects.link(obj)
+    for p in obj.data.polygons:
+        p.use_smooth = True
+    obj.data.materials.append(mat)
+    return obj
+
+
+def megaloceros_parts():
+    from mathutils import Euler, Vector
+    mat = fl.simple_mat("M_Megaloceros_Antler", (0.42, 0.35, 0.26), 0.65)
+    out = []
+    for s in (1, -1):
+        base = (0.09 * s, 1.19, 2.33)
+        out.append((fl.tube("Beam", [base, (0.30 * s, 1.15, 2.42), (0.56 * s, 1.05, 2.52)], 0.05, 0.035, ring=10, n=12, mat=mat), "head"))
+        out.append((fl.tube("Brow", [(0.13 * s, 1.20, 2.37), (0.15 * s, 1.40, 2.40), (0.13 * s, 1.52, 2.34)], 0.028, 0.007, ring=8, n=10, mat=mat), "head"))
+        rot = (0, -24 * s, 8 * s)
+        c = Vector((0.86 * s, 1.0, 2.64))
+        out.append((ellipsoid_mesh("Palm", tuple(c), (0.44, 0.22, 0.026), rot, mat), "head"))
+        R = Euler([math.radians(a) for a in rot], "XYZ").to_matrix()
+        for k in range(8):
+            a = math.radians(-110 + k * 22)  # rear and outer rim
+            loc_dir = Vector((math.cos(a), math.sin(a), 0))
+            rim = c + R @ Vector((0.42 * math.cos(a) * s, 0.20 * math.sin(a), 0))
+            d = (R @ Vector((loc_dir.x * s, loc_dir.y, 0))).normalized()
+            tip = rim + d * (0.14 + 0.06 * (k % 3)) + Vector((0, 0, 0.09))
+            out.append((fl.tube("Tine", [tuple(rim - d * 0.04), tuple(rim + d * 0.1), tuple(tip)], 0.025, 0.006, ring=7, n=8, mat=mat), "head"))
+    return out
+
+
+MEGA = dict(DEER)
+MEGA.update({
+    "name": "Megaloceros", "J": scaleJ(DEER_J, MEGA_F), "scale": MEGA_F, "sculpt": megaloceros_sculpt,
+    "voxel": 0.012, "tris": 16000,
+    "coat": make_cervid_coat(MEGA_F, [(0.50, 0.40, 0.29), (0.42, 0.33, 0.24), (0.70, 0.62, 0.50), (0.78, 0.70, 0.56),
+                                      (0.33, 0.26, 0.20), (0.45, 0.37, 0.28), (0.22, 0.18, 0.15), (0.30, 0.23, 0.17)]),
+    "hair": make_cervid_hair(MEGA_F, 0.12), "card_density": 1500,
+    "hair_palette": [(0.50, 0.40, 0.29), (0.30, 0.23, 0.17), (0.70, 0.62, 0.50), (0.42, 0.33, 0.24)],
+    "fur_scale": 220.0,
+    "eyes": [((0.055 * MEGA_F, 0.897 * MEGA_F, 1.555 * MEGA_F), 0.0165 * MEGA_F)],
+    "parts": megaloceros_parts,
+})
+MEGA["clips"] = cervid_clips(MEGA)
+MEGA["attack"] = cervid_attack(MEGA)

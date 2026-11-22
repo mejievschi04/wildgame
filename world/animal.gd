@@ -502,7 +502,7 @@ func _find_prey() -> Animal:
 	var best: Animal = null
 	var best_d := float(def.sight)
 	for a: Animal in get_tree().get_nodes_in_group("animal"):
-		if a == self or not a.is_prey() or a.is_dead():
+		if a == self or not a.is_prey() or a.is_dead() or a.max_health > float(def.get("max_prey_health", 1e9)):
 			continue
 		var d := a.global_position.distance_to(global_position)
 		if d < best_d and (_line_of_sight(a.global_position + Vector3.UP) or smells(a.global_position)):
