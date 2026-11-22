@@ -429,3 +429,148 @@ HORSE = {
     "attack": horse_kick, "clips": horse_clips,
     "graze_pose": {"neck": -50, "neck2": -20, "head": -12, "arm": 8, "drop": 0.03},
 }
+
+
+# ===================================================================== CAVE LION (Panthera spelaea)
+
+LION_J = mirror_joints({
+    "nose": (0, 1.30, 1.03), "head": (0, 1.03, 1.12), "neck2": (0, 0.92, 1.10), "neck": (0, 0.75, 1.10),
+    "chest": (0, 0.50, 1.08), "spine": (0, 0.0, 1.02), "hips": (0, -0.50, 1.05),
+    "tail": (0, -0.66, 1.02), "tail2": (0, -0.92, 0.66), "tail3": (0, -1.12, 0.40),
+    "ear.L": (0.10, 0.98, 1.22), "ear_t.L": (0.12, 0.96, 1.31),
+    "sh.L": (0.15, 0.52, 0.88), "el.L": (0.14, 0.38, 0.58), "ca.L": (0.13, 0.44, 0.16), "fh.L": (0.13, 0.52, 0.04),
+    "hp.L": (0.14, -0.52, 0.92), "st.L": (0.16, -0.32, 0.62), "ho.L": (0.13, -0.62, 0.30), "hh.L": (0.13, -0.52, 0.04),
+})
+LION_EYE = (0.075, 1.17, 1.14)
+
+
+def lion_sculpt(J):
+    sc = Sculpt()
+    sc.ell((0, 0.20, 0.82), (0.25, 0.42, 0.31), k=0.1)            # deep chest
+    sc.ell((0, 0.48, 0.80), (0.17, 0.14, 0.20), (20, 0, 0), k=0.08)
+    sc.ell((0, -0.20, 0.84), (0.21, 0.36, 0.24), k=0.1)           # waist
+    sc.ell((0, -0.30, 0.71), (0.12, 0.22, 0.08), k=0.08)          # primordial pouch
+    sc.ell((0, -0.05, 1.00), (0.14, 0.50, 0.07), k=0.08)          # supple back
+    sc.ell((0, -0.50, 0.96), (0.15, 0.18, 0.14), k=0.08)          # pelvis
+    for s in (1, -1):
+        sc.ell((0.12 * s, -0.45, 0.82), (0.10, 0.18, 0.22), (-12, 0, 0), k=0.07)
+        sc.ell((0.14 * s, 0.45, 0.92), (0.08, 0.14, 0.22), (25, 0, 0), k=0.07)
+        sc.ell((0.11 * s, -0.32, 0.74), (0.08, 0.12, 0.09), k=0.07)
+    sc.cone((0, 0.45, 0.95), (0, 0.92, 1.08), 0.22, 0.135, k=0.08)  # powerful neck
+    sc.ell((0, 1.00, 1.13), (0.14, 0.16, 0.12), k=0.05)           # low, broad cranium
+    sc.ell((0, 1.08, 1.08), (0.19, 0.10, 0.10), k=0.04)           # wide zygomatic arches
+    sc.ell((0, 1.17, 1.13), (0.06, 0.13, 0.04), (15, 0, 0), k=0.04)  # nose bridge
+    sc.cone((0, 1.10, 1.07), (0, 1.30, 1.02), 0.10, 0.075, k=0.04)  # broad muzzle
+    sc.ell((0.05, 1.26, 0.99), (0.06, 0.06, 0.05), k=0.03)        # whisker pads
+    sc.ell((-0.05, 1.26, 0.99), (0.06, 0.06, 0.05), k=0.03)
+    sc.cone((0, 1.00, 0.98), (0, 1.25, 0.95), 0.08, 0.05, k=0.04)  # jaw
+    sc.ell((0, 1.25, 0.94), (0.05, 0.04, 0.04), k=0.03)           # chin
+    sc.ell((0, 1.315, 1.045), (0.045, 0.025, 0.03), k=0.02)       # nose leather
+    for s in (1, -1):
+        sc.sphere((0.083 * s, LION_EYE[1], LION_EYE[2]), 0.022, k=0.012, sub=True)
+        sc.leaf((0.10 * s, 0.98, 1.21), (0.12 * s, 0.96, 1.31), 0.06, 0.015, (0, 1, 0), k=0.02)
+        L = lambda k: X(J[k + ".L"], s)
+        sc.cone(L("sh"), L("el"), 0.12, 0.085, k=0.06)
+        sc.ell(np.add(L("el"), (0, 0.01, -0.1)), (0.065, 0.07, 0.13), k=0.04)
+        sc.cone(L("el"), L("ca"), 0.08, 0.058, k=0.04)
+        sc.cone(L("ca"), np.add(L("fh"), (0, -0.03, 0.02)), 0.052, 0.05, k=0.03)
+        sc.ell(np.add(L("fh"), (0, 0.0, 0.0)), (0.068, 0.08, 0.045), k=0.03)
+        sc.cone(L("hp"), L("st"), 0.15, 0.09, k=0.06)
+        sc.ell(np.add(L("st"), (0, -0.08, -0.08)), (0.05, 0.07, 0.11), (25, 0, 0), k=0.04)
+        sc.cone(L("st"), L("ho"), 0.07, 0.04, k=0.04)
+        sc.cone(L("ho"), np.add(L("hh"), (0, -0.03, 0.02)), 0.04, 0.04, k=0.03)
+        sc.ell(np.add(L("hh"), (0, 0.0, 0.0)), (0.055, 0.065, 0.038), k=0.03)
+    sc.cone(J["tail"], J["tail2"], 0.045, 0.03, k=0.03)
+    sc.cone(J["tail2"], J["tail3"], 0.03, 0.022, k=0.02)
+    return sc
+
+
+def lion_coat(p, n, bone):
+    x, y, z = p
+    pb = part(bone)
+    tawny, back, cream, white = (0.66, 0.50, 0.32), (0.56, 0.42, 0.27), (0.82, 0.74, 0.60), (0.90, 0.87, 0.80)
+    fur, rough = 1.0, 0.85
+    c = mix(tawny, back, (n[2] - 0.4) * 1.8)
+    c = mix(c, cream, (-n[2] - 0.3) * 2.0)
+    if pb in LEG:
+        c = mix(tawny, cream, (-n[0] * np.sign(x) - 0.2) * 1.2)
+        if z < 0.03:
+            c, fur, rough = (0.15, 0.12, 0.10), 0.0, 0.7
+    if pb in ("head", "snout"):
+        c = tawny
+        if y > 1.22 and z < 1.03:
+            c = white                                                       # white muzzle & chin
+        if abs(abs(x) - 0.07) < 0.03 and 1.12 < y < 1.2 and 1.1 < z < 1.125:
+            c = mix(c, white, 0.6)                                          # pale patch under the eye
+        if y > 1.30 and z > 1.025 and n[2] > -0.2:
+            c, fur, rough = (0.42, 0.29, 0.26), 0.0, 0.35                  # nose leather
+        if z < 0.99 and y > 1.15:
+            c = mix(c, (0.15, 0.12, 0.10), 0.5)                             # lip line
+        if abs(abs(x) - LION_EYE[0]) < 0.025 and abs(y - LION_EYE[1]) < 0.025 and abs(z - LION_EYE[2]) < 0.02:
+            c = mix(c, (0.12, 0.09, 0.07), 0.7)
+    if pb == "ear":
+        c = ((0.22, 0.17, 0.13) if n[1] < 0.2 else cream) if z > 1.24 else tawny
+    if pb == "tail_tip" and y < -1.0:
+        c = (0.09, 0.075, 0.06)
+    return c, fur, rough
+
+
+def lion_hair(p, n, bone):
+    x, y, z = p
+    pb = part(bone)
+    if pb in ("neck", "neck2") or (pb == "head" and y < 1.06 and n[2] < 0.6):
+        return 0.075, 0.25, 0.4, 0.03, (0, -1, -0.3)                       # winter ruff
+    if pb == "head" and abs(n[0]) > 0.6 and y < 1.12:
+        return 0.05, 0.2, 0.2, 0.025, (0, -1, -0.2)                        # cheek fur
+    if pb in TORSO:
+        if n[2] < -0.5:
+            return 0.07, 0.1, 0.9, 0.03, (0, -0.4, -1)                     # belly fringe
+        return 0.035, 0.08, 0.5, 0.022, (0, -1, -0.4)                      # dense coat
+    if pb in ("upperarm", "thigh") and z > 0.45:
+        return 0.03, 0.08, 0.6, 0.02, (0, -0.3, -1)
+    if pb == "tail_tip" and y < -1.02:
+        return 0.13, 0.2, 0.6, 0.04, (0, -0.6, -1)                         # black tuft
+    return 0.0, 0, 0, 0, (0, 0, -1)
+
+
+def lion_pounce(rig):
+    n = int(0.85 * fl.FPS)
+    for f in range(n + 1):
+        t = f / n
+        k = math.sin(min(t / 0.45, 1.0) * math.pi) if t < 0.45 else max(0.0, 1 - (t - 0.45) / 0.55) * 0.25
+        r = fl.zero_pose(rig)
+        r["spine"] = (10 * k, 0, 0)
+        r["chest"] = (8 * k, 0, 0)
+        r["neck"] = (-12 * k, 0, 0)
+        r["head"] = (18 * k, 0, 0)
+        r["snout"] = (-15 * k, 0, 0)
+        r["ear.L"] = (-35 * k, 0, 0)
+        r["ear.R"] = (-35 * k, 0, 0)
+        for s in ("L", "R"):
+            r[f"upperarm.{s}"] = (55 * k, 0, 0)
+            r[f"forearm.{s}"] = (-35 * k, 0, 0)
+            r[f"thigh.{s}"] = (-25 * k, 0, 0)
+        r["tail"] = (20 * k, 0, 0)
+        fl.key(rig, f + 1, r, (0, 0.6 * k, 0.15 * k))
+    return n
+
+
+def lion_clips(rig):
+    walk = {"period": 1.1, "duty": 0.62, "amp_f": 18, "amp_h": 16, "lift": 50,
+            "phases": {"hL": 0.0, "fL": -0.25, "hR": -0.5, "fR": -0.75},
+            "bob": 0.012, "bob_freq": 2, "spine": 1.5, "yaw": 4, "head": 2, "tail": 6}
+    run = {"period": 0.5, "duty": 0.35, "amp_f": 38, "amp_h": 34, "lift": 80,
+           "phases": {"hL": 0.0, "hR": -0.08, "fR": -0.42, "fL": -0.52},
+           "bob": 0.05, "bob_freq": 1, "spine": 12, "yaw": 1, "head": 2, "tail": 10}
+    return std_clips(rig, LION, walk, run)
+
+
+LION = {
+    "name": "Lion", "J": LION_J, "sculpt": lion_sculpt, "voxel": 0.010, "tris": 16000,
+    "coat": lion_coat, "hair": lion_hair, "card_density": 1800,
+    "hair_palette": [(0.66, 0.50, 0.32), (0.62, 0.47, 0.30), (0.82, 0.74, 0.60), (0.12, 0.10, 0.08)],
+    "fur_scale": 240.0, "fur_stretch": 8.0, "bump": 0.45,
+    "eyes": [(LION_EYE, 0.018)], "eye_color": (0.55, 0.42, 0.14),
+    "attack": lion_pounce, "clips": lion_clips,
+    "graze_pose": {"neck": -30, "neck2": -15, "head": -8, "arm": 4, "drop": 0.02},
+}

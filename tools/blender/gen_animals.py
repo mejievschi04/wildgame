@@ -169,7 +169,8 @@ import species_more as more  # noqa: E402  (needs std_clips above)
 import species_mega as mega  # noqa: E402
 SPECIES = {"wolf": WOLF, "deer": more.DEER, "roe": more.ROE, "bear": more.BEAR, "mammoth": more.MAMMOTH,
            "rhino": mega.RHINO, "bison": mega.BISON,
-           "horse": mega.HORSE, "megaloceros": more.MEGA}
+           "horse": mega.HORSE, "megaloceros": more.MEGA,
+           "lion": mega.LION}
 
 
 # ===================================================================== build
