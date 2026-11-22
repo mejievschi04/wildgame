@@ -165,12 +165,79 @@ WOLF = {
     "clips": lambda rig: std_clips(rig, WOLF, WOLF_WALK, WOLF_RUN),
 }
 
+# ===================================================================== RED FOX (Vulpes vulpes) — wolf anatomy, rescaled
+
+FOX_F = 0.55
+_FOX_BASE = dict(WOLF_J)
+_FOX_BASE.update({"tail2": (0, -0.74, 0.55), "tail3": (0, -1.12, 0.40),
+                  "ear_t.L": (0.075, 0.64, 0.975), "ear_t.R": (-0.075, 0.64, 0.975)})
+FOX_J = {k: (v[0] * FOX_F, v[1] * FOX_F, v[2] * FOX_F) for k, v in _FOX_BASE.items()}
+
+
+def fox_sculpt(J):
+    sc = wolf_sculpt(_FOX_BASE)
+    both(lambda s: sc.leaf((0.052 * s, 0.655, 0.86), (0.074 * s, 0.642, 0.975), 0.042, 0.011, (s * 0.25, 1, 0), k=0.016))  # big ears
+    return sc.scaled(FOX_F)
+
+
+def fox_coat(p, n, bone):
+    x, y, z = p[0] / FOX_F, p[1] / FOX_F, p[2] / FOX_F
+    pb = part(bone)
+    red, back, white, black = (0.72, 0.38, 0.16), (0.60, 0.31, 0.13), (0.90, 0.88, 0.82), (0.12, 0.09, 0.08)
+    fur, rough = 1.0, 0.85
+    c = mix(red, back, (n[2] - 0.4) * 1.5)
+    if pb in ("chest", "neck", "neck2", "spine") and n[2] < -0.3:
+        c = white                                                           # white throat & chest
+    if pb in LEG:
+        c = mix(red, black, (0.42 - z) * 4.0)                               # black stockings
+    if pb in ("head", "snout"):
+        c = red
+        if y > 0.74 and n[2] < 0.1:
+            c = white                                                       # white lips & cheeks
+        if y > 0.925:
+            c, fur, rough = (0.05, 0.045, 0.045), 0.0, 0.35
+        if abs(abs(x) - 0.041) < 0.022 and abs(y - 0.776) < 0.022 and abs(z - 0.80) < 0.02:
+            c = mix(c, black, 0.6)
+    if pb == "ear":
+        c = black if n[1] < 0.2 else mix(red, white, 0.45)
+    if pb in ("tail", "tail_tip"):
+        c = white if y < -1.0 else mix(red, back, 0.5)
+    return c, fur, rough
+
+
+def fox_hair(p, n, bone):
+    x, y, z = p[0] / FOX_F, p[1] / FOX_F, p[2] / FOX_F
+    pb = part(bone)
+    F = FOX_F
+    if pb in ("tail", "tail_tip"):
+        return 0.16 * F, 0.45, 0.15, 0.04 * F, (0, -0.8, -0.4)           # very bushy brush
+    if pb in ("neck", "neck2") or (pb == "chest" and y > 0.2):
+        return 0.07 * F, 0.25, 0.5, 0.025 * F, (0, -1, -0.3)
+    if pb in ("chest", "spine", "hips"):
+        return 0.045 * F, 0.15, 0.5, 0.022 * F, (0, -1, -0.4)
+    if pb == "head" and y < 0.74 and abs(n[0]) > 0.4:
+        return 0.05 * F, 0.2, 0.2, 0.02 * F, (0, -1, -0.2)
+    return 0.0, 0, 0, 0, (0, 0, -1)
+
+
+FOX = {
+    "name": "Fox", "J": FOX_J, "sculpt": fox_sculpt, "voxel": 0.0045, "tris": 11000,
+    "coat": fox_coat, "hair": fox_hair, "card_density": 9000,
+    "hair_palette": [(0.72, 0.38, 0.16), (0.60, 0.31, 0.13), (0.90, 0.88, 0.82), (0.14, 0.10, 0.08)],
+    "fur_scale": 420.0, "fur_stretch": 9.0, "bump": 0.5,
+    "eyes": [((0.041 * FOX_F, 0.776 * FOX_F, 0.80 * FOX_F), 0.0115 * FOX_F)], "eye_color": (0.55, 0.36, 0.08),
+    "graze_pose": {"neck": -40, "neck2": -20, "head": -10, "arm": 4, "drop": 0.005},
+    "attack": lambda rig: bite_attack(rig, FOX, 0.12),
+    "clips": lambda rig: std_clips(rig, FOX, dict(WOLF_WALK, period=0.7, bob=0.006), dict(WOLF_RUN, period=0.36, bob=0.025)),
+}
+
 import species_more as more  # noqa: E402  (needs std_clips above)
 import species_mega as mega  # noqa: E402
 SPECIES = {"wolf": WOLF, "deer": more.DEER, "roe": more.ROE, "bear": more.BEAR, "mammoth": more.MAMMOTH,
            "rhino": mega.RHINO, "bison": mega.BISON,
            "horse": mega.HORSE, "megaloceros": more.MEGA,
-           "lion": mega.LION, "boar": mega.BOAR, "reindeer": more.REIN}
+           "lion": mega.LION, "boar": mega.BOAR, "reindeer": more.REIN,
+           "fox": FOX}
 
 
 # ===================================================================== build

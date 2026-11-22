@@ -43,6 +43,13 @@
 		"loot": {"meat_raw": 7, "hide": 2, "bone": 3}, "group": [2, 4], "max": 4, "track": "hoof", "track_scale": 0.8,
 		"spawn_min": 55, "spawn_max": 100
 	},
+	"fox": {
+		"model": "res://assets/models/animals/SK_Fox.gltf", "diet": "prey", "health": 25,
+		"walk": 1.2, "run": 11.0, "turn": 5.0, "sight": 40, "fov": 260, "hearing": 46, "smell": 80,
+		"radius": 0.15, "height": 0.5, "length": 0.6,
+		"loot": {"meat_raw": 1, "hide": 1, "bone": 1}, "group": [1, 1], "max": 2, "track": "paw", "track_scale": 0.55,
+		"spawn_min": 50, "spawn_max": 100
+	},
 	"wolf": {
 		"model": "res://assets/models/animals/SK_Wolf.gltf", "diet": "predator", "health": 70,
 		"walk": 1.7, "run": 8.2, "turn": 4.5, "sight": 42, "fov": 230, "hearing": 38, "smell": 75,
