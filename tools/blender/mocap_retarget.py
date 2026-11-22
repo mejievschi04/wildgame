@@ -17,12 +17,16 @@ from mathutils import Matrix, Quaternion, Vector
 MAP = {
     "pelvis": "Hips", "spine_01": "LowerBack", "spine_02": "Spine", "spine_03": "Spine1",
     "neck_01": "Neck", "head": "Head",
-    "clavicle_l": "LeftShoulder", "upperarm_l": "LeftArm", "lowerarm_l": "LeftForeArm", "hand_l": "LeftHand",
-    "clavicle_r": "RightShoulder", "upperarm_r": "RightArm", "lowerarm_r": "RightForeArm", "hand_r": "RightHand",
+    "clavicle_l": "LeftShoulder", "upperarm_l": "LeftArm", "lowerarm_l": "LeftForeArm",
+    "clavicle_r": "RightShoulder", "upperarm_r": "RightArm", "lowerarm_r": "RightForeArm",
     "thigh_l": "LeftUpLeg", "calf_l": "LeftLeg", "foot_l": "LeftFoot", "ball_l": "LeftToeBase",
     "thigh_r": "RightUpLeg", "calf_r": "RightLeg", "foot_r": "RightFoot", "ball_r": "RightToeBase",
 }
 SRC_FPS = 120.0
+# Bones whose capture twist does not transfer (different bone rolls / no wrist data): only the direction
+# the bone points in is taken from the actor; the roll stays the target's own. Hands are not mapped at
+# all — they keep their rest relation to the forearm (fingers are layered on top).
+SWING_ONLY = {"clavicle_l", "clavicle_r", "upperarm_l", "upperarm_r", "lowerarm_l", "lowerarm_r"}
 
 
 class Source:
@@ -120,7 +124,13 @@ def world_targets(tgt, src, ref, f):
     T = src.T
     out = {}
     for tb, sb in MAP.items():
-        if tb in ref:
+        if tb not in ref:
+            continue
+        if tb in SWING_ONLY:
+            d_now = (P["tail"][sb] - P["pos"][sb]).normalized()
+            d_ref = (ref[tb] @ Vector((0, 1, 0))).normalized()
+            out[tb] = d_ref.rotation_difference(d_now) @ ref[tb]
+        else:
             out[tb] = (P["rot"][sb] @ T["rot"][sb].inverted()) @ ref[tb]
     return out
 

@@ -46,6 +46,15 @@ class Body:
             }
         self.fingers = self._finger_axes()
 
+    def palm_normal(self, s):
+        """Rest-pose palm normal (armature space), pointing out of the palm toward the body midline."""
+        side = self.h["pinky_01_" + s] - self.h["index_01_" + s]
+        d = (self.t["middle_01_" + s] - self.h["middle_01_" + s]).normalized()
+        nrm = d.cross(side).normalized()
+        if nrm.x * (-self.h["hand_" + s].x) < 0:
+            nrm = -nrm
+        return nrm
+
     def _finger_axes(self):
         out = {}
         for s in ("l", "r"):
@@ -363,13 +372,34 @@ def clip_death(rig, b):
 MOCAP = "/".join(__file__.split("/")[:-3]) + "/art_source/mocap/"   # CMU Graphics Lab Motion Capture Database
 
 
-def mocap_extra(rig, b, fist=0.6):
+def mocap_extra(rig, b, fist=0.6, wrist=10.0):
     """Per-frame additions to retargeted mocap: curled fingers (the CMU data has none) and the strip
     skirt following the thighs."""
     def f(u, local, W, tgt):
         for n, ax in b.fingers.items():
             base = 12 if n.startswith("thumb") else (14 + 6 * int(n.split("_")[1]))
             local[n] = gh.pose_rot(rig, n, tuple(ax), base + fist * (55 if not n.startswith("thumb") else 25))
+        for sd in ("l", "r"):                                   # forearm roll: palm toward the body (thumb up)
+            lo, up = "lowerarm_" + sd, "upperarm_" + sd
+            if lo not in W or "middle_01_" + sd not in b.h:
+                continue
+            v_local = tgt.rest[lo].inverted() @ b.palm_normal(sd)
+            axis = (W[lo] @ Vector((0, 1, 0))).normalized()
+            n_w = W[lo] @ v_local
+            want = Vector((-1.0 if sd == "l" else 1.0, 0, 0))
+            want = want - axis * want.dot(axis)
+            n_p = n_w - axis * n_w.dot(axis)
+            if want.length < 0.2 or n_p.length < 1e-4:
+                continue
+            ang = math.atan2(axis.dot(n_p.cross(want)), n_p.dot(want.normalized()) * want.length / want.length)
+            ang = max(-math.radians(110), min(math.radians(110), ang)) * min(1.0, (want.length - 0.2) / 0.3)
+            Wn = Quaternion(axis, ang) @ W[lo]
+            W[lo] = Wn
+            local[lo] = tgt.rest[lo].inverted() @ tgt.rest[up] @ W[up].inverted() @ Wn
+        for sd in ("l", "r"):                                   # firm wrist: slight extension (no limp drop)
+            ax = b.fingers.get("middle_01_" + sd)
+            if ax is not None and "hand_" + sd in rig.pose.bones:
+                local["hand_" + sd] = gh.pose_rot(rig, "hand_" + sd, tuple(ax), -wrist)
         if "skirt_0_1" not in local:
             return
         rots = {}
@@ -393,7 +423,7 @@ def mocap_clips(rig, b):
     import mocap_retarget as mr
     out = {}
     out["walk"] = mr.cyclic_clip(rig, MOCAP + "08_01.bvh", "walk", WALK_V, FPS, 0.85, 1.4, extra=mocap_extra(rig, b, 0.15))
-    out["run"] = mr.cyclic_clip(rig, MOCAP + "09_02.bvh", "run", RUN_V, FPS, 0.5, 0.85, extra=mocap_extra(rig, b, 0.6))
+    out["run"] = mr.cyclic_clip(rig, MOCAP + "09_02.bvh", "run", RUN_V, FPS, 0.5, 0.85, extra=mocap_extra(rig, b, 0.45, 18.0))
     out["attack"] = mr.segment_clip(rig, MOCAP + "02_07.bvh", "attack", 100, 238, FPS, extra=mocap_extra(rig, b, 1.0))
     return out
 
