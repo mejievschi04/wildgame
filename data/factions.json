@@ -60,9 +60,9 @@
 		"start": 20,
 		"temper": "peaceful",
 		"variants": [
-			"F1",
-			"F2",
-			"M2"
+			"SapiensF",
+			"SapiensM",
+			"SapiensF"
 		],
 		"count": 3,
 		"armed": false,

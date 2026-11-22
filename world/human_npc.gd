@@ -117,10 +117,11 @@ func _ready() -> void:
 
 
 static func _tune_skin(root: Node) -> void:
+	Animal._fix_materials(root)  # hair / beard / fur trims are alpha-tested strand cards
 	for mi: MeshInstance3D in root.find_children("*", "MeshInstance3D", true, false):
 		for s in mi.mesh.get_surface_count():
 			var m := mi.mesh.surface_get_material(s)
-			if m is BaseMaterial3D and m.resource_name == "M_Skin":
+			if m is BaseMaterial3D and (m.resource_name == "M_Skin" or String(m.resource_name).ends_with("_Skin")):
 				var d := (m as BaseMaterial3D).duplicate() as BaseMaterial3D
 				d.subsurf_scatter_enabled = true
 				d.subsurf_scatter_strength = 0.35

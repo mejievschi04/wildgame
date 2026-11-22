@@ -5,13 +5,17 @@ import bpy, os, sys, glob
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SRC = os.path.join(ROOT, "assets", "models", "animals")
+HUM = os.path.join(ROOT, "assets", "models", "humans")
 args = sys.argv[sys.argv.index("--") + 1:]
 out = args[0]
 names = args[1:] or [os.path.basename(p)[3:-5] for p in sorted(glob.glob(os.path.join(SRC, "SK_*.gltf")))]
 os.makedirs(out, exist_ok=True)
 for nm in names:
     bpy.ops.wm.read_factory_settings(use_empty=True)
-    bpy.ops.import_scene.gltf(filepath=os.path.join(SRC, f"SK_{nm}.gltf"))
+    src = os.path.join(SRC, f"SK_{nm}.gltf")
+    if not os.path.exists(src):
+        src = os.path.join(HUM, f"SK_{nm}.gltf")
+    bpy.ops.import_scene.gltf(filepath=src)
     for img in bpy.data.images:
         if img.size[0] == 0:
             continue
@@ -26,7 +30,7 @@ for nm in names:
             o.select_set(True)
     bpy.context.view_layer.objects.active = rig
     path = os.path.join(out, f"{nm}.glb")
-    bpy.ops.export_scene.gltf(filepath=path, export_format="GLB", use_selection=True, export_yup=True,
+    bpy.ops.export_scene.gltf(filepath=path, export_format="GLB", use_selection=True, export_yup=True, export_morph=True,
                               export_animations=True, export_animation_mode="ACTIONS", export_skins=True,
                               export_image_format="JPEG", export_jpeg_quality=82)
     print("WEB", nm, round(os.path.getsize(path) / 1e6, 2), "MB", "actions", len(bpy.data.actions))

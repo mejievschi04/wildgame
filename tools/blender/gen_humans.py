@@ -497,6 +497,7 @@ def build(variant):
     print("HUMAN", variant, "tris", tris, "clips", clips, "height", round(bm.dimensions.z, 2))
 
 
-argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
-for v in (argv or list(VARIANTS)):
-    build(v)
+if __name__ == "__main__":
+    argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
+    for v in (argv or list(VARIANTS)):
+        build(v)
