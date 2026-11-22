@@ -7,7 +7,7 @@ signal caption(text: String)
 const NAMES := [
 	&"step_grass", &"step_wood", &"step_water", &"rustle", &"chop", &"stone_knock", &"whoosh", &"pop",
 	&"craft", &"place", &"build", &"dismantle", &"collapse", &"door", &"eat", &"drink", &"fire_ignite",
-	&"tool_break", &"hurt", &"ui_click", &"axe_chop", &"axe_glance", &"fire_loop", &"wind_loop", &"birds_loop", &"crickets_loop", &"rain_loop",
+	&"tree_creak", &"tool_break", &"hurt", &"ui_click", &"axe_chop", &"axe_glance", &"fire_loop", &"wind_loop", &"birds_loop", &"crickets_loop", &"rain_loop",
 ]
 const FILES := {
 	&"step_grass": [
@@ -24,9 +24,100 @@ const FILES := {
 		"res://assets/audio/SFX_Step_Wood_003.wav",
 		"res://assets/audio/SFX_Step_Wood_004.wav",
 	],
+	&"step_water": [
+		"res://assets/audio/SFX_Step_Water_001.wav",
+		"res://assets/audio/SFX_Step_Water_002.wav",
+		"res://assets/audio/SFX_Step_Water_003.wav",
+	],
+	&"rustle": [
+		"res://assets/audio/SFX_Rustle_001.wav",
+		"res://assets/audio/SFX_Rustle_002.wav",
+		"res://assets/audio/SFX_Rustle_003.wav",
+		"res://assets/audio/SFX_Rustle_004.wav",
+	],
+	&"chop": [
+		"res://assets/audio/SFX_Chop_001.wav",
+		"res://assets/audio/SFX_Chop_002.wav",
+		"res://assets/audio/SFX_Chop_003.wav",
+	],
+	&"stone_knock": [
+		"res://assets/audio/SFX_Stone_Knock_001.wav",
+		"res://assets/audio/SFX_Stone_Knock_002.wav",
+		"res://assets/audio/SFX_Stone_Knock_003.wav",
+	],
+	&"whoosh": [
+		"res://assets/audio/SFX_Whoosh_001.wav",
+		"res://assets/audio/SFX_Whoosh_002.wav",
+	],
+	&"pop": [
+		"res://assets/audio/SFX_Pop_001.wav",
+		"res://assets/audio/SFX_Pop_002.wav",
+	],
+	&"craft": [
+		"res://assets/audio/SFX_Craft_001.wav",
+		"res://assets/audio/SFX_Craft_002.wav",
+		"res://assets/audio/SFX_Craft_003.wav",
+		"res://assets/audio/SFX_Craft_004.wav",
+		"res://assets/audio/SFX_Craft_005.wav",
+	],
+	&"place": [
+		"res://assets/audio/SFX_Place_001.wav",
+		"res://assets/audio/SFX_Place_002.wav",
+		"res://assets/audio/SFX_Place_003.wav",
+	],
+	&"build": [
+		"res://assets/audio/SFX_Build_001.wav",
+		"res://assets/audio/SFX_Build_002.wav",
+		"res://assets/audio/SFX_Build_003.wav",
+	],
+	&"dismantle": [
+		"res://assets/audio/SFX_Dismantle_001.wav",
+		"res://assets/audio/SFX_Dismantle_002.wav",
+		"res://assets/audio/SFX_Dismantle_003.wav",
+	],
+	&"tree_creak": [
+		"res://assets/audio/SFX_Tree_Creak_001.wav",
+		"res://assets/audio/SFX_Tree_Creak_002.wav",
+		"res://assets/audio/SFX_Tree_Creak_003.wav",
+	],
+	&"collapse": ["res://assets/audio/SFX_Collapse_001.wav"],
+	&"door": [
+		"res://assets/audio/SFX_Door_001.wav",
+		"res://assets/audio/SFX_Door_002.wav",
+		"res://assets/audio/SFX_Door_003.wav",
+		"res://assets/audio/SFX_Door_004.wav",
+		"res://assets/audio/SFX_Door_005.wav",
+	],
+	&"eat": ["res://assets/audio/SFX_Eat_001.wav"],
+	&"drink": ["res://assets/audio/SFX_Drink_001.wav"],
+	&"fire_ignite": ["res://assets/audio/SFX_Fire_Ignite.wav"],
+	&"tool_break": [
+		"res://assets/audio/SFX_Tool_Break_001.wav",
+		"res://assets/audio/SFX_Tool_Break_002.wav",
+		"res://assets/audio/SFX_Tool_Break_003.wav",
+	],
+	&"hurt": [
+		"res://assets/audio/SFX_Hurt_001.wav",
+		"res://assets/audio/SFX_Hurt_002.wav",
+		"res://assets/audio/SFX_Hurt_003.wav",
+		"res://assets/audio/SFX_Hurt_004.wav",
+		"res://assets/audio/SFX_Hurt_005.wav",
+		"res://assets/audio/SFX_Hurt_006.wav",
+	],
+	&"ui_click": [
+		"res://assets/audio/SFX_UI_Click_001.wav",
+		"res://assets/audio/SFX_UI_Click_002.wav",
+		"res://assets/audio/SFX_UI_Click_003.wav",
+		"res://assets/audio/SFX_UI_Click_004.wav",
+		"res://assets/audio/SFX_UI_Click_005.wav",
+	],
 	&"axe_chop": ["res://assets/audio/SFX_Axe_Chop_09.wav"],
 	&"axe_glance": ["res://assets/audio/SFX_Axe_Chop_05.wav"],
 	&"fire_loop": ["res://assets/audio/AMB_Campfire_Crackle.wav"],
+	&"wind_loop": ["res://assets/audio/AMB_Wind_Loop.wav"],
+	&"birds_loop": ["res://assets/audio/AMB_Birds_Loop.wav"],
+	&"crickets_loop": ["res://assets/audio/AMB_Crickets_Loop.wav"],
+	&"rain_loop": ["res://assets/audio/AMB_Rain_Loop.wav"],
 }
 const CAPTIONS := {
 	&"fire_ignite": "CAPTION_FIRE", &"tool_break": "CAPTION_TOOL_BREAK",
@@ -57,11 +148,12 @@ func _ready() -> void:
 			_variants[n] = loaded
 		else:
 			streams[n] = SoundSynth.to_stream(SoundSynth.build(n), String(n).ends_with("_loop"))
-	if streams[&"fire_loop"] is AudioStreamWAV:
-		var fire := streams[&"fire_loop"] as AudioStreamWAV
-		fire.loop_mode = AudioStreamWAV.LOOP_FORWARD
-		fire.loop_begin = 0
-		fire.loop_end = fire.data.size() / 2
+	for n: StringName in [&"fire_loop", &"wind_loop", &"birds_loop", &"crickets_loop", &"rain_loop"]:
+		if streams[n] is AudioStreamWAV:
+			var ambience := streams[n] as AudioStreamWAV
+			ambience.loop_mode = AudioStreamWAV.LOOP_FORWARD
+			ambience.loop_begin = 0
+			ambience.loop_end = ambience.data.size() / 2
 	print_verbose("Sfx: prepared %d sounds in %d ms" % [streams.size(), Time.get_ticks_msec() - t0])
 	for i in POOL_3D:
 		var p := AudioStreamPlayer3D.new()
@@ -97,6 +189,8 @@ func play(name: StringName, pos: Variant = null, volume_db: float = 0.0, pitch_v
 		s = choices[variant]
 	if name == &"step_grass":
 		volume_db += 8.0
+	elif name == &"hurt":
+		volume_db -= 6.0
 	var pitch := 1.0 + randf_range(-pitch_var, pitch_var)
 	if pos is Vector3:
 		var p := _pool3d[_next3d]

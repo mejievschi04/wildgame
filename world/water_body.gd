@@ -1,20 +1,39 @@
 class_name WaterBody
 extends Area3D
-## Map-wide water volume whose top face is the water surface. Ray-only (layer 4 = "water").
+## River segment whose top face is the water surface. Ray-only (layer 4 = "water").
 
 const RAW_SIP_SICKNESS := 0.04
 
 var level := 0.0
 
 
-func setup(size: float, water_level: float) -> void:
+func setup(size: float, water_level: float, length: float = -1.0) -> void:
 	level = water_level
 	collision_layer = 8
 	collision_mask = 0
 	monitoring = false
 	monitorable = false
 	add_to_group("interactable")
-	Graybox.add_shape(self, Graybox.box_shape(Vector3(size, 2.0, size)), Vector3(0, water_level - 1.0, 0))
+	var segment_length := size if length < 0.0 else length
+	Graybox.add_shape(self, Graybox.box_shape(Vector3(size, 4.0, segment_length)), Vector3(0, water_level - 2.0, 0))
+
+
+func setup_ellipse(radius_x: float, radius_z: float, water_level: float) -> void:
+	level = water_level
+	collision_layer = 8
+	collision_mask = 0
+	monitoring = false
+	monitorable = false
+	add_to_group("interactable")
+	var points := PackedVector3Array()
+	const SEGMENTS := 32
+	for y: float in [0.0, -4.0]:
+		for i in SEGMENTS:
+			var a := TAU * float(i) / SEGMENTS
+			points.append(Vector3(cos(a) * radius_x, y, sin(a) * radius_z))
+	var shape := ConvexPolygonShape3D.new()
+	shape.points = points
+	Graybox.add_shape(self, shape, Vector3(0.0, water_level, 0.0))
 
 
 func get_display_name() -> String:

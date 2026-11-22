@@ -248,7 +248,7 @@ func _start_fall() -> void:
 	fall_vel = 0.0
 	_bounced = false
 	final_angle = _landing_angle()
-	Sfx.play(&"door", global_position + Vector3.UP * 3.0, 2.0, 0.0)
+	Sfx.play(&"tree_creak", global_position + Vector3.UP * 3.0, 2.0, 0.0)
 	Events.toast(Loc.t("MSG_TIMBER"), &"warn")
 
 

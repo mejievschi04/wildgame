@@ -31,22 +31,22 @@ func _ready() -> void:
 	environment.tonemap_mode = Environment.TONE_MAPPER_AGX
 	environment.tonemap_exposure = 0.9
 	environment.ssao_enabled = true
-	environment.ssao_radius = 1.2
-	environment.ssao_intensity = 1.8
-	environment.ssao_light_affect = 0.2  # contact darkening also under direct sun (grass roots, armpits, fur)
-	environment.ssao_detail = 0.6
+	environment.ssao_radius = 0.85
+	environment.ssao_intensity = 1.25
+	environment.ssao_light_affect = 0.12  # keep contact shadows soft rather than ink-like
+	environment.ssao_detail = 0.38
 	# Bounced light: screen-space indirect (medium+) and SDFGI (high) — warm light off the ground onto bodies.
 	environment.ssil_enabled = true
 	environment.ssil_radius = 4.0
-	environment.ssil_intensity = 1.1
+	environment.ssil_intensity = 0.8
 	environment.sdfgi_use_occlusion = true
 	environment.sdfgi_cascades = 4
 	environment.sdfgi_min_cell_size = 0.2
 	environment.sdfgi_energy = 0.9
 	# Film-like grade: a touch more contrast, slightly muted colours.
 	environment.adjustment_enabled = true
-	environment.adjustment_contrast = 1.07
-	environment.adjustment_saturation = 0.93
+	environment.adjustment_contrast = 1.035
+	environment.adjustment_saturation = 0.92
 	environment.volumetric_fog_enabled = true
 	environment.volumetric_fog_density = 0.006
 	environment.volumetric_fog_length = 90.0

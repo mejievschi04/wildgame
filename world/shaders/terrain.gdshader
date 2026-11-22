@@ -8,6 +8,7 @@ uniform sampler2DArray albedo_tex : source_color, filter_linear_mipmap_anisotrop
 uniform sampler2DArray normal_tex : hint_normal, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2DArray arm_tex : hint_default_white, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D forest_mask : hint_default_black, filter_linear;
+uniform sampler2D biome_tint : source_color, filter_linear;
 uniform sampler2D macro_noise : hint_default_white, filter_linear_mipmap, repeat_enable;
 uniform float map_size = 260.0;
 uniform float tile = 0.3;
@@ -30,13 +31,13 @@ void fragment() {
 	float slope = 1.0 - wnrm.y;
 
 	float w[6];
-	float grass = clamp(1.0 - forest * 1.6 + (n1 - 0.5) * 0.9, 0.0, 1.0);
+	float grass = clamp(1.0 - forest * 1.45 + (n1 - 0.5) * 0.42, 0.0, 1.0);
 	w[0] = 1.0 - grass;
 	w[1] = grass;
 	float mud = 1.0 - smoothstep(0.25, 1.3, h + (n2 - 0.5) * 0.7);
 	float pebbles = 1.0 - smoothstep(-0.75, -0.2, h + (n2 - 0.5) * 0.3);
-	float rock = max(smoothstep(0.17, 0.3, slope + (n2 - 0.5) * 0.08), smoothstep(10.0, 14.0, h + n1 * 3.0));
-	float snow = smoothstep(19.0, 23.0, h + n1 * 4.0) * (1.0 - smoothstep(0.35, 0.5, slope));
+	float rock = max(smoothstep(0.38, 0.62, slope + (n2 - 0.5) * 0.06), smoothstep(76.0, 102.0, h + n1 * 3.0));
+	float snow = smoothstep(126.0, 154.0, h + n1 * 4.0) * (1.0 - smoothstep(0.4, 0.58, slope));
 	// Apply in priority order (each layer covers the ones below it).
 	for (int i = 0; i < 2; i++) { w[i] *= (1.0 - mud); }
 	w[2] = mud * (1.0 - pebbles);
@@ -62,7 +63,7 @@ void fragment() {
 		vec2 u2 = mat2(vec2(0.8, -0.6), vec2(0.6, 0.8)) * u * 0.43 + 0.5;
 		float mixv = smoothstep(0.35, 0.65, n2);
 		vec3 a = mix(texture(albedo_tex, vec3(u, float(i))).rgb, texture(albedo_tex, vec3(u2, float(i))).rgb, mixv);
-		if (i == 1) { a *= vec3(0.82, 0.98, 0.7); }  // clearing grass: greener, less leaf-litter brown
+		if (i == 1) { a *= vec3(0.94, 0.99, 0.9); }  // restrained green tint keeps scanned grass natural
 		alb += a * w[i];
 		nrm += texture(normal_tex, vec3(u, float(i))).rgb * w[i];
 		arm += texture(arm_tex, vec3(u, float(i))).rgb * w[i];
@@ -70,7 +71,8 @@ void fragment() {
 	}
 	total = max(total, 0.0001);
 	alb /= total; nrm /= total; arm /= total;
-	alb *= mix(0.82, 1.12, n1);
+	vec3 biome = texture(biome_tint, wpos.xz / map_size + 0.5).rgb;
+	alb *= mix(0.96, 1.04, n1) * mix(vec3(1.0), biome, 0.14);
 	// Wet darkening near the waterline.
 	float wet = max(1.0 - smoothstep(-0.1, 0.5, h), rain_wetness * 0.75);
 	alb *= mix(1.0, 0.62, wet);

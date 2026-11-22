@@ -1,14 +1,14 @@
 // Alpha-tested foliage with translucency and wind sway (trees, grass, ferns, shrubs).
 // Wind is driven globally by the weather system (wind_strength, wind_direction).
 shader_type spatial;
-render_mode cull_disabled, diffuse_burley, specular_disabled;
+render_mode cull_disabled, diffuse_burley, specular_schlick_ggx;
 
 uniform sampler2D albedo_tex : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform vec4 albedo_tint : source_color = vec4(1.0);
 uniform sampler2D normal_tex : hint_normal, filter_linear_mipmap;
 uniform bool use_normal = false;
 uniform float alpha_cut = 0.42;
-uniform vec3 backlight_color : source_color = vec3(0.32, 0.36, 0.18);
+uniform vec3 backlight_color : source_color = vec3(0.28, 0.31, 0.22);
 uniform float sway = 0.5;        // metres of top displacement at wind_strength = 1
 uniform float height_ref = 12.0; // local height where sway reaches full strength
 
@@ -38,5 +38,6 @@ void fragment() {
 		NORMAL_MAP = texture(normal_tex, UV).rgb;
 	}
 	BACKLIGHT = backlight_color;
-	ROUGHNESS = 0.85;
+	ROUGHNESS = 0.82;
+	SPECULAR = 0.12;
 }

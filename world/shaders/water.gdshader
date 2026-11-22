@@ -2,8 +2,8 @@
 shader_type spatial;
 render_mode blend_mix, depth_draw_never, cull_back, diffuse_burley, specular_schlick_ggx;
 
-uniform vec3 shallow_color : source_color = vec3(0.24, 0.27, 0.2);
-uniform vec3 deep_color : source_color = vec3(0.04, 0.08, 0.08);
+uniform vec3 shallow_color : source_color = vec3(0.15, 0.23, 0.20);
+uniform vec3 deep_color : source_color = vec3(0.025, 0.065, 0.07);
 uniform float depth_fade = 1.6;
 uniform sampler2D wave_a : hint_normal, filter_linear_mipmap, repeat_enable;
 uniform sampler2D wave_b : hint_normal, filter_linear_mipmap, repeat_enable;
@@ -36,8 +36,8 @@ void fragment() {
 	vec3 tint = mix(shallow_color, deep_color, k);
 	// Opaque surface showing the refracted bottom through clear shallows; soft shoreline.
 	ALBEDO = mix(behind * 0.85, tint, clamp(k * 0.9 + 0.08, 0.0, 1.0));
-	ROUGHNESS = 0.06;
+	ROUGHNESS = 0.14;
 	METALLIC = 0.0;
-	SPECULAR = 0.6;
+	SPECULAR = 0.38;
 	ALPHA = smoothstep(0.0, 0.15, depth);
 }
