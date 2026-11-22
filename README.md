@@ -9,3 +9,4 @@ First-person prehistoric survival (late Paleolithic). Godot 4.7 · Phase 1 grayb
 
 Controls (default): WASD move · Shift sprint · C crouch · Space jump · E interact (hold) · R secondary · LMB swing/place ·
 RMB block/parry · hold LMB heavy attack · 1–6 hotbar · Tab inventory · J journal · B build menu · G toggle snapping · spear: hold RMB to aim, LMB to throw · T open-palm gesture · Esc pause. All remappable in Settings.
+# wildgame
