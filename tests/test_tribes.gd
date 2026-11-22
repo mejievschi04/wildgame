@@ -36,6 +36,68 @@ func test_camps_and_people_exist() -> void:
 		check(fire and fire.lit and fire.eternal, "%s camp fire burns" % f)
 	eq(s.world.factions.stance(&"clan"), &"wary", "clan starts wary")
 	eq(s.world.factions.stance(&"gatherers"), &"neutral", "gatherers start neutral")
+	var hunter := _npc(s, "hunters")
+	check(hunter._anim.has_animation("combat/thrust"), "armed NPC receives the authored thrust")
+	var root_position := NodePath("Human_rig/Skeleton3D:Root")
+	for gait in ["walk", "run"]:
+		var clip := hunter._anim.get_animation(gait)
+		var track := clip.find_track(root_position, Animation.TYPE_POSITION_3D)
+		var origin: Vector3 = clip.track_get_key_value(track, 0)
+		check(Vector2(origin.x, origin.z).length() < 0.1, "%s starts over the collision capsule" % gait)
+	await _teardown(s)
+
+
+func test_regional_bases_have_distinct_defenses_and_stream_guards() -> void:
+	var s: GameSession = await _boot()
+	var w := s.world
+	var camps := w.camps
+	eq(Camps.REGIONAL_BASES.size(), 5, "five regional base sites")
+	var guard_counts := []
+	var warning_times := []
+	for id: String in Camps.REGIONAL_BASES:
+		var def: Dictionary = Camps.REGIONAL_BASES[id]
+		var c := Camps.site(def)
+		var center := w.ground_point(c.x, c.y)
+		check(center.y > ForestWorld.WATER_LEVEL + 1.0, "%s base is on dry ground" % id)
+		var fire: Campfire = w.structures_root.get_node("base_%s_fire" % id)
+		check(fire.lit and fire.eternal, "%s base fire is active" % id)
+		var cache: BuildingPiece = w.get_piece("base_%s_cache" % id)
+		check(cache.storage.free_slots() < cache.storage.size, "%s has supplies" % id)
+		camps._stream_regional_guards(center)
+		var guards: Array = camps._regional_guards[id]
+		guard_counts.append(guards.size())
+		warning_times.append((guards[0] as HumanNPC).warn_time)
+		check((guards[0] as HumanNPC)._inside_territory(center), "%s guard protects this base" % id)
+		if id == "varkai":
+			var first: HumanNPC = guards[0]
+			first.die(false)
+			camps._stream_regional_guards(Vector3.ZERO)
+			check(not camps.npcs.has(first.npc_id), "inactive guards are released")
+			check(camps.save_state()[first.npc_id].dead, "inactive dead guard is saved")
+			camps._stream_regional_guards(center)
+			check((camps.npcs[first.npc_id] as HumanNPC).is_dead(), "guard stays dead after streaming")
+		camps._stream_regional_guards(Vector3.ZERO)
+	eq(guard_counts, [2, 3, 4, 5, 6], "garrison size increases with difficulty")
+	eq(warning_times, [10.0, 8.0, 6.0, 4.0, 2.0], "higher difficulty gives a shorter warning")
+	eq(w.get_piece("base_varkai_wall2").piece_id, &"palisade", "strongest base uses a palisade")
+	check(w.get_piece("base_ossara_wall2") == null, "easiest base has an open perimeter")
+	await _teardown(s)
+
+
+func test_regional_bases_migrate_old_saves_without_resetting_new_ones() -> void:
+	var s: GameSession = await _boot()
+	var w := s.world
+	var old := w.collect_save()
+	old.erase("regional_bases")
+	old.structures = (old.structures as Array).filter(func(row: Dictionary) -> bool:
+		return not str(row.id).begins_with("base_"))
+	w.apply_save(old)
+	check(w.get_piece("base_ossara_cache") != null, "older saves gain regional bases")
+	var state := w.collect_save()
+	state.structures = (state.structures as Array).filter(func(row: Dictionary) -> bool:
+		return str(row.id) != "base_ossara_cache")
+	w.apply_save(state)
+	check(w.get_piece("base_ossara_cache") == null, "a removed cache stays removed after loading")
 	await _teardown(s)
 
 
@@ -96,14 +158,32 @@ func test_npc_spear_hits_player() -> void:
 	var n := _npc(s, "hunters", 1)
 	var p := s.player
 	_near(s, n, 1.4)
-	n.look_at(Vector3(p.global_position.x, n.global_position.y, p.global_position.z))
-	n.rotation.y += PI  # look_at aims -Z; NPCs face +Z
+	n._face(p.global_position)
 	n._set_state(HumanNPC.State.COMBAT)
-	n.set_physics_process(true)
 	var hp := p.stats.health
-	for i in 60:
+	for i in 30:
 		n._update_attack(1.0 / 60.0)
-	check(p.stats.health < hp, "spear thrust lands after the wind-up (%.0f → %.0f)" % [hp, p.stats.health])
+	near(p.stats.health, hp, 0.01, "the draw-back telegraphs the attack without doing damage")
+	for i in 10:
+		n._update_attack(1.0 / 60.0)
+	near(p.stats.health, hp - HumanNPC.DAMAGE, 0.01, "the tip lands at full extension")
+	for i in 35:
+		n._update_attack(1.0 / 60.0)
+	near(p.stats.health, hp - HumanNPC.DAMAGE, 0.01, "recovery cannot hit twice")
+
+	n._attack_cd = 0.0
+	for i in 30:
+		n._update_attack(1.0 / 60.0)
+	var dodge := n.global_transform.basis.x
+	p.global_position += dodge
+	for i in 45:
+		n._update_attack(1.0 / 60.0)
+	near(p.stats.health, hp - HumanNPC.DAMAGE, 0.01, "stepping sideways after the thrust commits avoids the tip")
+
+	n._travel = dodge
+	n._speed = 1.0
+	n._animate()
+	eq(n._cur_anim, "combat/strafe_l", "lateral motion uses the matching footwork clip")
 	await _teardown(s)
 
 

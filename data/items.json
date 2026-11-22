@@ -2,7 +2,7 @@
 	{
 		"id": "stone",
 		"category": "resource",
-		"weight": 1.0,
+		"weight": 1,
 		"max_stack": 20,
 		"tags": [
 			"tool_hammer",
@@ -194,6 +194,46 @@
 		"icon": "#a58658"
 	},
 	{
+		"id": "club",
+		"category": "weapon",
+		"weight": 2.2,
+		"max_stack": 1,
+		"max_durability": 160,
+		"tags": [
+			"equippable",
+			"weapon",
+			"tool_hammer",
+			"blunt"
+		],
+		"damage": 26,
+		"icon": "#8a7a64"
+	},
+	{
+		"id": "bow",
+		"category": "weapon",
+		"weight": 0.9,
+		"max_stack": 1,
+		"max_durability": 150,
+		"tags": [
+			"equippable",
+			"weapon",
+			"bow"
+		],
+		"damage": 4,
+		"icon": "#9a7a52"
+	},
+	{
+		"id": "arrow",
+		"category": "weapon",
+		"weight": 0.05,
+		"max_stack": 30,
+		"tags": [
+			"arrow"
+		],
+		"damage": 34,
+		"icon": "#6e5a44"
+	},
+	{
 		"id": "torch",
 		"category": "tool",
 		"weight": 0.5,
@@ -209,7 +249,7 @@
 	{
 		"id": "campfire_kit",
 		"category": "placeable",
-		"weight": 4.0,
+		"weight": 4,
 		"max_stack": 1,
 		"place": "campfire",
 		"icon": "#5c5449"
@@ -221,5 +261,237 @@
 		"max_stack": 1,
 		"place": "bed",
 		"icon": "#6f7d45"
+	},
+	{
+		"id": "clay",
+		"category": "resource",
+		"weight": 0.4,
+		"max_stack": 20,
+		"icon": "#9c7a5a"
+	},
+	{
+		"id": "reeds",
+		"category": "resource",
+		"weight": 0.1,
+		"max_stack": 30,
+		"icon": "#a8a060"
+	},
+	{
+		"id": "rope",
+		"category": "resource",
+		"weight": 0.1,
+		"max_stack": 20,
+		"icon": "#b09a6a"
+	},
+	{
+		"id": "seeds_grain",
+		"category": "resource",
+		"weight": 0.02,
+		"max_stack": 40,
+		"tags": [
+			"seed"
+		],
+		"icon": "#c9b27a"
+	},
+	{
+		"id": "seeds_flax",
+		"category": "resource",
+		"weight": 0.02,
+		"max_stack": 40,
+		"tags": [
+			"seed"
+		],
+		"icon": "#7d6a48"
+	},
+	{
+		"id": "seeds_carrot",
+		"category": "resource",
+		"weight": 0.02,
+		"max_stack": 40,
+		"tags": [
+			"seed"
+		],
+		"icon": "#8a7a50"
+	},
+	{
+		"id": "herb",
+		"category": "medical",
+		"weight": 0.05,
+		"max_stack": 30,
+		"health": 3,
+		"tags": [
+			"seed"
+		],
+		"icon": "#7e9a5a"
+	},
+	{
+		"id": "grain",
+		"category": "food",
+		"weight": 0.05,
+		"max_stack": 40,
+		"food": 2,
+		"icon": "#d8bf7a"
+	},
+	{
+		"id": "wild_carrot",
+		"category": "food",
+		"weight": 0.1,
+		"max_stack": 20,
+		"food": 6,
+		"water": 3,
+		"cook_result": "carrot_roasted",
+		"cook_time": 40,
+		"icon": "#d98a3a"
+	},
+	{
+		"id": "carrot_roasted",
+		"category": "food",
+		"weight": 0.1,
+		"max_stack": 20,
+		"food": 14,
+		"icon": "#a8602a"
+	},
+	{
+		"id": "hazelnuts",
+		"category": "food",
+		"weight": 0.05,
+		"max_stack": 40,
+		"food": 5,
+		"cook_result": "nuts_roasted",
+		"cook_time": 30,
+		"icon": "#8a6238"
+	},
+	{
+		"id": "nuts_roasted",
+		"category": "food",
+		"weight": 0.05,
+		"max_stack": 40,
+		"food": 9,
+		"icon": "#6a4528"
+	},
+	{
+		"id": "fish_raw",
+		"category": "food",
+		"weight": 0.4,
+		"max_stack": 10,
+		"food": 6,
+		"sickness_chance": 0.3,
+		"cook_result": "fish_cooked",
+		"cook_time": 60,
+		"icon": "#8fa0a8"
+	},
+	{
+		"id": "fish_cooked",
+		"category": "food",
+		"weight": 0.35,
+		"max_stack": 10,
+		"food": 26,
+		"health": 4,
+		"icon": "#b08a5a"
+	},
+	{
+		"id": "flatbread",
+		"category": "food",
+		"weight": 0.15,
+		"max_stack": 20,
+		"food": 24,
+		"icon": "#d2a86a"
+	},
+	{
+		"id": "porridge",
+		"category": "food",
+		"weight": 0.4,
+		"max_stack": 5,
+		"food": 30,
+		"water": 12,
+		"health": 4,
+		"icon": "#cdb48a"
+	},
+	{
+		"id": "stew",
+		"category": "food",
+		"weight": 0.5,
+		"max_stack": 5,
+		"food": 48,
+		"water": 18,
+		"health": 12,
+		"icon": "#8a5a3a"
+	},
+	{
+		"id": "poultice",
+		"category": "medical",
+		"weight": 0.1,
+		"max_stack": 10,
+		"health": 25,
+		"cures": [
+			"bleeding",
+			"food_poisoning"
+		],
+		"icon": "#7a9a6a"
+	},
+	{
+		"id": "digging_stick",
+		"category": "tool",
+		"weight": 0.6,
+		"max_stack": 1,
+		"max_durability": 120,
+		"tags": [
+			"tool_hoe",
+			"equippable"
+		],
+		"damage": 6,
+		"icon": "#8a6a44"
+	},
+	{
+		"id": "sickle",
+		"category": "tool",
+		"weight": 0.4,
+		"max_stack": 1,
+		"max_durability": 110,
+		"tags": [
+			"tool_sickle",
+			"equippable",
+			"weapon"
+		],
+		"damage": 12,
+		"icon": "#5a5a60"
+	},
+	{
+		"id": "fishing_spear",
+		"category": "tool",
+		"weight": 1.2,
+		"max_stack": 1,
+		"max_durability": 90,
+		"tags": [
+			"tool_fishing",
+			"equippable",
+			"weapon"
+		],
+		"damage": 22,
+		"icon": "#a08a68"
+	},
+	{
+		"id": "bone_knife",
+		"category": "tool",
+		"weight": 0.25,
+		"max_stack": 1,
+		"max_durability": 70,
+		"tags": [
+			"tool_knife",
+			"equippable",
+			"weapon"
+		],
+		"damage": 11,
+		"icon": "#e0d6c0"
+	},
+	{
+		"id": "clay_pot",
+		"category": "tool",
+		"weight": 1,
+		"max_stack": 1,
+		"tags": [
+			"tool_pot"
+		],
+		"icon": "#a0603a"
 	}
 ]

@@ -1,18 +1,24 @@
 class_name InventoryScreen
 extends Control
-## Inventory (equipment column + item grid + contextual crafting) and Journal tabs.
+## Inventory (Far Cry Primal style: what you hold + your pouch as item cards grouped by kind, no slot grid)
+## with contextual crafting, and the Journal tab.
 
 signal closed
 
-const GRID_COLUMNS := 6
 
 var player: Player
 var _tab := 0
 var _pages: Array[Control] = []
 var _tab_buttons: Array[Button] = []
-var _slots: Array[ItemSlot] = []
-var _hand_slot: ItemSlot
-var _selected := -2  # -2 none, -1 hand, >=0 bag
+## Pouch sections: [title key, item categories].
+const SECTIONS := [["POUCH_WEAPONS", [&"weapon", &"tool"]], ["POUCH_FOOD", [&"food", &"drink"]],
+	["POUCH_MEDICAL", [&"medical"]], ["POUCH_CAMP", [&"placeable"]], ["POUCH_MATERIALS", [&"resource"]]]
+
+var _pouch: VBoxContainer
+var _hand_card: Button
+var _space_label: Label
+var _selected_id: StringName = &""  # item kind selected in the pouch
+var _selected_hand := false
 var _detail_title: Label
 var _detail_text: Label
 var _detail_buttons: HBoxContainer
@@ -26,6 +32,7 @@ var _craft_button: Button
 var _craft_progress: ProgressBar
 var _selected_recipe: RecipeData
 var _crafting_tween: Tween
+var _group: StringName = &""  # crafting tab filter; empty = all
 var _journal_text: RichTextLabel
 var _dirty := true
 
@@ -71,9 +78,6 @@ func _ready() -> void:
 
 func bind(p: Player) -> void:
 	player = p
-	_hand_slot.inventory = p.inventory
-	for s in _slots:
-		s.inventory = p.inventory
 	p.inventory.changed.connect(func() -> void: _dirty = true)
 
 
@@ -82,8 +86,10 @@ func open(tab: int = 0) -> void:
 	_dirty = true
 	UITheme.show_animated(self, true)
 	await get_tree().process_frame
-	if _tab == 0 and _slots.size() > 0:
-		_slots[0].grab_focus()
+	if _tab == 0:
+		var first := _pouch.find_children("*", "Button", true, false)
+		if not first.is_empty():
+			(first[0] as Button).grab_focus()
 
 
 func close() -> void:
@@ -120,43 +126,39 @@ func _build_inventory_page() -> Control:
 	var h := HBoxContainer.new()
 	h.add_theme_constant_override("separation", 16)
 
-	# Equipment column.
+	# What you hold.
 	var eq := _column("COL_EQUIPMENT", 270)
 	h.add_child(eq.get_meta("panel"))
 	eq.add_child(UITheme.label(Loc.t("SLOT_HAND"), "MutedLabel"))
-	_hand_slot = ItemSlot.new()
-	_hand_slot.index = ItemSlot.HAND
-	_hand_slot.highlight = true
-	_hand_slot.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-	_hand_slot.clicked.connect(_on_slot_clicked)
-	eq.add_child(_hand_slot)
-	for key in ["SLOT_BODY", "SLOT_BACK"]:
-		var l := UITheme.label(Loc.t(key) + " — " + Loc.t("LOCKED_LATER"), "MutedLabel")
-		l.modulate.a = 0.6
-		eq.add_child(l)
+	_hand_card = _card_button()
+	_hand_card.custom_minimum_size = Vector2(240, 84)
+	_hand_card.pressed.connect(func() -> void:
+		_selected_hand = true
+		_selected_id = &""
+		_dirty = true)
+	eq.add_child(_hand_card)
+	var wh := UITheme.label(Loc.t("HUD_WHEEL_HINT", {"key": InputSetup.label(&"weapon_wheel")}), "MutedLabel")
+	wh.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	eq.add_child(wh)
 	eq.add_child(HSeparator.new())
 	_summary = UITheme.label("", "SmallLabel")
 	_summary.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	eq.add_child(_summary)
 
-	# Items column.
-	var items := _column("COL_ITEMS", 470)
+	# The pouch: item cards grouped by kind.
+	var items := _column("COL_ITEMS", 500)
 	h.add_child(items.get_meta("panel"))
-	var grid := GridContainer.new()
-	grid.columns = GRID_COLUMNS
-	grid.add_theme_constant_override("h_separation", 6)
-	grid.add_theme_constant_override("v_separation", 6)
-	items.add_child(grid)
-	for i in 24:
-		var s := ItemSlot.new()
-		s.index = i
-		s.hotkey = str(i + 1) if i < Inventory.HOTBAR_SIZE else ""
-		s.focus_mode = Control.FOCUS_ALL
-		s.clicked.connect(_on_slot_clicked)
-		s.focus_entered.connect(func() -> void: _select(i))
-		grid.add_child(s)
-		_slots.append(s)
+	var pscroll := ScrollContainer.new()
+	pscroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	pscroll.custom_minimum_size.y = 300
+	pscroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	items.add_child(pscroll)
+	_pouch = VBoxContainer.new()
+	_pouch.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_pouch.add_theme_constant_override("separation", 8)
+	pscroll.add_child(_pouch)
 	var wrow := HBoxContainer.new()
+	wrow.add_theme_constant_override("separation", 10)
 	items.add_child(wrow)
 	_weight_label = UITheme.label("", "SmallLabel")
 	wrow.add_child(_weight_label)
@@ -164,13 +166,15 @@ func _build_inventory_page() -> Control:
 	_weight_bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_weight_bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	wrow.add_child(_weight_bar)
+	_space_label = UITheme.label("", "MutedLabel")
+	wrow.add_child(_space_label)
 	items.add_child(HSeparator.new())
 	_detail_title = UITheme.label("", "HeadingLabel")
 	_detail_title.add_theme_font_size_override("font_size", 22)
 	items.add_child(_detail_title)
 	_detail_text = UITheme.label("", "SmallLabel")
 	_detail_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_detail_text.custom_minimum_size.x = 420
+	_detail_text.custom_minimum_size.x = 440
 	items.add_child(_detail_text)
 	_detail_buttons = HBoxContainer.new()
 	items.add_child(_detail_buttons)
@@ -178,6 +182,24 @@ func _build_inventory_page() -> Control:
 	# Crafting column.
 	var craft := _column("COL_CRAFTING", 380, true)
 	h.add_child(craft.get_meta("panel"))
+	# Category tabs (recipes.json "group").
+	var tabs := HFlowContainer.new()
+	tabs.add_theme_constant_override("h_separation", 4)
+	tabs.add_theme_constant_override("v_separation", 4)
+	craft.add_child(tabs)
+	var group_box := ButtonGroup.new()
+	for g: StringName in [&""] + RecipeData.GROUPS:
+		var tb := Button.new()
+		tb.text = Loc.t("CRAFT_GROUP_%s" % (String(g).to_upper() if g != &"" else "ALL"))
+		tb.toggle_mode = true
+		tb.button_group = group_box
+		tb.button_pressed = g == _group
+		tb.add_theme_font_size_override("font_size", 14)
+		tb.custom_minimum_size = Vector2(0, 28)
+		tb.pressed.connect(func() -> void:
+			_group = g
+			_dirty = true)
+		tabs.add_child(tb)
 	var scroll := ScrollContainer.new()
 	scroll.custom_minimum_size.y = 250
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -242,70 +264,150 @@ func _refresh_all() -> void:
 	_summary.text = Loc.t("SUMMARY_FMT", {
 		"t": "%.1f" % s.body_temp, "feel": "%.0f" % s.last_effective_temp,
 		"rest": int(s.rest), "h": int(s.health)})
+	_refresh_pouch()
 	_refresh_detail()
 	_refresh_recipes()
 	_refresh_journal()
 
 
-func _stack_at(i: int) -> ItemStack:
-	if i == ItemSlot.HAND:
-		return player.inventory.hand
-	return player.inventory.get_slot(i) if i >= 0 else null
+## A card: icon on the left, name and count / wear on the right.
+func _card_button() -> Button:
+	var b := Button.new()
+	b.custom_minimum_size = Vector2(220, 64)
+	b.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	b.expand_icon = false
+	b.add_theme_constant_override("icon_max_width", 46)
+	b.add_theme_constant_override("h_separation", 8)
+	b.add_theme_font_size_override("font_size", 14)
+	b.clip_text = true
+	b.toggle_mode = true
+	b.focus_mode = Control.FOCUS_ALL
+	return b
 
 
-func _select(i: int) -> void:
-	_selected = i
-	_hand_slot.selected = i == ItemSlot.HAND
-	for j in _slots.size():
-		_slots[j].selected = j == i
-	_refresh_detail()
+func _fill_card(b: Button, id: StringName, count: int, best_dur: int) -> void:
+	var d := ItemDB.get_item(id)
+	b.icon = AssetLib.item_icon(id) if AssetLib.item_icon(id) else _swatch(d.icon_color)
+	var line2 := "×%d" % count if count > 1 else ""
+	if d.has_durability():
+		line2 = ("%s  " % line2 if line2 != "" else "") + "%d%%" % roundi(100.0 * best_dur / d.max_durability)
+	b.text = d.display_name() + ("\n" + line2 if line2 != "" else "")
 
 
-func _on_slot_clicked(slot: ItemSlot, button: int, double: bool) -> void:
-	_select(slot.index)
-	if button == MOUSE_BUTTON_RIGHT or double:
-		_primary_use(slot.index)
+## Groups the bag by item kind (all stacks of one item = one card), sections by category.
+func _refresh_pouch() -> void:
+	var inv := player.inventory
+	for c in _pouch.get_children():
+		c.queue_free()
+	var totals := {}  # id -> [count, best durability]
+	var order: Array[StringName] = []
+	var used := 0
+	for st: ItemStack in inv.slots:
+		if st == null:
+			continue
+		used += 1
+		if not totals.has(st.id):
+			totals[st.id] = [0, 0]
+			order.append(st.id)
+		totals[st.id][0] += st.count
+		totals[st.id][1] = maxi(totals[st.id][1], st.durability)
+	_space_label.text = Loc.t("POUCH_SPACE", {"n": used, "max": inv.size})
+	if order.is_empty():
+		_pouch.add_child(UITheme.label(Loc.t("POUCH_EMPTY"), "MutedLabel"))
+	for sec: Array in SECTIONS:
+		var ids: Array[StringName] = []
+		for id in order:
+			if ItemDB.get_item(id).category in sec[1]:
+				ids.append(id)
+		if ids.is_empty():
+			continue
+		_pouch.add_child(UITheme.label(Loc.t(sec[0]), "MutedLabel"))
+		var flow := HFlowContainer.new()
+		flow.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		flow.add_theme_constant_override("h_separation", 6)
+		flow.add_theme_constant_override("v_separation", 6)
+		_pouch.add_child(flow)
+		for id in ids:
+			var b := _card_button()
+			_fill_card(b, id, totals[id][0], totals[id][1])
+			b.button_pressed = not _selected_hand and id == _selected_id
+			b.pressed.connect(func() -> void:
+				_selected_hand = false
+				_selected_id = id
+				_dirty = true)
+			b.gui_input.connect(func(ev: InputEvent) -> void:
+				if ev is InputEventMouseButton and ev.pressed and (ev.button_index == MOUSE_BUTTON_RIGHT or ev.double_click):
+					_selected_hand = false
+					_selected_id = id
+					_primary_use())
+			flow.add_child(b)
+	var h := inv.hand
+	if h:
+		_fill_card(_hand_card, h.id, 1, h.durability)
+	else:
+		_hand_card.icon = null
+		_hand_card.text = Loc.t("WHEEL_HANDS")
+	_hand_card.button_pressed = _selected_hand
+	if _selected_id != &"" and not totals.has(_selected_id):
+		_selected_id = &""
 
 
-func _primary_use(i: int) -> void:
-	if i == ItemSlot.HAND:
+## The bag slot holding the selected kind (the least worn stack for tools, any for the rest).
+func _selected_slot() -> int:
+	var inv := player.inventory
+	var best := -1
+	for i in inv.size:
+		var st := inv.get_slot(i)
+		if st != null and st.id == _selected_id and (best < 0 or st.durability > inv.get_slot(best).durability):
+			best = i
+	return best
+
+
+func _primary_use() -> void:
+	if _selected_hand:
 		player.inventory.unequip()
 		return
-	var st := _stack_at(i)
-	if st == null:
+	var i := _selected_slot()
+	if i < 0:
 		return
+	var st := player.inventory.get_slot(i)
+	player.use_slot(i)
 	if st.get_data().category == &"placeable":
-		player.use_slot(i)
 		close()
-	else:
-		player.use_slot(i)
 
 
 func _refresh_detail() -> void:
 	for c in _detail_buttons.get_children():
 		c.queue_free()
-	var st := _stack_at(_selected)
+	var st: ItemStack = null
+	if _selected_hand:
+		st = player.inventory.hand
+	elif _selected_id != &"":
+		st = player.inventory.get_slot(_selected_slot())
 	if st == null:
 		_detail_title.text = ""
-		_detail_text.text = Loc.t("HINT_SELECT_ITEM")
+		_detail_text.text = Loc.t("HINT_SELECT_ITEM", {"key": InputSetup.label(&"weapon_wheel")})
 		return
 	var d := st.get_data()
 	_detail_title.text = d.display_name()
 	var desc := ItemSlot.describe(st).split("\n")
 	desc.remove_at(0)
 	_detail_text.text = "\n".join(desc).strip_edges()
-	var i := _selected
-	if i == ItemSlot.HAND:
+	if _selected_hand:
 		_detail_buttons.add_child(UITheme.button(Loc.t("BTN_UNEQUIP"), func() -> void: player.inventory.unequip()))
 		_detail_buttons.add_child(UITheme.button(Loc.t("BTN_DROP"), func() -> void: player.drop_hand()))
 		return
 	if d.is_consumable():
-		_detail_buttons.add_child(UITheme.button(Loc.t("BTN_USE_%s" % String(d.category).to_upper()), _primary_use.bind(i)))
+		_detail_buttons.add_child(UITheme.button(Loc.t("BTN_USE_%s" % String(d.category).to_upper()), _primary_use))
 	elif d.is_equippable():
-		_detail_buttons.add_child(UITheme.button(Loc.t("BTN_EQUIP"), _primary_use.bind(i)))
+		_detail_buttons.add_child(UITheme.button(Loc.t("BTN_EQUIP"), _primary_use))
 	elif d.category == &"placeable":
-		_detail_buttons.add_child(UITheme.button(Loc.t("BTN_PLACE"), _primary_use.bind(i)))
-	_detail_buttons.add_child(UITheme.button(Loc.t("BTN_DROP"), func() -> void: player.drop_slot(i)))
+		_detail_buttons.add_child(UITheme.button(Loc.t("BTN_PLACE"), _primary_use))
+	_detail_buttons.add_child(UITheme.button(Loc.t("BTN_DROP"), func() -> void:
+		var i := _selected_slot()
+		if i >= 0:
+			player.drop_slot(i)))
 
 
 func _recipe_check(r: RecipeData) -> Dictionary:
@@ -316,6 +418,8 @@ func _refresh_recipes() -> void:
 	for c in _recipe_list.get_children():
 		c.queue_free()
 	for r: RecipeData in ItemDB.all_recipes():
+		if _group != &"" and r.group != _group:
+			continue
 		var d := ItemDB.get_item(r.result)
 		var ok: bool = _recipe_check(r).ok
 		var b := Button.new()
@@ -430,7 +534,3 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event.is_action_pressed("journal"):
 		_set_tab(1)
 		get_viewport().set_input_as_handled()
-	for i in Inventory.HOTBAR_SIZE:
-		if event.is_action_pressed("hotbar_%d" % (i + 1)) and _selected >= 0:
-			player.inventory.swap_slots(_selected, i)
-			get_viewport().set_input_as_handled()

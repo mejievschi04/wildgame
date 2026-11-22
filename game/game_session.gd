@@ -8,6 +8,8 @@ var world: ForestWorld
 var player: Player
 var hud: HUD
 var inventory_screen: InventoryScreen
+var map_screen: MapScreen
+var weapon_wheel: WeaponWheel
 var pause_menu: PauseMenu
 var death_screen: DeathScreen
 var build_menu: BuildMenu
@@ -36,7 +38,7 @@ func _ready() -> void:
 	add_child(amb)
 	player.died.connect(_on_player_died)
 	player.slept.connect(func(_h: float) -> void: save_to("autosave"))
-	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	player.capture_mouse()
 	AutoShot.attach_if_requested(self)
 
 
@@ -44,6 +46,7 @@ func _start_new() -> void:
 	player.global_position = world.spawn_position()
 	player.respawn_point = player.global_position
 	player.rotation.y = -PI * 0.5  # face east, towards the river
+	player.head.rotation.x = deg_to_rad(-18.0)
 	world.day_night.time_hours = 10.0
 	world.add_journal("JOURNAL_START")
 
@@ -64,6 +67,14 @@ func _build_ui() -> void:
 	layer.add_child(inventory_screen)
 	inventory_screen.bind(player)
 	inventory_screen.closed.connect(_on_ui_closed)
+	weapon_wheel = WeaponWheel.new()
+	weapon_wheel.player = player
+	layer.add_child(weapon_wheel)
+	weapon_wheel.closed.connect(func() -> void: player.input_enabled = not player.dead)
+	map_screen = MapScreen.new()
+	map_screen.player = player
+	layer.add_child(map_screen)
+	map_screen.closed.connect(_on_ui_closed)
 	pause_menu = PauseMenu.new()
 	pause_menu.day_text_provider = func() -> String: return Loc.t("PAUSE_DAY", {"day": world.day_night.day})
 	layer.add_child(pause_menu)
@@ -118,7 +129,7 @@ func is_ui_open() -> bool:
 	if inventory_screen == null:  # UI not built yet (e.g. focus lost while loading)
 		return true
 	return inventory_screen.visible or pause_menu.visible or death_screen.visible \
-		or build_menu.visible or storage_screen.visible
+		or build_menu.visible or storage_screen.visible or map_screen.visible or weapon_wheel.visible
 
 
 func open_inventory(tab: int = 0) -> void:
@@ -126,6 +137,13 @@ func open_inventory(tab: int = 0) -> void:
 	player.input_enabled = false
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	inventory_screen.open(tab)
+
+
+func open_map() -> void:
+	player.placement.cancel()
+	player.input_enabled = false
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	map_screen.open()
 
 
 func open_build_menu() -> void:
@@ -151,12 +169,13 @@ func _on_ui_closed() -> void:
 	if player.dead:
 		return
 	player.input_enabled = true
-	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	player.capture_mouse()
 
 
 func _on_player_died(cause: StringName) -> void:
 	player.input_enabled = false
-	for ui: Control in [inventory_screen, build_menu, storage_screen]:
+	weapon_wheel.close(false)
+	for ui: Control in [inventory_screen, build_menu, storage_screen, map_screen]:
 		ui.visible = false
 	death_screen.show_death(cause)
 
@@ -178,11 +197,18 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event.is_action_pressed("journal"):
 		open_inventory(1)
 		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed("weapon_wheel") and not player.build.active and not player.placement.active:
+		player.input_enabled = false
+		weapon_wheel.open()
+		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed("map"):
+		open_map()
+		get_viewport().set_input_as_handled()
 	elif event.is_action_pressed("build_menu"):
 		open_build_menu()
 		get_viewport().set_input_as_handled()
 	elif event is InputEventMouseButton and event.pressed and Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
-		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+		player.capture_mouse()
 
 
 func _notification(what: int) -> void:

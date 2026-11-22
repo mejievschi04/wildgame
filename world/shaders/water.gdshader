@@ -39,5 +39,5 @@ void fragment() {
 	ROUGHNESS = 0.14;
 	METALLIC = 0.0;
 	SPECULAR = 0.38;
-	ALPHA = smoothstep(0.0, 0.15, depth);
+	ALPHA = smoothstep(0.0, 0.4, depth);  // wide, soft shoreline instead of a hard cut along the terrain
 }

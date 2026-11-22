@@ -30,6 +30,9 @@
 		"hit_yield": {
 			"stone": 1
 		},
+		"hit_bonus": {
+			"flint": 0.15
+		},
 		"capacity": 8,
 		"regrow": 0,
 		"blocking": true
@@ -40,7 +43,7 @@
 			"flint": 1
 		},
 		"capacity": 4,
-		"regrow": 0,
+		"regrow": 2880,
 		"blocking": true
 	},
 	"bush": {
@@ -78,6 +81,84 @@
 		"capacity": 1,
 		"hold": 0.4,
 		"regrow": 1800,
+		"blocking": false
+	},
+	"wild_grain": {
+		"hand_yield": {
+			"grain": 2,
+			"fiber": 1
+		},
+		"hand_bonus": {
+			"seeds_grain": 0.6
+		},
+		"bonus_tag": "tool_sickle",
+		"capacity": 2,
+		"hold": 0.8,
+		"regrow": 2160,
+		"blocking": false
+	},
+	"wild_carrot": {
+		"hand_yield": {
+			"wild_carrot": 1
+		},
+		"hand_bonus": {
+			"seeds_carrot": 0.45
+		},
+		"bonus_tag": "tool_hoe",
+		"capacity": 2,
+		"hold": 1,
+		"regrow": 2160,
+		"blocking": false
+	},
+	"herbs": {
+		"hand_yield": {
+			"herb": 2
+		},
+		"capacity": 2,
+		"hold": 0.7,
+		"regrow": 1800,
+		"blocking": false
+	},
+	"flax": {
+		"hand_yield": {
+			"fiber": 3
+		},
+		"hand_bonus": {
+			"seeds_flax": 0.55
+		},
+		"bonus_tag": "tool_sickle",
+		"capacity": 2,
+		"hold": 0.8,
+		"regrow": 2160,
+		"blocking": false
+	},
+	"hazel": {
+		"hand_yield": {
+			"hazelnuts": 3,
+			"stick": 1
+		},
+		"capacity": 3,
+		"hold": 1,
+		"regrow": 2880,
+		"blocking": false
+	},
+	"reeds": {
+		"hand_yield": {
+			"reeds": 3
+		},
+		"bonus_tag": "tool_sickle",
+		"capacity": 3,
+		"hold": 0.8,
+		"regrow": 1440,
+		"blocking": false
+	},
+	"clay": {
+		"hit_tag": "tool_hoe",
+		"hit_yield": {
+			"clay": 2
+		},
+		"capacity": 6,
+		"regrow": 2880,
 		"blocking": false
 	}
 }

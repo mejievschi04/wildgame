@@ -6,6 +6,9 @@ extends Control
 const CONDITION_KEYS := [&"hypothermia", &"overheat", &"bleeding", &"food_poisoning", &"fracture", &"wet"]
 const TOAST_TIME := 3.2
 const MAX_TOASTS := 5
+## Camp markers: your own fires get a flame + distance on screen once you are this far from them.
+const MARKER_MIN_DIST := 18.0
+const MAX_MARKERS := 3
 
 var player: Player
 
@@ -19,13 +22,19 @@ var _rest_label: Label
 var _weight_label: Label
 var _cond_label: Label
 var _reticle: Control
+var _markers: Control
 var _prompt_box: VBoxContainer
 var _target_label: Label
 var _status_label: Label
 var _option_labels: Array[Label] = []
 var _hold_bar: ProgressBar
-var _hotbar_slots: Array[ItemSlot] = []
-var _hand_slot: ItemSlot
+# Equipped weapon (bottom right, Far Cry Primal style): no hotbar, the weapon wheel picks what you hold.
+var _eq_box: Control
+var _eq_icon: TextureRect
+var _eq_name: Label
+var _eq_sub: Label
+var _eq_bar: ProgressBar
+var _eq_hint: Label
 var _toasts: VBoxContainer
 var _vignette: ColorRect
 var _fade: ColorRect
@@ -42,6 +51,7 @@ func _ready() -> void:
 	theme = UITheme.get_theme(bool(Settings.get_value("accessibility", "high_contrast")))
 	_build_vignette()
 	_build_stats()
+	_build_markers()
 	_build_reticle()
 	_build_prompt()
 	_build_hotbar()
@@ -71,9 +81,6 @@ func _ready() -> void:
 
 func bind(p: Player) -> void:
 	player = p
-	_hand_slot.inventory = p.inventory
-	for s in _hotbar_slots:
-		s.inventory = p.inventory
 	p.slept.connect(func(_h: float) -> void: fade_flash())
 	p.hurt.connect(func(_a: float) -> void: _hit_flash())
 
@@ -142,6 +149,107 @@ func _stat_row(parent: Container, key: String, color: Color, h: float) -> Progre
 	return b
 
 
+func _build_markers() -> void:
+	_markers = Control.new()
+	_markers.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_markers.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_markers.draw.connect(_draw_markers)
+	add_child(_markers)
+
+
+## Flame + distance over each of your fires (not the clans' ever-burning ones). Off screen or behind you,
+## the marker sticks to the screen edge with an arrow pointing the way home. Bright when lit, ash-grey when out.
+func _draw_markers() -> void:
+	if player == null or player.camera == null or player.dead:
+		return
+	var cam: Camera3D = player.camera
+	var size := _markers.size
+	var centre := size * 0.5
+	_draw_waypoint_marker(cam, size, centre)
+	var fires: Array = []
+	for f: Campfire in get_tree().get_nodes_in_group("campfire"):
+		if f.eternal or f.is_queued_for_deletion():
+			continue
+		var d := f.global_position.distance_to(player.global_position)
+		if d >= MARKER_MIN_DIST:
+			fires.append([d, f])
+	fires.sort_custom(func(a: Array, b: Array) -> bool: return a[0] < b[0])
+	var font := get_theme_default_font()
+	for e: Array in fires.slice(0, MAX_MARKERS):
+		var f: Campfire = e[1]
+		var world_pos := f.global_position + Vector3.UP * 1.8
+		var p := cam.unproject_position(world_pos)
+		var behind := cam.is_position_behind(world_pos)
+		if behind:  # behind you: bottom edge, left or right of centre depending on the side it lies
+			var lp := cam.to_local(world_pos)
+			p = Vector2(centre.x + clampf(lp.x / maxf(absf(lp.z), 0.1), -1.0, 1.0) * centre.x, size.y * 2.0)
+		var lo := Vector2(46, 46)
+		var hi := size - Vector2(46, 150)  # stay clear of the hotbar
+		var at := p.clamp(lo, hi)
+		var off := behind or not at.is_equal_approx(p)
+		var lit := f.is_lit()
+		var col := Color(1.0, 0.62, 0.25) if lit else Color(0.72, 0.7, 0.66)
+		var fade := clampf((float(e[0]) - MARKER_MIN_DIST) / 12.0, 0.0, 1.0) * 0.9
+		col.a = fade
+		_draw_flame(at, col, lit)
+		if off:
+			var dir := (p - centre).normalized()
+			var tip := at + dir * 24.0
+			var side := Vector2(-dir.y, dir.x)
+			_markers.draw_colored_polygon(PackedVector2Array([tip, tip - dir * 10.0 + side * 6.0, tip - dir * 10.0 - side * 6.0]), col)
+		var txt := Loc.t("HUD_DISTANCE", {"n": roundi(float(e[0]))})
+		var w := font.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 14).x
+		_markers.draw_string(font, at + Vector2(-w * 0.5 + 1, 25), txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(0, 0, 0, col.a * 0.6))
+		_markers.draw_string(font, at + Vector2(-w * 0.5, 24), txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(UITheme.BONE, col.a))
+
+
+## The waypoint set on the map: a red cross + distance, stuck to the screen edge when off screen.
+## Cleared automatically when you get there.
+func _draw_waypoint_marker(cam: Camera3D, size: Vector2, centre: Vector2) -> void:
+	var w := player.world
+	if w == null or w.waypoint == Vector3.INF:
+		return
+	var d := Vector2(w.waypoint.x - player.global_position.x, w.waypoint.z - player.global_position.z).length()
+	if d < 6.0:
+		w.waypoint = Vector3.INF
+		Events.toast(Loc.t("MSG_WAYPOINT_REACHED"), &"good")
+		return
+	var world_pos := w.waypoint + Vector3.UP * 2.0
+	var p := cam.unproject_position(world_pos)
+	if cam.is_position_behind(world_pos):
+		var lp := cam.to_local(world_pos)
+		p = Vector2(centre.x + clampf(lp.x / maxf(absf(lp.z), 0.1), -1.0, 1.0) * centre.x, size.y * 2.0)
+	var at := p.clamp(Vector2(46, 46), size - Vector2(46, 150))
+	var col := Color(0.85, 0.2, 0.14, 0.95)
+	_markers.draw_circle(at, 12.0, Color(0.05, 0.04, 0.03, 0.45))
+	_markers.draw_line(at + Vector2(-6, -6), at + Vector2(6, 6), col, 3.0, true)
+	_markers.draw_line(at + Vector2(-6, 6), at + Vector2(6, -6), col, 3.0, true)
+	if not at.is_equal_approx(p):
+		var dir := (p - centre).normalized()
+		var tip := at + dir * 24.0
+		var side := Vector2(-dir.y, dir.x)
+		_markers.draw_colored_polygon(PackedVector2Array([tip, tip - dir * 10.0 + side * 6.0, tip - dir * 10.0 - side * 6.0]), col)
+	var font := get_theme_default_font()
+	var txt := Loc.t("HUD_DISTANCE", {"n": roundi(d)})
+	var tw := font.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 14).x
+	_markers.draw_string(font, at + Vector2(-tw * 0.5, 25), txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(UITheme.BONE, 0.95))
+
+
+func _draw_flame(at: Vector2, col: Color, lit: bool) -> void:
+	var pts := PackedVector2Array()
+	for i in 13:  # teardrop: round base, pointed top
+		var a := TAU * i / 12.0
+		var r := 7.0
+		var v := Vector2(sin(a) * r, cos(a) * r)
+		if v.y < 0.0:
+			v = Vector2(v.x * (1.0 + v.y / r * 0.7), v.y * 2.0)
+		pts.append(at + v + Vector2(0, 2))
+	_markers.draw_circle(at + Vector2(0, 1), 12.0, Color(0.05, 0.04, 0.03, col.a * 0.45))
+	_markers.draw_colored_polygon(pts, col)
+	if lit:
+		_markers.draw_circle(at + Vector2(0, 4), 3.0, Color(1.0, 0.92, 0.6, col.a))
+
+
 func _build_reticle() -> void:
 	_reticle = Control.new()
 	_reticle.set_anchors_preset(Control.PRESET_CENTER)
@@ -164,6 +272,10 @@ func _draw_reticle() -> void:
 	if player != null and player.aiming:
 		_reticle.draw_line(Vector2(-6, 0), Vector2(6, 0), Color(UITheme.BONE, 0.8), 1.0)
 		_reticle.draw_line(Vector2(0, -6), Vector2(0, 6), Color(UITheme.BONE, 0.8), 1.0)
+	if player != null and player.drawing:  # bow draw strength; turns bright when fully drawn
+		var k: float = player.draw_ratio()
+		var dc := UITheme.BONE if k >= 1.0 else Color(UITheme.OCHRE, 0.8)
+		_reticle.draw_arc(Vector2.ZERO, 15.0, PI / 2 - PI * 0.5 * k, PI / 2 + PI * 0.5 * k, 24, dc, 2.0, true)
 	if player != null and player.hold_ratio > 0.0:
 		_reticle.draw_arc(Vector2.ZERO, 12.0, -PI / 2, -PI / 2 + TAU * player.hold_ratio, 32, UITheme.OCHRE, 3.0, true)
 
@@ -194,31 +306,69 @@ func _build_prompt() -> void:
 
 
 func _build_hotbar() -> void:
-	var holder := CenterContainer.new()
-	holder.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
-	holder.offset_top = -96
-	holder.offset_bottom = -22
-	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(holder)
-	var bar := HBoxContainer.new()
-	bar.add_theme_constant_override("separation", 6)
-	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	holder.add_child(bar)
-	_hand_slot = ItemSlot.new()
-	_hand_slot.index = ItemSlot.HAND
-	_hand_slot.compact = true
-	_hand_slot.highlight = true
-	bar.add_child(_hand_slot)
-	var sep := VSeparator.new()
-	sep.modulate.a = 0.3
-	bar.add_child(sep)
-	for i in Inventory.HOTBAR_SIZE:
-		var s := ItemSlot.new()
-		s.index = i
-		s.compact = true
-		s.hotkey = str(i + 1)
-		bar.add_child(s)
-		_hotbar_slots.append(s)
+	_eq_box = VBoxContainer.new()
+	_eq_box.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
+	_eq_box.offset_left = -300
+	_eq_box.offset_top = -150
+	_eq_box.offset_right = -34
+	_eq_box.offset_bottom = -26
+	_eq_box.alignment = BoxContainer.ALIGNMENT_END
+	_eq_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_eq_box)
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_END
+	row.add_theme_constant_override("separation", 12)
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_eq_box.add_child(row)
+	var txt := VBoxContainer.new()
+	txt.alignment = BoxContainer.ALIGNMENT_CENTER
+	txt.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(txt)
+	_eq_name = UITheme.label("", "HeadingLabel")
+	_eq_name.add_theme_font_size_override("font_size", 20)
+	_eq_name.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	txt.add_child(_eq_name)
+	_eq_sub = UITheme.label("", "SmallLabel")
+	_eq_sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	txt.add_child(_eq_sub)
+	_eq_bar = UITheme.bar(UITheme.BONE, 3.0)
+	_eq_bar.custom_minimum_size.x = 120
+	_eq_bar.size_flags_horizontal = Control.SIZE_SHRINK_END
+	txt.add_child(_eq_bar)
+	_eq_icon = TextureRect.new()
+	_eq_icon.custom_minimum_size = Vector2(76, 76)
+	_eq_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_eq_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_eq_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(_eq_icon)
+	_eq_hint = UITheme.label("", "MutedLabel")
+	_eq_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_eq_box.add_child(_eq_hint)
+
+
+func _update_equipped() -> void:
+	var h: ItemStack = player.inventory.hand
+	_eq_hint.text = Loc.t("HUD_WHEEL_HINT", {"key": InputSetup.label(&"weapon_wheel")})
+	if h == null:
+		_eq_icon.texture = null
+		_eq_name.text = Loc.t("WHEEL_HANDS")
+		_eq_sub.text = ""
+		_eq_bar.visible = false
+		_eq_box.modulate.a = 0.55
+		return
+	var d := h.get_data()
+	_eq_box.modulate.a = 1.0
+	_eq_icon.texture = AssetLib.item_icon(h.id)
+	_eq_name.text = d.display_name()
+	_eq_bar.visible = d.has_durability()
+	if d.has_durability():
+		_eq_bar.max_value = d.max_durability
+		_eq_bar.value = h.durability
+	if h.id == &"bow":
+		_eq_sub.text = Loc.t("WHEEL_ARROWS", {"n": player.inventory.count_of(&"arrow")})
+	else:
+		var spare := player.inventory.count_of(h.id)
+		_eq_sub.text = Loc.t("HUD_SPARE", {"n": spare}) if spare > 0 else ""
 
 
 func _build_build_hint() -> void:
@@ -341,7 +491,9 @@ func _process(_delta: float) -> void:
 	_update_context(s)
 	_update_prompt()
 	_update_build_hint()
+	_update_equipped()
 	_reticle.queue_redraw()
+	_markers.queue_redraw()
 	if _hit_t > 0.0:
 		_hit_t -= _delta
 		return

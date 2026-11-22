@@ -424,7 +424,6 @@ def mocap_clips(rig, b):
     out = {}
     out["walk"] = mr.cyclic_clip(rig, MOCAP + "08_01.bvh", "walk", WALK_V, FPS, 0.85, 1.4, extra=mocap_extra(rig, b, 0.15))
     out["run"] = mr.cyclic_clip(rig, MOCAP + "09_02.bvh", "run", RUN_V, FPS, 0.5, 0.85, extra=mocap_extra(rig, b, 0.45, 18.0))
-    out["attack"] = mr.segment_clip(rig, MOCAP + "02_07.bvh", "attack", 100, 238, FPS, extra=mocap_extra(rig, b, 1.0))
     return out
 
 

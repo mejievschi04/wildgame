@@ -9,6 +9,10 @@ extends Resource
 @export var required_tag: StringName = &""  # tool tag that must be in inventory/hand (not consumed)
 @export var station: StringName = &""  # e.g. &"campfire" (must be near a lit one)
 @export var craft_time: float = 1.0
+## Crafting menu tab: tools, weapons, food, medical, camp, materials (see GROUPS).
+@export var group: StringName = &"materials"
+
+const GROUPS: Array[StringName] = [&"tools", &"weapons", &"food", &"medical", &"camp", &"materials"]
 
 
 static func from_dict(d: Dictionary) -> RecipeData:
@@ -22,4 +26,5 @@ static func from_dict(d: Dictionary) -> RecipeData:
 	r.required_tag = StringName(str(d.get("tool", "")))
 	r.station = StringName(str(d.get("station", "")))
 	r.craft_time = float(d.get("time", 1.0))
+	r.group = StringName(str(d.get("group", "materials")))
 	return r

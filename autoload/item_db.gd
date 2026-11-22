@@ -104,12 +104,12 @@ func validate() -> PackedStringArray:
 				errors.append("recipe %s: unknown ingredient %s" % [r.id, ing])
 	for kind: StringName in node_kinds.keys():
 		var k: Dictionary = node_kinds[kind]
-		for field in ["hand_yield", "hit_yield"]:
+		for field in ["hand_yield", "hit_yield", "hit_bonus"]:
 			var y: Dictionary = k.get(field, {})
 			for id: String in y.keys():
 				if not items.has(StringName(id)):
 					errors.append("node %s: unknown %s item %s" % [kind, field, id])
-	const SNAPS := ["ground_grid", "edge", "corner", "top", "doorway", "ground", "ground_or_floor"]
+	const SNAPS := ["ground_grid", "edge", "corner", "top", "doorway", "gable", "ground", "ground_or_floor"]
 	for pid: StringName in pieces.keys():
 		var pd: Dictionary = pieces[pid]
 		if not str(pd.get("snap", "")) in SNAPS:
@@ -117,6 +117,12 @@ func validate() -> PackedStringArray:
 		for id: String in pd.get("cost", {}).keys():
 			if not items.has(StringName(id)):
 				errors.append("piece %s: unknown cost item %s" % [pid, id])
+		for t: Dictionary in pd.get("tiers", []):
+			if (t.get("cost", {}) as Dictionary).is_empty():
+				errors.append("piece %s: tier %s has no cost" % [pid, t.get("name", "?")])
+			for id: String in t.get("cost", {}).keys():
+				if not items.has(StringName(id)):
+					errors.append("piece %s: unknown tier cost item %s" % [pid, id])
 	for aid: StringName in animals.keys():
 		for id: String in (animals[aid] as Dictionary).get("loot", {}).keys():
 			if not items.has(StringName(id)):

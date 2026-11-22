@@ -7,6 +7,7 @@ extends Node3D
 const SIZE := 4200.0
 const HALF := SIZE * 0.5
 const GRID := 420
+const CELL_SIZE := SIZE / GRID
 const SEED := 20261121
 const WATER_LEVEL := 0.0
 const PLAYABLE := 2000.0
@@ -42,14 +43,23 @@ var factions: Factions
 var camps: Camps
 var _camp_sites: Array[Vector2] = []
 var _camp_heights: Array[float] = []
+var _camp_clearings: Array[Vector2] = []
 var journal: Array[String] = []
+## World map: explored cells (MapData fog), the player's waypoint, the painted map (ready when map_task finishes).
+var map_fog := MapData.new_fog()
+var waypoint := Vector3.INF
+var map_image: Image
+var _map_task := -1
+var _map_t := 0.0
 var player: Node = null
 
 var _noise := FastNoiseLite.new()
 var _landform := FastNoiseLite.new()
 var _detail := FastNoiseLite.new()
 var _spawn_height := 0.0
+var _terrain_heights := PackedFloat32Array()
 var _nodes: Dictionary = {}  # id -> Node
+var _pending_region_states: Dictionary = {}
 var _structure_counter := 0
 var _sim_accum := 0.0
 var _occupied: Dictionary = {}  # Vector2i cell -> Array[Vector3] (x, z, radius)
@@ -88,8 +98,9 @@ func _ready() -> void:
 	_build_water()
 	_build_bounds()
 	_build_pois()
-	for c in _camp_sites:
-		_occupy(c.x, c.y, 16.0)
+	for i in _camp_sites.size():
+		var c := _camp_sites[i]
+		_occupy(c.x, c.y, maxf(16.0, _camp_clearings[i].x + 4.0))
 	_scatter()
 	_build_forest_mask()
 	tracks = Tracks.new()
@@ -117,6 +128,42 @@ func _ready() -> void:
 	veg.build(self, forest_mask)
 	if menu_mode:
 		day_night.frozen = true
+	else:
+		MapData.reveal(map_fog, SPAWN.x, SPAWN.y, MapData.START_REVEAL)
+		_start_map_paint()
+
+
+## Paints the world map once per seed in the background (it is cached on disk afterwards).
+func _start_map_paint() -> void:
+	map_image = MapData.cached()
+	if map_image:
+		return
+	var heights := _terrain_heights.duplicate()
+	var forest := forest_mask.duplicate() as Image
+	_map_task = WorkerThreadPool.add_task(func() -> void:
+		var img := MapData.paint(heights, GRID, SIZE, forest, WATER_LEVEL)
+		img.save_png(MapData.cache_path())
+		_set_map_image.call_deferred(img))
+
+
+func _set_map_image(img: Image) -> void:
+	map_image = img
+
+
+## The painted map, waiting for the background job if it is still running (e.g. the map opened early).
+func get_map_image() -> Image:
+	if map_image == null and _map_task >= 0:
+		WorkerThreadPool.wait_for_task_completion(_map_task)
+		_map_task = -1
+		if map_image == null:
+			map_image = MapData.cached()
+	return map_image
+
+
+func _exit_tree() -> void:
+	if _map_task >= 0:
+		WorkerThreadPool.wait_for_task_completion(_map_task)
+		_map_task = -1
 
 
 func _child_root(n: String) -> Node3D:
@@ -129,10 +176,16 @@ func _child_root(n: String) -> Node3D:
 func _process(delta: float) -> void:
 	if menu_mode:
 		return
+	_map_t += delta
+	if _map_t >= 0.5 and player:
+		_map_t = 0.0
+		var pp := (player as Node3D).global_position
+		MapData.reveal(map_fog, pp.x, pp.z, MapData.REVEAL_RADIUS)
 	_sim_accum += delta
 	if _sim_accum >= 1.0:
 		for n in get_tree().get_nodes_in_group("slow_sim"):
 			n.simulate(_sim_accum)
+		_advance_pending_regrowth(_sim_accum)
 		_sim_accum = 0.0
 
 
@@ -202,9 +255,15 @@ func _load_camp_sites() -> void:
 	var f := FileAccess.open("res://data/factions.json", FileAccess.READ)
 	var d: Variant = JSON.parse_string(f.get_as_text()) if f else {}
 	for k: String in (d as Dictionary).keys():
-		var c := Camps.site(d[k])
-		_camp_sites.append(c)
-		_camp_heights.append(maxf(_base_height_at(c.x, c.y), 1.5))
+		_add_camp_site(Camps.site(d[k]), 10.0)
+	for base: Dictionary in Camps.REGIONAL_BASES.values():
+		_add_camp_site(Camps.site(base), maxf(12.0, float(base.wall_radius) + 6.0))
+
+
+func _add_camp_site(c: Vector2, flat_radius: float) -> void:
+	_camp_sites.append(c)
+	_camp_heights.append(maxf(_base_height_at(c.x, c.y), 1.5))
+	_camp_clearings.append(Vector2(flat_radius, flat_radius + 12.0))
 
 
 func _base_height_at(x: float, z: float) -> float:
@@ -249,20 +308,51 @@ func _base_height_at(x: float, z: float) -> float:
 	return h
 
 
-func height_at(x: float, z: float) -> float:
+## River cross-section by distance from the channel centre: a bed, a long *linear* bank ramp (the waterline at
+## ~10 m falls inside the water strips, and a linear ramp keeps the 10 m terrain grid from drawing it as a
+## sawtooth), then valley sides of ~17-22 degrees blending into the land -- instead of a 60-degree canyon.
+const RIVER_BED := -1.4
+const RIVER_BANK_START := 1.0
+const RIVER_BANK_END := 23.0
+const RIVER_BANK_TOP := 2.0
+const RIVER_VALLEY_SLOPE := 0.34
+
+
+func _river_profile(x: float, z: float, d: float) -> float:
+	if d <= RIVER_BANK_START:
+		return RIVER_BED
+	if d <= RIVER_BANK_END:
+		return lerpf(RIVER_BED, RIVER_BANK_TOP, (d - RIVER_BANK_START) / (RIVER_BANK_END - RIVER_BANK_START))
+	# Valley sides: steeper and gentler stretches along the river so it doesn't read as a machined trench.
+	var slope := RIVER_VALLEY_SLOPE + 0.08 * _landform.get_noise_2d(x * 0.5, z * 0.5)
+	return RIVER_BANK_TOP + (d - RIVER_BANK_END) * slope
+
+
+## Smooth minimum: like minf(a, b) but rounds the crease where the two surfaces meet (k = blend height).
+static func _smin(a: float, b: float, k: float) -> float:
+	var t := maxf(k - absf(a - b), 0.0) / k
+	return minf(a, b) - t * t * k * 0.25
+
+
+## legacy_river: the old narrow river cut. Only the seeded scatter in _scatter_kind() uses it, so the start
+## valley's resource nodes keep the same accept/reject sequence (and save ids) they had before the valley rework.
+func _terrain_height(x: float, z: float, legacy_river := false) -> float:
 	var h := _base_height_at(x, z)
 	for i in _camp_sites.size():
-		var dc0 := Vector2(x, z).distance_to(_camp_sites[i])
-		if dc0 < 22.0:
-			h = lerpf(h, _camp_heights[i], 1.0 - smoothstep(10.0, 22.0, dc0))
+		var radii := _camp_clearings[i]
+		var dc0 := Vector2(x, z).distance_squared_to(_camp_sites[i])
+		if dc0 < radii.y * radii.y:
+			h = lerpf(h, _camp_heights[i], 1.0 - smoothstep(radii.x, radii.y, sqrt(dc0)))
 	var ds := Vector2(x, z).distance_to(SPAWN)
 	# The original 260 m graybox flattened spawn to 3.2 m inside a 20 m ring.
 	# That target created a sheer crater after the surrounding terrain gained elevation.
 	h = lerpf(h, _spawn_height, (1.0 - smoothstep(45.0, 145.0, ds)) * 0.35)
 	var dc := Vector2(x, z).distance_to(OLD_CAMP)
 	h = lerpf(h, maxf(h, 2.6), 1.0 - smoothstep(4.0, 12.0, dc))
-	var river_bed := 1.0 - smoothstep(8.0, 35.0, river_distance(x, z))
-	h = lerpf(h, -1.4, river_bed)
+	if legacy_river:
+		h = lerpf(h, -1.4, 1.0 - smoothstep(8.0, 35.0, river_distance(x, z)))
+	else:
+		h = _smin(h, _river_profile(x, z, river_distance(x, z)), 8.0)
 	var lake_distance := Vector2((x - LAKE_CENTER.x) * LAKE_RADIUS_Z / LAKE_RADIUS_X, z - LAKE_CENTER.y).length()
 	var lake_basin := 1.0 - smoothstep(150.0, 260.0, lake_distance)
 	h = lerpf(h, -5.0, lake_basin)
@@ -270,6 +360,24 @@ func height_at(x: float, z: float) -> float:
 	if e > PLAYABLE + 4.0:
 		h += pow((e - PLAYABLE - 4.0) / 30.0, 2.0) * 28.0
 	return h
+
+
+## Interpolate the same two triangles used by the visible terrain and its collision mesh.
+func height_at(x: float, z: float) -> float:
+	if _terrain_heights.is_empty() or absf(x) > HALF or absf(z) > HALF:
+		return _terrain_height(x, z)
+	var gx := (x + HALF) / CELL_SIZE
+	var gz := (z + HALF) / CELL_SIZE
+	var ix := mini(floori(gx), GRID - 1)
+	var iz := mini(floori(gz), GRID - 1)
+	var u := gx - ix
+	var v := gz - iz
+	var a := iz * (GRID + 1) + ix
+	var b := _terrain_heights[a + 1]
+	var c := _terrain_heights[a + GRID + 1]
+	if u + v <= 1.0:
+		return _terrain_heights[a] * (1.0 - u - v) + b * u + c * v
+	return b * (1.0 - v) + c * (1.0 - u) + _terrain_heights[a + GRID + 2] * (u + v - 1.0)
 
 
 func normal_at(x: float, z: float) -> Vector3:
@@ -297,20 +405,23 @@ func _terrain_color(x: float, z: float, h: float, n: Vector3) -> Color:
 
 
 func _build_terrain() -> void:
+	var row := GRID + 1
+	_terrain_heights.resize(row * row)
+	for iz in row:
+		for ix in row:
+			_terrain_heights[iz * row + ix] = _terrain_height(-HALF + ix * CELL_SIZE, -HALF + iz * CELL_SIZE)
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var cell := SIZE / GRID
-	for iz in GRID + 1:
-		for ix in GRID + 1:
-			var x := -HALF + ix * cell
-			var z := -HALF + iz * cell
-			var h := height_at(x, z)
+	for iz in row:
+		for ix in row:
+			var x := -HALF + ix * CELL_SIZE
+			var z := -HALF + iz * CELL_SIZE
+			var h := _terrain_heights[iz * row + ix]
 			var n := normal_at(x, z)
 			st.set_normal(n)
 			st.set_color(_terrain_color(x, z, h, n))
 			st.set_uv(Vector2(ix, iz) / 8.0)
 			st.add_vertex(Vector3(x, h, z))
-	var row := GRID + 1
 	for iz in GRID:
 		for ix in GRID:
 			var a := iz * row + ix
@@ -389,7 +500,7 @@ func _build_lake(material: ShaderMaterial) -> void:
 			LAKE_CENTER.y + sin(a0) * LAKE_RADIUS_Z)
 		var p1 := Vector3(LAKE_CENTER.x + cos(a1) * LAKE_RADIUS_X, WATER_LEVEL + 0.025,
 			LAKE_CENTER.y + sin(a1) * LAKE_RADIUS_Z)
-		for p: Vector3 in [center, p1, p0]:
+		for p: Vector3 in [center, p0, p1]:
 			st.set_normal(Vector3.UP)
 			st.set_uv(Vector2(p.x / 18.0, p.z / 18.0))
 			st.add_vertex(p)
@@ -432,11 +543,11 @@ func _build_water_channel(channel_name: String, start_z: float, end_z: float, st
 		var c := a + 2
 		var d := a + 3
 		st.add_index(a)
-		st.add_index(c)
 		st.add_index(b)
 		st.add_index(c)
+		st.add_index(b)
 		st.add_index(d)
-		st.add_index(b)
+		st.add_index(c)
 	var surface := MeshInstance3D.new()
 	surface.name = "%s_Surface" % channel_name
 	surface.mesh = st.commit()
@@ -476,7 +587,7 @@ func _cell(x: float, z: float) -> Vector2i:
 	return Vector2i(floori(x / 6.0), floori(z / 6.0))
 
 
-func _is_free(x: float, z: float, r: float) -> bool:
+func is_scatter_site_free(x: float, z: float, r: float) -> bool:
 	var c := _cell(x, z)
 	for dx in range(-1, 2):
 		for dz in range(-1, 2):
@@ -497,10 +608,43 @@ func _spawn_node(kind: StringName, x: float, z: float, s: float = 1.0) -> Resour
 	var id := "%s_%03d" % [kind, _count_kind(kind)]
 	var n: ResourceNode = TreeNode.new() if String(kind).begins_with("tree") else ResourceNode.new()
 	n.setup(id, kind, s, _rng.randf() * TAU)
-	n.position = ground_point(x, z) + Vector3(0, -0.05, 0)
+	n.position = ground_point(x, z)
+	if kind not in [&"stones", &"sticks"]:
+		n.position.y -= 0.05
 	nodes_root.add_child(n)
 	_nodes[id] = n
 	return n
+
+
+func spawn_region_resource(root: Node3D, id: String, kind: StringName, at: Vector2,
+		size_scale: float, yaw: float, species: StringName = &"") -> void:
+	if _nodes.has(id):
+		(_nodes[id] as ResourceNode).reparent(root)
+		return
+	var n: ResourceNode
+	if species != &"":
+		var trunk := TreeNode.new()
+		trunk.species = species
+		n = trunk
+	else:
+		n = ResourceNode.new()
+	n.setup(id, kind, size_scale, yaw)
+	n.position = ground_point(at.x, at.y)
+	root.add_child(n)
+	_nodes[id] = n
+	if _pending_region_states.has(id):
+		n.load_state(_pending_region_states[id])
+		_pending_region_states.erase(id)
+
+
+func unload_region_resources(root: Node3D) -> void:
+	for child in root.get_children():
+		if child is ResourceNode:
+			if child.is_modified():
+				# Keep felling, branch drops and regrowth running outside the loaded area.
+				child.reparent(nodes_root)
+			else:
+				_nodes.erase(child.node_id)
 
 
 var _kind_counts: Dictionary = {}
@@ -512,7 +656,8 @@ func _count_kind(kind: StringName) -> int:
 	return c
 
 
-func _scatter_kind(kind: StringName, count: int, radius: float, accept: Callable, attempts_per: int = 12) -> void:
+## legacy: sample the pre-valley-rework terrain (only for kinds that existed before it, to keep their save ids).
+func _scatter_kind(kind: StringName, count: int, radius: float, accept: Callable, attempts_per: int = 12, legacy: bool = true) -> void:
 	var placed := 0
 	var attempts := 0
 	while placed < count and attempts < count * attempts_per:
@@ -521,10 +666,14 @@ func _scatter_kind(kind: StringName, count: int, radius: float, accept: Callable
 		# receive their own biome resources as those systems are added.
 		var x := _rng.randf_range(SPAWN.x - 245.0, SPAWN.x + 245.0)
 		var z := _rng.randf_range(SPAWN.y - 245.0, SPAWN.y + 245.0)
-		var h := height_at(x, z)
-		if h < 0.6 or normal_at(x, z).y < 0.84:
+		# Save IDs depend on this seeded acceptance sequence. Sample the original
+		# landform for distribution, then place accepted nodes on the terrain mesh.
+		var h := _terrain_height(x, z, legacy)
+		var dx := _terrain_height(x + 0.6, z, legacy) - _terrain_height(x - 0.6, z, legacy)
+		var dz := _terrain_height(x, z + 0.6, legacy) - _terrain_height(x, z - 0.6, legacy)
+		if h < 0.6 or Vector3(-dx, 1.2, -dz).normalized().y < 0.84:
 			continue
-		if not accept.call(x, z, h) or not _is_free(x, z, radius):
+		if not accept.call(x, z, h) or not is_scatter_site_free(x, z, radius):
 			continue
 		_occupy(x, z, radius)
 		_spawn_node(kind, x, z, _rng.randf_range(0.85, 1.2))
@@ -544,7 +693,7 @@ func _scatter() -> void:
 		_spawn_node(s[0], s[1], s[2])
 	# Flint on the river bank nearest to spawn.
 	for z: float in [-6.0, 14.0]:
-		var x := river_x(z) - 8.0
+		var x := river_x(z) - 14.0  # on the dry bank: the waterline sits ~10 m from the channel centre
 		_occupy(x, z, 2.0)
 		_spawn_node(&"flint", x, z)
 
@@ -564,6 +713,25 @@ func _scatter() -> void:
 	_scatter_kind(&"sticks", 50, 1.0, anywhere)
 	_scatter_kind(&"stones", 40, 1.0, anywhere)
 	_scatter_kind(&"mushroom", 30, 0.6, anywhere)
+	# In sight when a new player faces east. Append after the seeded scatter for save stability.
+	_spawn_node(&"sticks", 2.0, 0.75)
+	_spawn_node(&"stones", 2.1, -0.75)
+	# Wild food and fibre plants (farming update). Appended after everything above so older save ids stay put.
+	var meadow := func(x: float, z: float, h: float) -> bool:
+		return anywhere.call(x, z, h) and river_distance(x, z) > 25.0
+	var wet_bank := func(x: float, z: float, _h: float) -> bool:
+		var d := river_distance(x, z)
+		return d > 9.0 and d < 22.0
+	_scatter_kind(&"wild_grain", 18, 1.2, meadow, 12, false)
+	_scatter_kind(&"wild_carrot", 14, 1.0, meadow, 12, false)
+	_scatter_kind(&"herbs", 16, 0.9, anywhere, 12, false)
+	_scatter_kind(&"flax", 12, 1.1, meadow, 12, false)
+	_scatter_kind(&"hazel", 12, 1.6, away_from_spawn, 12, false)
+	_scatter_kind(&"reeds", 18, 1.0, wet_bank, 12, false)
+	_scatter_kind(&"clay", 8, 1.2, wet_bank, 12, false)
+	# A few right by the start so the first loop shows them.
+	_spawn_node(&"wild_grain", -6.5, 9.0)
+	_spawn_node(&"herbs", 7.5, 10.5)
 
 
 func set_ground_wetness(v: float) -> void:
@@ -575,24 +743,23 @@ func set_ground_wetness(v: float) -> void:
 ## (needles vs grass) and decorative scatter.
 func _build_forest_mask() -> void:
 	const RES := 256
+	const CANOPY_RADIUS := 5.0
+	const COVER_PER_TREE := PI * CANOPY_RADIUS * CANOPY_RADIUS / ((SIZE / RES) * (SIZE / RES))
 	var acc := PackedFloat32Array()
 	acc.resize(RES * RES)
-	var radius := 7
 	for n: Node in _nodes.values():
 		if not (n is ResourceNode and String((n as ResourceNode).kind).begins_with("tree")):
 			continue
 		var p := (n as Node3D).position
-		var cx := int((p.x / SIZE + 0.5) * RES)
-		var cy := int((p.z / SIZE + 0.5) * RES)
-		for dy in range(-radius, radius + 1):
-			for dx in range(-radius, radius + 1):
-				var x := cx + dx
-				var y := cy + dy
+		# Distribute canopy area in square metres over the nearest texel centres.
+		var uv := (Vector2(p.x, p.z) / SIZE + Vector2(0.5, 0.5)) * RES - Vector2(0.5, 0.5)
+		for dy in 2:
+			for dx in 2:
+				var x := floori(uv.x) + dx
+				var y := floori(uv.y) + dy
 				if x < 0 or y < 0 or x >= RES or y >= RES:
 					continue
-				var d2 := float(dx * dx + dy * dy) / float(radius * radius)
-				if d2 <= 1.0:
-					acc[y * RES + x] += (1.0 - d2) * 0.45
+				acc[y * RES + x] += COVER_PER_TREE * (1.0 - absf(uv.x - x)) * (1.0 - absf(uv.y - y))
 	forest_mask = Image.create(RES, RES, false, Image.FORMAT_L8)
 	for y in RES:
 		for x in RES:
@@ -809,15 +976,24 @@ func get_shelter_at(pos: Vector3) -> float:
 			var supports := dependents_of(p)
 			var walls := 0
 			var roofed := false
+			var extra := 0.0  # sturdier materials and closed gables keep more warmth in
+			var roofs: Array[BuildingPiece] = []
 			for sp in supports:
-				if sp.built and sp.piece_class() == "wall":
+				if sp.built and sp.piece_class() == "wall" and bool(sp.def.get("shelter_wall", true)):
 					walls += 1
+					extra += sp.warmth()
 				for r in dependents_of(sp):
-					if r.built and r.piece_class() == "roof":
+					if r.built and r.piece_class() == "roof" and not r in roofs:
 						roofed = true
+						roofs.append(r)
+			for r in roofs:
+				extra += r.warmth()
+				for g in dependents_of(r):
+					if g.built and g.piece_class() == "gable":
+						extra += 0.75
 			if roofed:
 				# Roof alone shelters a bit; each wall adds more (max with 3+ walls).
-				best = maxf(best, 5.0 + 2.0 * mini(walls, 3))
+				best = maxf(best, 5.0 + 2.0 * mini(walls, 3) + minf(extra, 6.0))
 	return best
 
 
@@ -826,12 +1002,24 @@ func advance_time(seconds: float) -> void:
 	day_night.advance(seconds)
 	for n in get_tree().get_nodes_in_group("time_sim"):
 		n.simulate(seconds)
+	_advance_pending_regrowth(seconds)
+
+
+func _advance_pending_regrowth(seconds: float) -> void:
+	for id: String in _pending_region_states.keys():
+		var state: Dictionary = _pending_region_states[id]
+		var remaining := float(state.get("g", 0.0))
+		if remaining > 0.0:
+			if remaining <= seconds:
+				_pending_region_states.erase(id) # Fully regrown on next visit.
+			else:
+				state.g = remaining - seconds
 
 
 # ---------------------------------------------------------------- persistence
 
 func collect_save() -> Dictionary:
-	var nodes := {}
+	var nodes := _pending_region_states.duplicate()
 	for n in get_tree().get_nodes_in_group("persistent"):
 		if n.is_modified():
 			nodes[n.get_save_id()] = n.save_state()
@@ -848,8 +1036,11 @@ func collect_save() -> Dictionary:
 			"pos": [o.x, o.y, o.z], "yaw": s.global_rotation.y, "state": s.save_state()})
 	return {
 		"time_hours": day_night.time_hours, "day": day_night.day, "journal": journal.duplicate(),
+		"map_fog": Marshalls.raw_to_base64(map_fog.compress(FileAccess.COMPRESSION_DEFLATE)),
+		"waypoint": [] if waypoint == Vector3.INF else [waypoint.x, waypoint.y, waypoint.z],
 		"nodes": nodes, "pickups": pickups, "structures": structures, "structure_counter": _structure_counter,
-		"weather": weather.save_state(), "carcasses": wildlife.save_state(),
+		"regional_bases": Camps.REGIONAL_BASES.keys() if camps else [],
+		"weather": weather.save_state(), "carcasses": wildlife.save_state(), "wildlife": wildlife.save_director(),
 		"factions": factions.save_state() if factions else {}, "npcs": camps.save_state() if camps else {},
 	}
 
@@ -860,17 +1051,27 @@ func apply_save(d: Dictionary) -> void:
 	if d.has("weather"):
 		weather.load_state(d.weather)
 	wildlife.load_state(d.get("carcasses", []))
+	wildlife.load_director(d.get("wildlife", {}))
 	if factions:
 		factions.load_state(d.get("factions", {}))
 	if camps:
 		camps.load_state(d.get("npcs", {}))
 	journal.clear()
+	if d.has("map_fog"):
+		var raw := Marshalls.base64_to_raw(str(d.map_fog)).decompress(MapData.FOG_RES * MapData.FOG_RES, FileAccess.COMPRESSION_DEFLATE)
+		if raw.size() == MapData.FOG_RES * MapData.FOG_RES:
+			map_fog = raw
+	var wp: Array = d.get("waypoint", [])
+	waypoint = Vector3(float(wp[0]), float(wp[1]), float(wp[2])) if wp.size() == 3 else Vector3.INF
 	for k: Variant in d.get("journal", []):
 		journal.append(str(k))
 	var nodes: Dictionary = d.get("nodes", {})
+	_pending_region_states.clear()
 	for id: String in nodes.keys():
 		if _nodes.has(id):
 			_nodes[id].load_state(nodes[id])
+		elif id.begins_with("region_"):
+			_pending_region_states[id] = nodes[id]
 	for p in pickups_root.get_children():
 		pickups_root.remove_child(p)  # detach now so restored nodes keep their names
 		p.queue_free()
@@ -885,6 +1086,8 @@ func apply_save(d: Dictionary) -> void:
 	for s: Dictionary in d.get("structures", []):
 		var xf := Transform3D(Basis(Vector3.UP, float(s.get("yaw", 0.0))), _vec(s.pos))
 		spawn_structure(StringName(str(s.type)), xf, s.get("state", {}), str(s.get("id", "")))
+	if camps:
+		camps.build_regional_bases(d.get("regional_bases", []))
 
 
 func get_node_by_save_id(id: String) -> Node:

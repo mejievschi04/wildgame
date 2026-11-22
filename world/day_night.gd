@@ -7,6 +7,15 @@ signal new_day(day: int)
 
 const SUNRISE := 6.0
 const SUNSET := 20.0
+## Lunar cycle in game days (shortened so phases are noticeable) and where the game starts in it (waxing gibbous).
+const LUNAR_DAYS := 8.0
+const LUNAR_START := 0.35
+const MOON_MAX_ELEV := 55.0
+## Sky objects ride on a dome around the camera (inside its far plane).
+const MOON_DIST := 600.0
+const MOON_SIZE_DEG := 3.2
+const STAR_DIST := 650.0
+const STAR_COUNT := 1800
 
 var time_hours := 12.0
 var day := 1
@@ -17,6 +26,10 @@ var sun: DirectionalLight3D
 var moon: DirectionalLight3D
 var environment: Environment
 var sky_material: ProceduralSkyMaterial
+var _moon_disc: MeshInstance3D
+var _moon_mat: ShaderMaterial
+var _stars: MeshInstance3D
+var _stars_mat: ShaderMaterial
 
 
 func _ready() -> void:
@@ -76,8 +89,8 @@ func _ready() -> void:
 	moon.light_color = Color(0.55, 0.65, 0.9)
 	moon.shadow_enabled = false
 	moon.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_ONLY
-	moon.rotation_degrees = Vector3(-55, 140, 0)
 	add_child(moon)
+	_build_night_sky()
 	_apply_settings()
 	Settings.changed.connect(func(_s: String, _k: String) -> void: _apply_settings())
 	update_visuals()
@@ -126,6 +139,41 @@ func ambient_temperature() -> float:
 	return 7.0 + 9.0 * cos((time_hours - 15.0) / 24.0 * TAU)
 
 
+## Position in the lunar cycle: 0 new, 0.5 full.
+func moon_phase() -> float:
+	return fposmod(LUNAR_START + ((day - 1) + time_hours / 24.0) / LUNAR_DAYS, 1.0)
+
+
+## 0 at new moon, 1 at full moon.
+func moon_fullness() -> float:
+	return 0.5 - 0.5 * cos(moon_phase() * TAU)
+
+
+## Fraction of the moon's arc: rises an hour before sunset, sets an hour after sunrise.
+func _moon_t() -> float:
+	var arc := 24.0 - (SUNSET - SUNRISE) + 2.0
+	return fposmod(time_hours - (SUNSET - 1.0), 24.0) / arc
+
+
+## -1..1, >0 while the moon is above the horizon.
+func moon_elevation() -> float:
+	var t := _moon_t()
+	return sin(t * PI) if t <= 1.0 else -0.5
+
+
+func moon_azimuth() -> float:
+	return lerpf(100.0, -100.0, clampf(_moon_t(), 0.0, 1.0))
+
+
+static func _sky_euler(elev: float, azimuth_deg: float) -> Vector3:
+	return Vector3(deg_to_rad(-maxf(elev, -0.2) * MOON_MAX_ELEV), deg_to_rad(azimuth_deg), 0.0)
+
+
+## Unit vector from the viewer towards the moon.
+func moon_direction() -> Vector3:
+	return Basis.from_euler(_sky_euler(moon_elevation(), moon_azimuth())) * Vector3(0, 0, 1)
+
+
 ## -1..1, >0 while the sun is above the horizon.
 func sun_elevation() -> float:
 	var t := (time_hours - SUNRISE) / (SUNSET - SUNRISE)
@@ -152,8 +200,14 @@ func update_visuals() -> void:
 	# High sun is a bit gentler than low golden light (keeps midday from washing out).
 	sun.light_energy = lerpf(2.4, 1.9, clampf(elev, 0.0, 1.0)) * day_k * (1.0 - 0.75 * cloud)
 	sun.light_color = Color(1.0, 0.91, 0.78).lerp(Color(1.0, 0.52, 0.26), dusk_k * 0.85)
-	moon.visible = day_k < 0.6
-	moon.light_energy = 0.16 * (1.0 - day_k)
+	# Moon: crosses the sky through the night, light and brightness follow its phase.
+	var m_elev := moon_elevation()
+	var m_up := smoothstep(-0.02, 0.1, m_elev)
+	var full := moon_fullness()
+	moon.rotation = _sky_euler(m_elev, moon_azimuth())
+	moon.visible = day_k < 0.6 and m_elev > 0.0
+	moon.light_energy = (0.05 + 0.17 * full) * (1.0 - day_k) * m_up * (1.0 - 0.7 * cloud)
+	_update_night_sky(day_k, cloud, m_elev, m_up)
 
 	var night_top := Color(0.02, 0.03, 0.06)
 	var night_hor := Color(0.05, 0.06, 0.09)
@@ -178,3 +232,66 @@ func update_visuals() -> void:
 	var morning := clampf(1.0 - absf(time_hours - 6.5) / 3.0, 0.0, 1.0)
 	var evening := clampf(1.0 - absf(time_hours - 20.0) / 2.5, 0.0, 1.0)
 	environment.fog_height_density = 0.06 * maxf(morning, evening * 0.6) + fog_extra * 3.0
+
+
+# ---------------------------------------------------------------- night sky
+
+func _build_night_sky() -> void:
+	_moon_mat = ShaderMaterial.new()
+	_moon_mat.shader = preload("res://world/shaders/moon.gdshader")
+	var quad := QuadMesh.new()
+	var size := 2.0 * MOON_DIST * tan(deg_to_rad(MOON_SIZE_DEG * 0.5))
+	quad.size = Vector2(size, size)
+	_moon_disc = MeshInstance3D.new()
+	_moon_disc.name = "MoonDisc"
+	_moon_disc.mesh = quad
+	_moon_disc.material_override = _moon_mat
+	_moon_disc.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_moon_disc.extra_cull_margin = 16384.0
+	add_child(_moon_disc)
+	# Stars: points on the upper dome, a few bright ones, most faint; slightly blue or warm.
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7741
+	var verts := PackedVector3Array()
+	var cols := PackedColorArray()
+	var uvs := PackedVector2Array()
+	for i in STAR_COUNT:
+		var d := Vector3(rng.randfn(), absf(rng.randfn()) + 0.05, rng.randfn()).normalized()
+		verts.append(d * STAR_DIST)
+		var warm := rng.randf()
+		cols.append(Color(0.8 + 0.2 * warm, 0.85 + 0.1 * warm, 1.0 - 0.25 * warm, pow(rng.randf(), 3.0)))
+		uvs.append(Vector2(rng.randf(), 0))
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = verts
+	arrays[Mesh.ARRAY_COLOR] = cols
+	arrays[Mesh.ARRAY_TEX_UV] = uvs
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_POINTS, arrays)
+	mesh.custom_aabb = AABB(Vector3.ONE * -STAR_DIST, Vector3.ONE * STAR_DIST * 2.0)
+	_stars_mat = ShaderMaterial.new()
+	_stars_mat.shader = preload("res://world/shaders/stars.gdshader")
+	_stars = MeshInstance3D.new()
+	_stars.name = "Stars"
+	_stars.mesh = mesh
+	_stars.material_override = _stars_mat
+	_stars.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(_stars)
+
+
+func _update_night_sky(day_k: float, cloud: float, m_elev: float, m_up: float) -> void:
+	if _moon_disc == null:
+		return
+	var cam := get_viewport().get_camera_3d() if is_inside_tree() else null
+	var eye := cam.global_position if cam else Vector3.ZERO
+	var dir := moon_direction()
+	_moon_disc.global_position = eye + dir * MOON_DIST
+	_moon_disc.visible = m_elev > -0.05
+	_moon_mat.set_shader_parameter("phase", moon_phase())
+	# A pale day moon when it lingers after sunrise; clouds veil it.
+	_moon_mat.set_shader_parameter("visibility", m_up * lerpf(0.2, 1.0, 1.0 - day_k) * (1.0 - 0.8 * cloud))
+	_stars.global_position = eye
+	# Stars fade in after dusk, vanish under cloud, and wash out around a bright full moon.
+	var night := (1.0 - smoothstep(0.0, 0.35, day_k)) * (1.0 - cloud) * (1.0 - 0.35 * moon_fullness() * m_up)
+	_stars.visible = night > 0.01
+	_stars_mat.set_shader_parameter("night", night)

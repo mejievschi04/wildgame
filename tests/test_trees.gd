@@ -85,13 +85,21 @@ func test_buck_clear_regrow_and_save() -> void:
 	for i in t.fell_hits:
 		t.on_hit(p, axe)
 	t.complete_fall()
+	var full := t._bark_mi.mesh.get_aabb().size.y
+	check(t._bark_mi.mesh.get_surface_count() == 1, "felled: the crown is gone, a bare trunk lies there")
 	t.on_hit(p, axe)
+	check(t._bark_mi.mesh.get_aabb().size.y < full, "bucking shortens the trunk")
 	var data: Dictionary = JSON.parse_string(JSON.stringify(s.build_save()))
 	var left := t.remaining
 	for i in left:
 		t.on_hit(p, axe)
 	eq(t.stage, TreeNode.Stage.CLEARED, "trunk fully bucked → stump")
-	eq(p.inventory.count_of(&"wood"), t.capacity, "one wood per bucking hit")
+	var logs := tree.get_nodes_in_group("pickup").filter(func(n: Node) -> bool: return n is LogPiece)
+	eq(logs.size(), t.capacity, "one physical log per bucking hit")
+	await _run_frames(30)
+	for l: LogPiece in logs:
+		l.perform_interaction(p, &"interact")
+	eq(p.inventory.count_of(&"wood"), t.capacity, "picking the logs up gives the wood")
 	t.simulate(t.regrow_seconds + 1.0)
 	eq(t.stage, TreeNode.Stage.STANDING, "tree regrows")
 	await _teardown(s)
@@ -121,3 +129,45 @@ func test_player_swing_resolves_at_impact() -> void:
 		await tree.physics_frame
 	eq(t.chop, 1, "hit lands at the end of the strike")
 	await _teardown(s)
+
+
+## The notch, chips and collision sit on this tree's real bark (measured from the model), whatever its scale.
+func test_chop_effects_sit_on_the_real_bark() -> void:
+	var s: GameSession = await _boot()
+	var p := s.player
+	var checked := 0
+	for t: TreeNode in tree.get_nodes_in_group("resource_node").filter(func(n: Node) -> bool: return n is TreeNode):
+		var tr := t._trunk_at(t.cut_h)
+		check(tr.z > 0.12 and tr.z < 0.6, "%s: plausible bark radius %.2f" % [t.node_id, tr.z])
+		check(Vector2(tr.x, tr.y).length() < 0.2, "%s: trunk centre near the node origin" % t.node_id)
+		check(absf((t._shape.shape as CylinderShape3D).radius - t._trunk_at(1.0).z) < 0.001, "%s: collision follows the bark" % t.node_id)
+		checked += 1
+		if checked >= 12:
+			break
+	check(checked > 0, "trees found")
+	var t: TreeNode = s.world.get_node_by_save_id("tree_pine_010")
+	_stand_at(p, t, Vector3(1, 0, 0))
+	var axe := _axe(p)
+	t.on_hit(p, axe)
+	t.on_hit(p, axe)
+	# The cut is real geometry now: the model's lower trunk is removed and a carved section takes its place.
+	check(t._cut_mode and t._cut_upper.mesh.get_surface_count() == 2, "carved section: bark + fresh-wood faces")
+	var d2 := t.notch_depth()
+	check(d2 > 0.0 and d2 < t._trunk_r, "notch bites into the trunk (%.2f of r %.2f)" % [d2, t._trunk_r])
+	var lowest := INF
+	for v: Vector3 in t._bark_mi.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]:
+		lowest = minf(lowest, v.y)
+	check(lowest >= (t._clip_top + TreeNode.SINK) / t._size - 0.001, "original trunk cut away below the section")
+	t.on_hit(p, axe)
+	check(t.notch_depth() > d2, "each blow deepens the notch")
+	check(t._debris.get_child_count() == 9, "chips pile up at the foot of the tree (%d)" % t._debris.get_child_count())
+	for c: Node3D in t._debris.get_children():
+		var g := c.global_position
+		check(absf(g.y - s.world.height_at(g.x, g.z)) < 0.05, "debris chip lies on the ground")
+		check(Vector2(g.x - t.global_position.x, g.z - t.global_position.z).dot(Vector2(-t.fall_dir.x, -t.fall_dir.z)) > 0.0, "debris on the chopper's side")
+	await _teardown(s)
+
+
+func _run_frames(n: int) -> void:
+	for i in n:
+		await tree.physics_frame

@@ -25,6 +25,8 @@ var _logs: Array[MeshInstance3D] = []
 var _food_root: Node3D
 var _flicker_t := 0.0
 var _crackle: AudioStreamPlayer3D
+## A tall plume of smoke from a lit fire: how you spot your camp from across the valley.
+var _smoke: CPUParticles3D
 
 
 func _ready() -> void:
@@ -97,6 +99,8 @@ func _build() -> void:
 	grad.set_color(1, Color(0.9, 0.2, 0.05, 0.0))
 	_flames.color_ramp = grad
 	add_child(_flames)
+	_smoke = _make_smoke()
+	add_child(_smoke)
 	_food_root = Node3D.new()
 	_food_root.position = Vector3(0, 0.35, 0)
 	add_child(_food_root)
@@ -111,6 +115,9 @@ func _process(delta: float) -> void:
 		_burn(delta)
 		_flicker_t += delta * 9.0
 		_light.light_energy = 2.0 + sin(_flicker_t) * 0.18 + sin(_flicker_t * 2.3) * 0.12
+		var w: Weather = get_tree().get_first_node_in_group("weather") as Weather
+		var wind := w.wind_dir * (0.25 + w.wind * 0.6) if w else Vector2(0.2, 0.1)
+		_smoke.gravity = Vector3(wind.x, 0.35, wind.y)  # the plume leans downwind
 
 
 func simulate(seconds: float) -> void:
@@ -277,6 +284,7 @@ func _refresh() -> void:
 			_crackle.stop()
 	_flames.emitting = lit
 	_flames.visible = lit
+	_smoke.emitting = lit
 	var log_col := Color.WHITE if fuel > 0.0 else Color(0.18, 0.17, 0.16)
 	for l in _logs:
 		(l.material_override as StandardMaterial3D).albedo_color = log_col
@@ -312,3 +320,43 @@ func load_state(d: Dictionary) -> void:
 		if ItemDB.get_item(StringName(str(e.id))):
 			cooking.append({"id": StringName(str(e.id)), "t": float(e.get("t", 0.0))})
 	_refresh()
+
+
+func _make_smoke() -> CPUParticles3D:
+	var p := CPUParticles3D.new()
+	p.amount = 110
+	p.lifetime = 16.0
+	p.preprocess = 8.0
+	p.position = Vector3(0, 0.6, 0)
+	p.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
+	p.emission_sphere_radius = 0.15
+	p.direction = Vector3.UP
+	p.spread = 8.0
+	p.initial_velocity_min = 0.4
+	p.initial_velocity_max = 0.7
+	p.damping_min = 0.05
+	p.damping_max = 0.1
+	p.gravity = Vector3(0.2, 0.35, 0.1)
+	p.angular_velocity_min = -12.0
+	p.angular_velocity_max = 12.0
+	var grow := Curve.new()
+	grow.add_point(Vector2(0.0, 0.15))
+	grow.add_point(Vector2(1.0, 1.0))
+	p.scale_amount_curve = grow
+	p.scale_amount_min = 3.0
+	p.scale_amount_max = 4.5
+	var fade := Gradient.new()
+	fade.set_color(0, Color(0.2, 0.19, 0.18, 0.0))
+	fade.add_point(0.06, Color(0.24, 0.23, 0.22, 0.55))
+	fade.add_point(0.5, Color(0.34, 0.33, 0.32, 0.3))
+	fade.set_color(fade.get_point_count() - 1, Color(0.45, 0.45, 0.45, 0.0))
+	p.color_ramp = fade
+	# Own soft quad: unlike the shared dust quad it keeps particle scale, so puffs grow into a plume.
+	var quad := QuadMesh.new()
+	quad.size = Vector2(2.2, 2.2)
+	var m := (TreeNode._puff_quad(1.0).material as StandardMaterial3D).duplicate() as StandardMaterial3D
+	m.billboard_keep_scale = true
+	quad.material = m
+	p.mesh = quad
+	p.emitting = false
+	return p

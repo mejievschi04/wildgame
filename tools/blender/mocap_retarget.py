@@ -188,9 +188,9 @@ def bake(rig, src, name, frames_src, out_fps, scale, in_place=True, extra=None, 
     for pb in rig.pose.bones:
         pb.rotation_mode = "QUATERNION"
         pb.rotation_quaternion = Quaternion(); pb.location = (0, 0, 0)
-    T = src.T
-    h0 = T["pos"]["Hips"]
     hips = [src.pose(int(round(f)))["pos"]["Hips"] for f in frames_src]
+    # Keep the rendered rig over the game capsule, even for cycles cut well into a recording.
+    h0 = Vector((hips[0].x, hips[0].y, src.T["pos"]["Hips"].z))
     n = len(frames_src)
     drift = (hips[-1] - hips[0]) if in_place else Vector()
     root_rest = rig.data.bones["Root"].matrix_local.to_quaternion()

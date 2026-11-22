@@ -132,16 +132,36 @@ func _on_settings_changed(_section: String, _key: String) -> void:
 
 # ---------------------------------------------------------------- input
 
+var _skip_capture_motion := false
+
+
+func capture_mouse() -> void:
+	if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
+		_skip_capture_motion = true
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+
 func _unhandled_input(event: InputEvent) -> void:
 	if not input_enabled or dead or is_sleeping:
 		return
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
-		_look((event as InputEventMouseMotion).relative * 0.0022 * float(Settings.get_value("gameplay", "mouse_sensitivity")))
+		# Capturing the pointer can send a motion from its desktop position to the window centre.
+		if _skip_capture_motion:
+			_skip_capture_motion = false
+		else:
+			_look((event as InputEventMouseMotion).relative * 0.0022 * float(Settings.get_value("gameplay", "mouse_sensitivity")))
+	# No hotbar: number keys pick the n-th weapon of the wheel, the mouse wheel cycles through them.
 	for i in Inventory.HOTBAR_SIZE:
 		if event.is_action_pressed("hotbar_%d" % (i + 1)):
-			use_slot(i)
+			var ids := equippable_choices()
+			if i < ids.size():
+				equip_id(ids[i])
 			get_viewport().set_input_as_handled()
 			return
+	if not drawing and not aiming and not _charging:
+		if event.is_action_pressed("hotbar_next"):
+			cycle_weapon(1)
+		elif event.is_action_pressed("hotbar_prev"):
+			cycle_weapon(-1)
 	if event.is_action_pressed("gesture"):
 		gesture()
 	if event.is_action_pressed("sprint") and bool(Settings.get_value("gameplay", "toggle_sprint")):
@@ -154,6 +174,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			build.confirm()
 		elif placement.active:
 			placement.confirm()
+		elif _hand_is(&"bow"):
+			_begin_draw()
 		elif aiming:
 			throw_spear()
 		else:
@@ -163,15 +185,17 @@ func _unhandled_input(event: InputEvent) -> void:
 			build.cancel()
 		elif placement.active:
 			placement.cancel()
-		elif inventory.hand != null and inventory.hand.id == &"spear":
+		elif _hand_is(&"spear") or _hand_is(&"bow"):
 			aiming = true
 		else:
 			_set_blocking(true)
 	if event.is_action_released("secondary_action"):
-		aiming = false
+		aiming = drawing
 		_set_blocking(false)
 	if event.is_action_released("primary_action") and _charging:
 		_release_charge()
+	if event.is_action_released("primary_action") and drawing:
+		_release_draw()
 
 
 func _look(rel: Vector2) -> void:
@@ -181,6 +205,14 @@ func _look(rel: Vector2) -> void:
 
 
 # ---------------------------------------------------------------- physics
+
+func teleport_to(destination: Vector3) -> void:
+	global_position = destination
+	velocity = Vector3.ZERO
+	_fall_speed = 0.0
+	_reset_hold()
+	reset_physics_interpolation()
+
 
 func _physics_process(delta: float) -> void:
 	if not is_on_floor():
@@ -223,7 +255,9 @@ func _physics_process(delta: float) -> void:
 			_release_charge()
 	if blocking and stats.stamina <= 0.5:
 		_set_blocking(false)
-	if inventory.hand == null or inventory.hand.id != &"spear":
+	if drawing:
+		_tick_draw(delta)
+	if not (_hand_is(&"spear") or _hand_is(&"bow")):
 		aiming = false
 	var was_on_floor := is_on_floor()
 	move_and_slide()
@@ -379,6 +413,103 @@ func throw_spear() -> void:
 	Sfx.play(&"whoosh", null, -4.0)
 
 
+# ---------------------------------------------------------------- bow
+
+## Hold LMB to draw (needs an arrow), release to shoot. Power, speed and damage scale with the draw.
+const BOW_DRAW_TIME := 0.85
+const BOW_MIN_DRAW := 0.2  # releasing earlier just lets the string down, the arrow stays nocked in the quiver
+const ARROW_SPEED_MIN := 16.0
+const ARROW_SPEED_MAX := 46.0
+const BOW_HOLD_STAMINA := 5.0  # per second while holding a full draw
+const ARROW_BREAK_CHANCE := 0.3
+## How far the nock travels back at full draw (bow model metres). The bow's "Drawn" blend shape pulls the string
+## exactly this far (tools/blender/gen_items.py BOW_PULL), so string and arrow stay together.
+const BOW_PULL := 0.45
+const BOW_SNAP_TIME := 0.07  # string/limbs spring back to rest after a shot or let-down
+
+var drawing := false
+var _draw_t := 0.0
+var _draw_w := 0.0  # eased draw (0..1): nock offset and bow blend shape
+var _nocked: Node3D
+
+
+func _hand_is(id: StringName) -> bool:
+	return inventory.hand != null and inventory.hand.id == id
+
+
+## 0..1 how far the bow is drawn (HUD).
+func draw_ratio() -> float:
+	return clampf(_draw_t / BOW_DRAW_TIME, 0.0, 1.0) if drawing else 0.0
+
+
+func _begin_draw() -> void:
+	if drawing or dead or _swinging or blocking:
+		return
+	if inventory.count_of(&"arrow") <= 0:
+		Events.toast(Loc.t("MSG_NO_ARROWS"), &"warn")
+		return
+	drawing = true
+	aiming = true
+	_draw_t = 0.0
+	if _hand_visual:
+		_nocked = HandModels.nock_arrow(_hand_visual)
+
+
+func _tick_draw(delta: float) -> void:
+	if not _hand_is(&"bow") or dead:
+		_cancel_draw()
+		return
+	_draw_t += delta
+	if _draw_t > BOW_DRAW_TIME and not stats.use_stamina(BOW_HOLD_STAMINA * delta):
+		_cancel_draw()  # arms give out: the string is let down without a shot
+		return
+	_draw_w = 1.0 - pow(1.0 - draw_ratio(), 2.0)  # fast at first, heavier toward full draw
+	if _nocked and is_instance_valid(_nocked):
+		_nocked.position.z = HandModels.NOCK.z + BOW_PULL * _draw_w
+	if _hand_visual:
+		HandModels.set_bow_draw(_hand_visual, _draw_w)
+
+
+func _cancel_draw() -> void:
+	drawing = false
+	_draw_t = 0.0
+	aiming = Input.is_action_pressed("secondary_action") and _hand_is(&"bow")
+	if _nocked and is_instance_valid(_nocked):
+		_nocked.queue_free()
+	_nocked = null
+	if _hand_visual and is_instance_valid(_hand_visual) and _draw_w > 0.0:
+		var bow := _hand_visual
+		create_tween().tween_method(func(w: float) -> void:
+			if is_instance_valid(bow):
+				HandModels.set_bow_draw(bow, w), _draw_w, 0.0, BOW_SNAP_TIME).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	_draw_w = 0.0
+
+
+func _release_draw() -> void:
+	var k := draw_ratio()
+	_cancel_draw()
+	if k < BOW_MIN_DRAW or not _hand_is(&"bow") or not inventory.remove_item(&"arrow", 1):
+		return
+	var arrow := ThrownSpear.new()
+	world.pickups_root.add_child(arrow)
+	var data := ItemDB.get_item(&"arrow")
+	arrow.base_damage = data.damage if data else 30.0
+	arrow.ref_speed = ARROW_SPEED_MAX * 0.85
+	arrow.break_chance = ARROW_BREAK_CHANCE
+	var fwd := -camera.global_transform.basis.z
+	# A weak, hurried draw is less accurate.
+	var wobble := (1.0 - k) * 0.035
+	fwd = (fwd + camera.global_transform.basis.x * randf_range(-wobble, wobble)
+		+ camera.global_transform.basis.y * randf_range(-wobble, wobble)).normalized()
+	var speed := lerpf(ARROW_SPEED_MIN, ARROW_SPEED_MAX, k)
+	arrow.launch(ItemStack.new(&"arrow", 1), camera.global_position + fwd * 0.6, fwd * speed + Vector3(velocity.x, 0, velocity.z), self)
+	_noise_burst = maxf(_noise_burst, 0.3)  # bows are quiet
+	Sfx.play(&"whoosh", null, -6.0, 0.15)
+	if inventory.wear_hand(1):
+		Events.toast(Loc.t("MSG_TOOL_BROKE", {"item": ItemDB.get_item(&"bow").display_name()}), &"danger")
+		Sfx.play(&"tool_break", null)
+
+
 ## Sleep needs safety: no hostile/wary armed strangers nearby, no predator hunting you.
 func _safe_to_sleep() -> bool:
 	for n: HumanNPC in get_tree().get_nodes_in_group("npc"):
@@ -523,8 +654,10 @@ var _heavy := false
 func _swing_style() -> StringName:
 	var id: StringName = inventory.hand.id if inventory.hand else &""
 	match id:
-		&"stone_axe", &"stone": return &"chop"
-		&"flint_knife", &"torch": return &"slash"
+		&"stone_axe", &"stone", &"club": return &"chop"
+		&"flint_knife", &"torch", &"bone_knife", &"sickle": return &"slash"
+		&"digging_stick": return &"chop"
+		&"fishing_spear": return &"thrust"
 		&"spear": return &"thrust"
 	return &"punch"
 
@@ -617,6 +750,53 @@ func shake(strength: float) -> void:
 # ---------------------------------------------------------------- items
 
 ## Hotbar / inventory "use": consume, equip/unequip, or start placement.
+## Weapon wheel order: weapons first, then tools, then the rest that can be held (torch, a stone).
+const WHEEL_ORDER := [&"weapon", &"tool"]
+
+
+## One entry per kind of item you can hold (the hand item included), in wheel order: [StringName ids].
+func equippable_choices() -> Array[StringName]:
+	var ids: Array[StringName] = []
+	var all: Array = inventory.slots.duplicate()
+	all.append(inventory.hand)
+	for s: ItemStack in all:
+		if s != null and s.get_data() != null and s.get_data().is_equippable() and not s.id in ids:
+			ids.append(s.id)
+	ids.sort_custom(func(a: StringName, b: StringName) -> bool:
+		var ca := WHEEL_ORDER.find(ItemDB.get_item(a).category)
+		var cb := WHEEL_ORDER.find(ItemDB.get_item(b).category)
+		ca = ca if ca >= 0 else 9
+		cb = cb if cb >= 0 else 9
+		return ca < cb if ca != cb else String(a) < String(b))
+	return ids
+
+
+## Takes an item of this kind in hand (the least worn one); &"" puts the hand item away.
+func equip_id(id: StringName) -> void:
+	if id == &"":
+		inventory.unequip()
+		return
+	if inventory.hand != null and inventory.hand.id == id:
+		return
+	var best := -1
+	for i in inventory.size:
+		var s := inventory.get_slot(i)
+		if s != null and s.id == id and (best < 0 or s.durability > inventory.get_slot(best).durability):
+			best = i
+	if best >= 0:
+		inventory.equip_slot(best)
+		Sfx.play(&"ui_click", null, -8.0)
+
+
+## Mouse wheel / shoulder buttons: next or previous weapon without opening the wheel.
+func cycle_weapon(step: int) -> void:
+	var ids := equippable_choices()
+	if ids.is_empty():
+		return
+	var cur := ids.find(inventory.hand.id) if inventory.hand else -1
+	equip_id(ids[posmod(cur + step, ids.size())])
+
+
 func use_slot(i: int) -> void:
 	var s := inventory.get_slot(i)
 	if s == null:

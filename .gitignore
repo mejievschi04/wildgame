@@ -1,5 +1,6 @@
 .godot/
 *.import
+!assets/textures/terrain/T_Terrain_*.jpg.import
 .DS_Store
 export/
 /android/

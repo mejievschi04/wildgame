@@ -1,0 +1,29 @@
+[remap]
+
+importer="2d_array_texture"
+type="CompressedTexture2DArray"
+uid="uid://dt5hbxwuxwj46"
+path.s3tc="res://.godot/imported/T_Terrain_albedo.jpg-e05ff0fe78f11c0a17fbbd5dc06906bd.s3tc.ctexarray"
+metadata={
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
+}
+
+[deps]
+
+source_file="res://assets/textures/terrain/T_Terrain_albedo.jpg"
+dest_files=["res://.godot/imported/T_Terrain_albedo.jpg-e05ff0fe78f11c0a17fbbd5dc06906bd.s3tc.ctexarray"]
+
+[params]
+
+compress/mode=2
+compress/high_quality=false
+compress/lossy_quality=0.7
+compress/uastc_level=0
+compress/rdo_quality_loss=0.0
+compress/hdr_compression=1
+compress/channel_pack=0
+mipmaps/generate=true
+mipmaps/limit=-1
+slices/horizontal=1
+slices/vertical=6

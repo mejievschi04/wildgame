@@ -3,7 +3,7 @@ extends Node
 ## DEV TOOL: deterministic screenshots for verification.
 ## Usage: godot --path . -- --autoshot=/abs/out.png [--shot-frames=120] [--shot-hour=21.5] [--shot-scenario=inventory]
 ## Scenarios: none, inventory, journal, pause, camp (lit fire + bed in view), kit (starter items), prompt (aim at sticks),
-## build (hut + lean-to + blueprint + active ghost), buildmenu (radial menu), fauna (all species, live).
+## build (hut + lean-to + blueprint + active ghost), buildmenu (radial menu), fauna (all species, live), spear / club / bow (weapon in hand; bow mid-draw), river (main river valley from the bank), house (3/4 view of the build demo), farm (garden beds + wild plants).
 
 var out_path := ""
 var frames := 120
@@ -67,8 +67,50 @@ func _ready() -> void:
 		p.global_position = target.global_position + Vector3(-1.6, 0.2, 0.0)
 		p.look_at(Vector3(target.global_position.x, p.global_position.y, target.global_position.z))
 		p.head.rotation.x = -0.6
-	if scenario in ["build", "buildmenu"]:
+	if scenario in ["build", "buildmenu", "house"]:
 		_build_demo(session)
+	if scenario == "house":  # three-quarter view of the demo house: thatch, window wall, gable, log walls
+		var hc := p.global_position + Vector3(7, 0, -1)
+		var eye := hc + Vector3(-5.2, 0, 2.2)
+		p.global_position = session.world.ground_point(eye.x, eye.z) + Vector3.UP * 0.3
+		p.look_at(Vector3(hc.x, p.global_position.y, hc.z))
+		p.rotation = Vector3(0, p.rotation.y, 0)
+		p.head.rotation.x = 0.05
+	if scenario == "basefire":  # two of your own fires away from you: on-screen markers + smoke plume
+		session.world.wildlife.enabled = false
+		session.world.weather.set_state(&"clear", true)
+		var fw := -p.global_transform.basis.z
+		for e: Array in [[fw.rotated(Vector3.UP, 0.35), 70.0], [-fw, 45.0], [fw.rotated(Vector3.UP, -0.3), 25.0]]:
+			var at: Vector3 = p.global_position + (e[0] as Vector3) * float(e[1])
+			var fire: Campfire = session.world.spawn_structure(&"campfire", Transform3D(Basis(), session.world.ground_point(at.x, at.z)))
+			fire.add_fuel(600)
+			fire.ignite()
+		p.head.rotation.x = 0.08
+	if scenario == "moon":  # look up at the moon (use with --shot-hour at night)
+		session.world.wildlife.enabled = false
+		session.world.weather.set_state(&"clear", true)
+		var md: Vector3 = session.world.day_night.moon_direction()
+		p.look_at(p.global_position + Vector3(md.x, 0, md.z))
+		p.rotation = Vector3(0, p.rotation.y, 0)
+		p.head.rotation.x = asin(clampf(md.y, -1.0, 1.0)) * 0.85
+	if scenario == "farm":  # four garden beds at different stages, wild plants beside them
+		session.world.wildlife.enabled = false
+		var w := session.world
+		var fwd := -p.global_transform.basis.z
+		var side := fwd.cross(Vector3.UP).normalized()
+		var plan := [[&"grain", 1.0, -1.2], [&"carrot", 0.8, 1.2], [&"flax", 0.55, -1.2], [&"herb", 0.3, 1.2]]
+		for i in plan.size():
+			var e: Array = plan[i]
+			var at: Vector3 = p.global_position + fwd * (4.0 + (i / 2) * 1.8) + side * float(e[2])
+			var bed: BuildingPiece = w.spawn_structure(&"piece", Transform3D(Basis.looking_at(-fwd), w.ground_point(at.x, at.z)),
+				{"piece": "garden_bed", "built": true, "farm": {"crop": String(e[0]), "p": e[1], "wet": 600.0}})
+			bed.farm.refresh()
+		var k := 0
+		for kind: StringName in [&"wild_grain", &"flax", &"wild_carrot", &"herbs", &"reeds", &"hazel", &"clay"]:
+			var at: Vector3 = p.global_position + fwd * 9.0 + side * (k - 3.0) * 1.7
+			w._spawn_node(kind, at.x, at.z)
+			k += 1
+		p.head.rotation.x = -0.3
 	if scenario in ["rain", "storm", "fog", "cloudy"]:
 		session.world.weather.set_state(StringName(scenario), true)
 	if scenario == "wildlife":
@@ -116,6 +158,71 @@ func _ready() -> void:
 		p.look_at(Vector3(cpos.x, p.global_position.y, cpos.z))
 		p.rotation.x = 0
 		p.head.rotation.x = -0.35
+	if scenario == "notch":  # a tree chopped 4 times, seen from beside the chopper: notch + chips on the ground
+		session.world.wildlife.enabled = false
+		var tn: TreeNode = null
+		for n in session.get_tree().get_nodes_in_group("resource_node"):
+			# An alder (crown high up) keeps the view clear of low spruce branches.
+			if n is TreeNode and n.species == &"alder" and n.global_position.distance_to(p.global_position) > 6.0 \
+					and (tn == null or n.global_position.distance_to(p.global_position) < tn.global_position.distance_to(p.global_position)):
+				tn = n
+		var chopper := tn.global_position + Vector3(1.4, 0.3, 0)
+		p.global_position = chopper
+		p.inventory.add_item(&"stone_axe")
+		for i in 4:
+			tn.on_hit(p, ItemDB.get_item(&"stone_axe"))
+		var notch := tn.to_global(Vector3(tn._trunk_c.x, tn.cut_h, tn._trunk_c.y))
+		p.global_position = tn.global_position + Vector3(1.5, 0.0, 0.55)
+		p.global_position.y = session.world.height_at(p.global_position.x, p.global_position.z) + 0.2
+		p.look_at(Vector3(notch.x, p.global_position.y, notch.z))
+		p.rotation = Vector3(0, p.rotation.y, 0)
+		p.head.rotation.x = -0.62
+	if scenario in ["wheel", "pouch"]:  # weapon wheel held / the pouch open, with a varied kit
+		session.world.wildlife.enabled = false
+		for id: StringName in [&"stone_axe", &"spear", &"bow", &"club", &"flint_knife", &"torch", &"sickle"]:
+			p.inventory.add_item(id)
+		for e: Array in [[&"arrow", 12], [&"meat_cooked", 3], [&"berries", 9], [&"bandage", 2], [&"wood", 6], [&"stick", 14],
+				[&"fiber", 20], [&"flint", 4], [&"stone", 7], [&"campfire_kit", 1], [&"herb", 5], [&"waterskin_boiled", 1]]:
+			p.inventory.add_item(e[0], e[1])
+		p.equip_id(&"stone_axe")
+		if scenario == "wheel":
+			session.weapon_wheel.open.call_deferred()
+			(func() -> void:
+				session.weapon_wheel._aim = Vector2(70, -40)
+				session.weapon_wheel._pick()).call_deferred()
+		else:
+			session.open_inventory.call_deferred(0)
+	if scenario == "map":  # the world map open, after a bit of exploring, with a fire and a waypoint
+		session.world.wildlife.enabled = false
+		var w := session.world
+		for q: Vector2 in [Vector2(0, 0), Vector2(120, 60), Vector2(250, 150), Vector2(300, 300), Vector2(-150, -120), Vector2(92, 62)]:
+			for k in 6:
+				MapData.reveal(w.map_fog, q.x + k * 25.0, q.y + k * 18.0, MapData.REVEAL_RADIUS)
+		var fp := p.global_position + Vector3(6, 0, 3)
+		var fire: Campfire = w.spawn_structure(&"campfire", Transform3D(Basis(), w.ground_point(fp.x, fp.z)))
+		fire.add_fuel(300)
+		fire.ignite()
+		w.waypoint = w.ground_point(260.0, 170.0)
+		session.open_map.call_deferred()
+	if scenario == "felled":  # a felled alder: cut stump + the butt of the trunk lying beside it
+		session.world.wildlife.enabled = false
+		var ft: TreeNode = null
+		for n in session.get_tree().get_nodes_in_group("resource_node"):
+			if n is TreeNode and n.species == &"alder" and n.global_position.distance_to(p.global_position) > 6.0 \
+					and (ft == null or n.global_position.distance_to(p.global_position) < ft.global_position.distance_to(p.global_position)):
+				ft = n
+		p.global_position = ft.global_position + Vector3(1.4, 0.3, 0)
+		for i in ft.fell_hits:
+			ft.on_hit(p, ItemDB.get_item(&"stone_axe"))
+		ft.complete_fall()
+		for i in 2:  # buck two logs off the top end
+			ft.on_hit(p, ItemDB.get_item(&"stone_axe"))
+		var stump := ft.to_global(Vector3(ft._trunk_c.x, ft.cut_h, ft._trunk_c.y))
+		p.global_position = ft.global_position + Vector3(1.0, 0.0, 4.5)
+		p.global_position.y = session.world.height_at(p.global_position.x, p.global_position.z) + 0.2
+		p.look_at(Vector3(stump.x - 4.0, p.global_position.y, stump.z))
+		p.rotation = Vector3(0, p.rotation.y, 0)
+		p.head.rotation.x = -0.35
 	if scenario == "chop":
 		var best: TreeNode = null
 		for n in session.get_tree().get_nodes_in_group("resource_node"):
@@ -156,6 +263,24 @@ func _ready() -> void:
 		_gore_pending = true
 	if scenario == "kit":
 		session.world.add_journal("JOURNAL_WATER")
+	if scenario == "river":  # upstream along the main river from its west bank (valley shape, shoreline)
+		session.world.wildlife.enabled = false
+		var w := session.world
+		var z := -400.0
+		var at := Vector2(w.river_x(z) - 38.0, z)
+		p.global_position = w.ground_point(at.x, at.y) + Vector3.UP * 0.3
+		var ahead := Vector2(w.river_x(z - 140.0) - 6.0, z - 140.0)
+		p.look_at(Vector3(ahead.x, p.global_position.y, ahead.y))
+		p.rotation = Vector3(0, p.rotation.y, 0)
+		p.head.rotation.x = -0.12
+	if scenario in ["spear", "club", "bow"]:
+		session.world.wildlife.enabled = false
+		var weapon := StringName(scenario)
+		p.inventory.add_item(weapon)
+		p.inventory.equip_slot(p.inventory.first_slot_of(weapon))
+		if weapon == &"bow":
+			p.inventory.add_item(&"arrow", 10)
+			p._begin_draw.call_deferred()  # caught mid-draw, arrow nocked
 
 
 func _apply_bench() -> void:
@@ -277,15 +402,15 @@ func _build_demo(session: GameSession) -> void:
 	var p := session.player
 	var origin := p.global_position + Vector3(7, 0, -1)
 	var f: BuildingPiece = w.spawn_structure(&"piece",
-		Transform3D(Basis(), Vector3(origin.x, w.height_at(origin.x, origin.z) - 0.05, origin.z)), {"piece": "foundation"})
-	f.complete()
+		Transform3D(Basis(), Vector3(origin.x, w.height_at(origin.x, origin.z) - 0.05, origin.z)), {"piece": "foundation", "tier": 1, "built": true})
 	var bc := p.build
-	var plan := [[&"wall", "edge", 1], [&"wall", "edge", 2], [&"doorway", "edge", 3], [&"pillar", "corner", 0]]
+	# [piece, socket mode, socket index, material tier]: a log house with a wattle window wall and a stone corner.
+	var plan := [[&"window_wall", "edge", 1, 0], [&"wall", "edge", 2, 1], [&"doorway", "edge", 3, 1], [&"pillar", "corner", 0, 1],
+		[&"half_wall", "edge", 0, 2]]
 	for e: Array in plan:
 		bc.def = ItemDB.get_piece(e[0])
 		var sock: Dictionary = bc.find_sockets(e[1], f.global_position)[e[2]]
-		var piece: BuildingPiece = w.spawn_structure(&"piece", sock.xform, {"piece": String(e[0]), "on": sock.supports})
-		piece.complete()
+		w.spawn_structure(&"piece", sock.xform, {"piece": String(e[0]), "on": sock.supports, "tier": e[3], "built": true})
 	bc.def = ItemDB.get_piece(&"door")
 	var ds: Dictionary = bc.find_sockets("doorway", f.global_position)[0]
 	var door: BuildingPiece = w.spawn_structure(&"piece", ds.xform, {"piece": "door", "on": ds.supports})
@@ -295,9 +420,15 @@ func _build_demo(session: GameSession) -> void:
 	var rs: Dictionary = bc.find_sockets("top", f.global_position)[0]
 	var roof: BuildingPiece = w.spawn_structure(&"piece", rs.xform, {"piece": "roof", "on": rs.supports})
 	roof.complete()
+	bc.def = ItemDB.get_piece(&"gable")
+	for gs: Dictionary in bc.find_sockets("gable", roof.global_position):
+		w.spawn_structure(&"piece", gs.xform, {"piece": "gable", "on": gs.supports, "built": true})
+	# A second cell under construction: deck half delivered (posts + beams standing, planks still a plan).
 	var f2 := f.global_position + Vector3(0, 0, 2)
-	var bp: BuildingPiece = w.spawn_structure(&"piece", Transform3D(Basis(), f2), {"piece": "foundation"})
-	bp.delivered[&"wood"] = 1
+	w.spawn_structure(&"piece", Transform3D(Basis(), f2), {"piece": "foundation", "delivered": {"wood": 3, "stick": 1}})
+	for i in 3:
+		var pz := p.global_position + Vector3(9.5, 0, 3.0 + i * 2.0)
+		w.spawn_structure(&"piece", Transform3D(Basis(Vector3.UP, PI * 0.5), w.ground_point(pz.x, pz.z)), {"piece": "palisade", "built": true})
 	var lt_pos := p.global_position + Vector3(6, 0, -6)
 	var lt: BuildingPiece = w.spawn_structure(&"piece", Transform3D(Basis(Vector3.UP, 0.6), w.ground_point(lt_pos.x, lt_pos.z)), {"piece": "lean_to"})
 	lt.complete()

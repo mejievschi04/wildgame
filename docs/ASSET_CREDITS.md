@@ -1,6 +1,6 @@
 # Third-party asset credits
 
-All listed assets are **CC0 1.0** (public domain) from Poly Haven — no attribution required,
+The Poly Haven assets below are **CC0 1.0** (public domain) — no attribution required,
 credited here voluntarily. Raw downloads live in `art_source/` (git-ignored); processed
 game-ready versions live in `assets/`.
 
@@ -41,3 +41,16 @@ game-ready versions live in `assets/`.
 
 ## Motion capture
 - **CMU Graphics Lab Motion Capture Database** — http://mocap.cs.cmu.edu — "The data used in this project was obtained from mocap.cs.cmu.edu. The database was created with funding from NSF EIA-0196217." Free for research and commercial use with this credit. BVH conversion by Bruce Hahne (cgspeed). Files in `art_source/mocap/`: 08_01, 08_02, 16_15 (walk), 09_02, 09_03 (run), 02_07, 02_08 (swordplay → spear thrust), 14_01 (boxing). Retargeted with `tools/blender/mocap_retarget.py`.
+
+## Sketchfab (CC BY 4.0, attribution required)
+Licensed under Creative Commons Attribution 4.0 — https://creativecommons.org/licenses/by/4.0/.
+Changes: re-oriented and rescaled to the item convention, polygon count reduced (axe 200k → 5.8k triangles,
+duplicate handle removed), roughness factor raised to 1.0, inventory icons rendered. Source files in
+`tools/blender/source/`, processed by `tools/blender/gen_items.py` into `assets/models/items/SM_Item_{stone_axe,spear,club}.gltf`
+(club: textures downscaled 2k → 1k, metallic set to 0).
+
+| Asset | Used as | Author | Source |
+|---|---|---|---|
+| Stone Axe | `stone_axe` item | Alex Martire | https://sketchfab.com/3d-models/stone-axe-5222cf9dedae4a31882281f6d7bada89 |
+| Prehistoric Spear - Artifatcs Low Poly | `spear` item | jesusmolina | https://sketchfab.com/3d-models/prehistoric-spear-artifatcs-low-poly-93114e93ffb343d1a835c6ac8e699957 |
+| Neolithic Stone Club | `club` item | Asylum Nox | https://sketchfab.com/3d-models/neolithic-stone-club-4a14743e04cd46b9b5075af5997cc439 |

@@ -72,11 +72,13 @@ static func instance(path: String) -> Node3D:
 	return n
 
 
-## First mesh of an asset (for MultiMesh scattering).
+## MultiMesh has no per-surface overrides. Copy the instance's materials onto a local mesh.
 static func mesh(path: String) -> Mesh:
-	var n := scene(path).instantiate()
+	var n := instance(path)
 	var mi: MeshInstance3D = n.find_children("*", "MeshInstance3D", true, false)[0]
-	var m := mi.mesh
+	var m := mi.mesh.duplicate() as Mesh
+	for surface in m.get_surface_count():
+		m.surface_set_material(surface, mi.get_active_material(surface))
 	n.free()
 	return m
 

@@ -226,3 +226,94 @@ func test_bear_is_territorial_and_wolves_skip_megafauna() -> void:
 	await tree.physics_frame
 	check(wolf._find_prey() != stag, "a giant deer is too big for a wolf")
 	await _teardown(s)
+
+
+func test_start_valley_has_no_dangerous_spawns() -> void:
+	var s: GameSession = await _boot()
+	var w := s.world.wildlife
+	w.enabled = true
+	for i in 60:
+		w.balance()
+	await tree.physics_frame
+	var dangerous := 0
+	for a in w.living():
+		if Wildlife.is_dangerous(a.def):
+			dangerous += 1
+	check(dangerous == 0, "no predators/defensive animals around the start clearing (%d)" % dangerous)
+	check(w.living(&"deer").size() + w.living(&"roe").size() > 0, "prey still populates the start valley")
+	await _teardown(s)
+
+
+func test_habitat_and_wildness_rules() -> void:
+	var s: GameSession = await _boot()
+	var w := s.world.wildlife
+	check(w.habitat_ok(&"deer", 0.0, 80.0), "deer live in the Aruun valley")
+	check(not w.habitat_ok(&"wolf", 0.0, 100.0), "wolves keep away from the start clearing")
+	check(w.habitat_ok(&"wolf", 0.0, -500.0), "wolves roam the wilder parts of Aruun")
+	check(not w.habitat_ok(&"mammoth", 0.0, -500.0), "mammoths don't live in the Aruun forest")
+	check(w.habitat_ok(&"mammoth", 180.0, -1740.0), "mammoths live on the tundra")
+	await _teardown(s)
+
+
+func test_killed_pack_stays_gone() -> void:
+	var s: GameSession = await _boot()
+	var w := s.world.wildlife
+	var wolf := _spawn(s, &"wolf", Vector3(30, 0, 0))
+	check(w.can_respawn(&"wolf"), "wolves may spawn before any kill")
+	wolf.take_damage(9999.0, s.player)
+	await tree.physics_frame
+	check(not w.can_respawn(&"wolf"), "a killed wolf blocks new packs for a while")
+	s.world.advance_time(float(ItemDB.get_animal(&"wolf").respawn_h) * s.world.day_night.day_length_sec / 24.0 + 10.0)
+	check(w.can_respawn(&"wolf"), "wolves return after their respawn time")
+	var saved := w.save_director()
+	w.load_director({})
+	w.load_director(saved)
+	check(saved.has("wolf"), "respawn timers are saved")
+	await _teardown(s)
+
+
+func _equip_bow(p: Node, arrows: int) -> void:
+	p.inventory.add_item(&"bow")
+	p.inventory.equip_slot(p.inventory.first_slot_of(&"bow"))
+	if arrows > 0:
+		p.inventory.add_item(&"arrow", arrows)
+
+
+func test_bow_shoots_arrow_into_deer() -> void:
+	var s: GameSession = await _boot()
+	var p := s.player
+	var deer := _spawn(s, &"deer", Vector3(0, 0, -12))
+	deer.set_physics_process(false)
+	await tree.physics_frame
+	_equip_bow(p, 3)
+	var target := deer.global_position + Vector3.UP * 0.9
+	p.look_at(Vector3(target.x, p.global_position.y, target.z))
+	var cam: Camera3D = p.camera
+	var to := target - cam.global_position
+	p.head.rotation.x = atan2(to.y, Vector2(to.x, to.z).length())
+	await tree.physics_frame
+	var hp := deer.health
+	p._begin_draw()
+	check(p.drawing, "drawing starts with arrows in the inventory")
+	p._draw_t = Player.BOW_DRAW_TIME
+	p._release_draw()
+	check(p.inventory.count_of(&"arrow") == 2, "one arrow used (%d left)" % p.inventory.count_of(&"arrow"))
+	check(p.inventory.hand != null and p.inventory.hand.durability < 150, "bow wears per shot")
+	await _run(1.0)
+	check(deer.health < hp, "arrow damages the deer (%.1f → %.1f)" % [hp, deer.health])
+	await _teardown(s)
+
+
+func test_bow_needs_arrows_and_a_real_draw() -> void:
+	var s: GameSession = await _boot()
+	var p := s.player
+	_equip_bow(p, 0)
+	p._begin_draw()
+	check(not p.drawing, "no draw without arrows")
+	p.inventory.add_item(&"arrow", 1)
+	p._begin_draw()
+	p._draw_t = Player.BOW_DRAW_TIME * 0.1
+	p._release_draw()
+	check(p.inventory.count_of(&"arrow") == 1, "a barely drawn string is let down without shooting")
+	check(not p.drawing and not p.aiming, "draw state cleared")
+	await _teardown(s)

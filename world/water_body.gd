@@ -3,6 +3,8 @@ extends Area3D
 ## River segment whose top face is the water surface. Ray-only (layer 4 = "water").
 
 const RAW_SIP_SICKNESS := 0.04
+## Spear fishing: chance per (held) strike with a fishing spear in hand.
+const FISH_CHANCE := 0.5
 
 var level := 0.0
 
@@ -41,6 +43,10 @@ func get_display_name() -> String:
 
 
 func get_interactions(player: Node) -> Array:
+	var hand: ItemStack = player.inventory.hand
+	if hand != null and hand.get_data().has_tag(&"tool_fishing"):
+		# Spear in hand: stand still, watch the water, strike.
+		return [{"action": &"interact", "text": Loc.t("ACT_FISH"), "hold": 2.2, "enabled": true, "op": &"fish"}]
 	var opts := [{"action": &"interact", "text": Loc.t("ACT_DRINK"), "hold": 0.8,
 		"enabled": player.stats.thirst < SurvivalStats.MAX - 1.0}]
 	if player.inventory.count_of(&"waterskin_empty") > 0:
@@ -49,6 +55,10 @@ func get_interactions(player: Node) -> Array:
 
 
 func perform_interaction(player: Node, action: StringName) -> void:
+	var hand: ItemStack = player.inventory.hand
+	if action == &"interact" and hand != null and hand.get_data().has_tag(&"tool_fishing"):
+		_fish(player)
+		return
 	match action:
 		&"interact":
 			player.stats.thirst = minf(player.stats.thirst + 15.0, SurvivalStats.MAX)
@@ -65,3 +75,13 @@ func perform_interaction(player: Node, action: StringName) -> void:
 				Sfx.play(&"step_water", player.global_position)
 				inv.changed.emit()
 				Events.toast(Loc.t("MSG_WATERSKIN_FILLED"), &"good")
+
+
+func _fish(player: Node) -> void:
+	Sfx.play(&"step_water", player.global_position, -2.0)
+	if randf() < FISH_CHANCE:
+		player.give_item(&"fish_raw", 1)
+	else:
+		Events.toast(Loc.t("MSG_FISH_ESCAPED"), &"info")
+	if player.inventory.wear_hand(1):
+		Events.toast(Loc.t("MSG_TOOL_BROKE", {"item": ItemDB.get_item(&"fishing_spear").display_name()}), &"danger")

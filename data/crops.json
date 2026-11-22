@@ -1,0 +1,6 @@
+{
+	"grain":  {"seed": "seeds_grain", "grow": 2160, "yield": {"grain": 6}, "seeds": 2},
+	"carrot": {"seed": "seeds_carrot", "grow": 1800, "yield": {"wild_carrot": 4}, "seeds": 1},
+	"flax":   {"seed": "seeds_flax", "grow": 1800, "yield": {"fiber": 8}, "seeds": 2},
+	"herb":   {"seed": "herb", "grow": 1440, "yield": {"herb": 4}, "seeds": 0}
+}

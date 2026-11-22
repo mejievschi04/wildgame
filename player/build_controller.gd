@@ -9,7 +9,7 @@ const SOCKET_RADIUS := 2.2
 const GHOST_OK := Color(0.45, 0.85, 0.5, 0.42)
 const GHOST_BAD := Color(0.92, 0.36, 0.3, 0.42)
 ## Pieces that compete for the same socket.
-const OCCUPANCY := {"wall": "wall", "fence": "wall", "pillar": "pillar", "roof": "roof", "door": "door", "floor": "floor"}
+const OCCUPANCY := {"wall": "wall", "fence": "wall", "pillar": "pillar", "roof": "roof", "door": "door", "floor": "floor", "gable": "gable"}
 
 var player: Player
 var active := false
@@ -111,7 +111,7 @@ func evaluate(aim: Vector3, normal: Vector3, collider: Object, yaw: float) -> Di
 	match mode:
 		"ground_grid":
 			res = _eval_foundation(aim, yaw)
-		"edge", "corner", "top", "doorway":
+		"edge", "corner", "top", "doorway", "gable":
 			res = _eval_socket(mode, aim)
 		"ground_or_floor":
 			if collider is BuildingPiece and (collider as BuildingPiece).piece_id == &"foundation" and normal.y > 0.9:
@@ -182,6 +182,16 @@ func find_sockets(mode: String, aim: Vector3) -> Array:
 			if d.piece_id == &"doorway":
 				out.append({"xform": d.global_transform, "supports": [d.structure_id]})
 		return out
+	if mode == "gable":
+		# Gable ends close the triangle under a pitched roof, at both ends of its ridge (local +-X).
+		for r in w.pieces_near(aim, 5.0):
+			if r.piece_id != &"roof":
+				continue
+			var rb := r.global_transform.basis
+			for sx: float in [-1.0, 1.0]:
+				out.append({"xform": Transform3D(Basis(Vector3.UP, r.global_rotation.y + PI * 0.5), r.global_position + rb * Vector3(sx, 0, 0)),
+					"supports": [r.structure_id]})
+		return out
 	for f in w.pieces_near(aim, 5.0):
 		if f.piece_id != &"foundation":
 			continue
@@ -218,7 +228,7 @@ func _eval_socket(mode: String, aim: Vector3) -> Dictionary:
 			best = s
 	var fallback := Transform3D(Basis(Vector3.UP, player.rotation.y if player else 0.0), aim)
 	if best.is_empty() or best_d > SOCKET_RADIUS:
-		var why := "BUILD_INVALID_NO_DOORWAY" if mode == "doorway" else "BUILD_INVALID_NO_SOCKET"
+		var why := "BUILD_INVALID_NO_DOORWAY" if mode == "doorway" else ("BUILD_INVALID_NO_ROOF" if mode == "gable" else "BUILD_INVALID_NO_SOCKET")
 		return _result(fallback, false, Loc.t(why))
 	var xf: Transform3D = best.xform
 	if not best.get("ok", true):
@@ -287,7 +297,7 @@ func _blocked(xf: Transform3D, size: Vector3, exclude: Array, ignore_building: b
 
 
 func _overlaps_player(xf: Transform3D) -> bool:
-	if str(def.get("snap", "")) in ["top"]:
+	if str(def.get("snap", "")) in ["top", "gable"]:
 		return false
 	var size := _footprint()
 	if piece_id == &"foundation":

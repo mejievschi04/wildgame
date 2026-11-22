@@ -210,3 +210,106 @@ func test_repair() -> void:
 	await tree.process_frame
 	eq(_mine().size(), 0, "destroyed piece removed")
 	await _teardown(s)
+
+
+func test_new_pieces_tiers_translated() -> void:
+	for id: StringName in [&"window_wall", &"half_wall", &"gable", &"palisade"]:
+		check(ItemDB.pieces.has(id), "piece %s exists" % id)
+	for id: StringName in ItemDB.piece_order:
+		var tiers: Array = ItemDB.get_piece(id).get("tiers", [])
+		for t in tiers.size():
+			check(Loc.has_key("BUILD_%s_T%d" % [String(id).to_upper(), t + 1]), "tier name for %s T%d" % [id, t + 1])
+		var v := BuildingPiece.build_visual(id, 0, 1)
+		check(int(v.get_meta("stages", 0)) >= 1 and not BuildingVisuals.stage_nodes(v).is_empty(), "%s has construction stages" % id)
+		for t in tiers.size():
+			var vt := BuildingPiece.build_visual(id, t + 1, 1)
+			check(not BuildingVisuals.stage_nodes(vt).is_empty(), "%s T%d has a visual" % [id, t + 1])
+			vt.free()
+		v.free()
+
+
+func test_construction_stages_follow_delivery() -> void:
+	var s: GameSession = await _boot()
+	var p := s.player
+	var f := _foundation(s, Vector3(4, 0, 4), false)
+	eq(f.stage_count(), 3, "foundation goes up in 3 stages")
+	eq(f.stages_done(), 0, "fresh blueprint: nothing built yet")
+	p.inventory.add_item(&"stone", 1)
+	p.inventory.add_item(&"wood", 3)
+	f.perform_interaction(p, &"interact")
+	check(f.stages_done() >= 1 and not f.built, "delivered wood raises the first stages (%d)" % f.stages_done())
+	var looks := BuildingVisuals.stage_nodes(f._visual)
+	var first: MeshInstance3D = (looks[0][0] as Node).find_children("*", "MeshInstance3D", true, false)[0]
+	var last: MeshInstance3D = (looks[2][0] as Node).find_children("*", "MeshInstance3D", true, false)[0]
+	check(first.material_override == null, "built stage shows real materials")
+	check(last.material_override == BuildingPiece._blueprint_mat(), "unbuilt stage is still a plan")
+	p.inventory.add_item(&"stick", 4)
+	f.perform_interaction(p, &"interact")
+	check(f.built and f.stages_done() == 3, "completed: all stages")
+	await _teardown(s)
+
+
+func test_upgrade_wall_through_tiers() -> void:
+	var s: GameSession = await _boot()
+	var p := s.player
+	var f := _foundation(s)
+	var wall := _place(s, &"wall", "edge", f.global_position, 0)
+	near(wall.max_health, 150.0, 0.01, "wattle wall health")
+	var opts := wall.get_interactions(p)
+	check(not opts[0].enabled and opts[0].op == &"upgrade", "upgrade needs hammer + materials")
+	p.inventory.add_item(&"stone", 1)
+	p.inventory.add_item(&"wood", 4)
+	check(wall.get_interactions(p)[0].enabled, "upgrade offered with the materials")
+	wall.perform_interaction(p, &"interact")
+	eq(wall.tier, 1, "now a log wall")
+	near(wall.max_health, 300.0, 0.01, "log wall is twice as strong")
+	eq(p.inventory.count_of(&"wood"), 0, "logs used")
+	eq(wall.display_name(), Loc.t("BUILD_WALL_T1"), "named as a log wall")
+	var shape := wall.get_children().filter(func(n: Node) -> bool: return n is CollisionShape3D)[0] as CollisionShape3D
+	near((shape.shape as BoxShape3D).size.z, 0.24, 0.001, "thicker collision for logs")
+	p.inventory.add_item(&"stone", 10)
+	p.inventory.add_item(&"wood", 1)
+	wall.perform_interaction(p, &"interact")
+	eq(wall.tier, 2, "now a stone wall")
+	check(wall.get_interactions(p)[0].op != &"upgrade", "no tier above stone")
+	var refund := wall.refund(0.5)
+	check(int(refund.get(&"stone", 0)) == 5 and int(refund.get(&"wood", 0)) == 2, "dismantling returns part of every tier (%s)" % refund)
+	var data: Dictionary = JSON.parse_string(JSON.stringify(s.build_save()))
+	await _teardown(s)
+	Game.pending_save = data
+	var s2: GameSession = load("res://scenes/game.tscn").instantiate()
+	tree.root.add_child(s2)
+	for i in 3:
+		await tree.physics_frame
+	var found := false
+	for pc: BuildingPiece in _mine():
+		if pc.piece_id == &"wall":
+			found = pc.tier == 2 and is_equal_approx(pc.max_health, 525.0)
+	check(found, "stone wall restored from the save")
+	await _teardown(s2)
+
+
+func test_gable_needs_a_roof_and_keeps_warmth() -> void:
+	var s: GameSession = await _boot()
+	var f := _foundation(s, Vector3(0, 0, 0))
+	var bc := s.player.build
+	bc.piece_id = &"gable"
+	bc.def = ItemDB.get_piece(&"gable")
+	var top := f.global_position + Vector3.UP * (BuildingPiece.FOUNDATION_H + BuildingPiece.WALL_H)
+	check(not bc.evaluate(top + Vector3(1, 0, 0), Vector3.UP, null, 0.0).valid, "no gable without a roof")
+	_place(s, &"wall", "edge", f.global_position, 0)
+	_place(s, &"wall", "edge", f.global_position, 1)
+	_place(s, &"wall", "edge", f.global_position, 2)
+	var roof := _place(s, &"roof", "top", f.global_position, 0)
+	var inside := f.global_position + Vector3.UP * 0.8
+	var before := s.world.get_shelter_at(inside)
+	bc.piece_id = &"gable"
+	bc.def = ItemDB.get_piece(&"gable")
+	eq(bc.find_sockets("gable", roof.global_position).size(), 2, "a gable socket at each end of the ridge")
+	var g := _place(s, &"gable", "gable", roof.global_position, 0)
+	check(g.supported_by == [roof.structure_id], "gable rests on the roof")
+	check(s.world.get_shelter_at(inside) > before, "closed gable keeps the room warmer")
+	s.world.remove_piece(roof, 0.25, null)
+	await tree.process_frame
+	check(not is_instance_valid(g) or g.is_queued_for_deletion(), "gable falls with its roof")
+	await _teardown(s)

@@ -6,7 +6,7 @@ extends RefCounted
 const REMAPPABLE := [
 	&"move_forward", &"move_back", &"move_left", &"move_right", &"jump", &"sprint", &"crouch",
 	&"interact", &"alt_interact", &"primary_action", &"secondary_action", &"inventory",
-	&"journal", &"build_menu", &"toggle_snap", &"gesture", &"pause", &"hotbar_1", &"hotbar_2", &"hotbar_3", &"hotbar_4", &"hotbar_5", &"hotbar_6",
+	&"journal", &"map", &"weapon_wheel", &"build_menu", &"toggle_snap", &"gesture", &"pause", &"hotbar_1", &"hotbar_2", &"hotbar_3", &"hotbar_4", &"hotbar_5", &"hotbar_6",
 ]
 
 
@@ -29,6 +29,8 @@ static func defaults() -> Dictionary:
 		&"secondary_action": [_mouse(MOUSE_BUTTON_RIGHT), _axis(JOY_AXIS_TRIGGER_LEFT, 1.0)],
 		&"inventory": [_key(KEY_TAB), _button(JOY_BUTTON_BACK)],
 		&"journal": [_key(KEY_J)],
+		&"map": [_key(KEY_M), _button(JOY_BUTTON_DPAD_RIGHT)],
+		&"weapon_wheel": [_key(KEY_Q), _button(JOY_BUTTON_LEFT_SHOULDER)],
 		&"build_menu": [_key(KEY_B), _button(JOY_BUTTON_DPAD_UP)],
 		&"toggle_snap": [_key(KEY_G), _button(JOY_BUTTON_DPAD_DOWN)],
 		&"gesture": [_key(KEY_T), _button(JOY_BUTTON_DPAD_LEFT)],
@@ -40,7 +42,7 @@ static func defaults() -> Dictionary:
 		&"hotbar_5": [_key(KEY_5)],
 		&"hotbar_6": [_key(KEY_6)],
 		&"hotbar_next": [_button(JOY_BUTTON_RIGHT_SHOULDER), _mouse(MOUSE_BUTTON_WHEEL_DOWN)],
-		&"hotbar_prev": [_button(JOY_BUTTON_LEFT_SHOULDER), _mouse(MOUSE_BUTTON_WHEEL_UP)],
+		&"hotbar_prev": [_mouse(MOUSE_BUTTON_WHEEL_UP)],
 	}
 
 

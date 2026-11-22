@@ -4,8 +4,6 @@
 #         gesture, attack, sit, death). Blender Z-up; MPFB characters face -Y (Godot: rotate 180°).
 import bpy, bmesh, math, os, sys
 from mathutils import Vector, Quaternion, Matrix
-from bl_ext.blender_org.mpfb.services.humanservice import HumanService
-from bl_ext.blender_org.mpfb.services.targetservice import TargetService
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 OUT = os.path.join(ROOT, "assets", "models", "humans")
@@ -84,6 +82,9 @@ def mat_hide(name, tint, uv_scale=2.0):
 # ---------------------------------------------------------------- body
 
 def make_body(macro):
+    from bl_ext.blender_org.mpfb.services.humanservice import HumanService
+    from bl_ext.blender_org.mpfb.services.targetservice import TargetService
+
     d = TargetService.get_default_macro_info_dict()
     d.update(macro)
     bm = HumanService.create_human(scale=0.1, macro_detail_dict=d)

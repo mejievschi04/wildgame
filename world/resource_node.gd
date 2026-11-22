@@ -33,6 +33,8 @@ func setup(p_id: String, p_kind: StringName, size_scale: float = 1.0, yaw: float
 	add_to_group("time_sim")
 	add_to_group("slow_sim")
 	add_to_group("resource_node")
+	if kind in [&"sticks", &"stones"]:
+		add_to_group("gather_pile")
 	_visual = Node3D.new()
 	_visual.rotation.y = yaw
 	add_child(_visual)
@@ -82,7 +84,17 @@ func get_interactions(player: Node) -> Array:
 func perform_interaction(player: Node, action: StringName) -> void:
 	if action != &"interact" or remaining <= 0 or not cfg.has("hand_yield"):
 		return
-	_give(player, cfg.hand_yield)
+	# The right tool in the pack doubles the take (a sickle for grain and flax, a digging stick for roots).
+	var mult := 1
+	var bonus_tag := StringName(str(cfg.get("bonus_tag", "")))
+	if bonus_tag != &"" and player.inventory.has_tag(bonus_tag):
+		mult = 2
+	for id: String in (cfg.hand_yield as Dictionary).keys():
+		player.give_item(StringName(id), int(cfg.hand_yield[id]) * mult)
+	var extra: Dictionary = cfg.get("hand_bonus", {})  # e.g. a few seeds now and then
+	for id: String in extra.keys():
+		if randf() < float(extra[id]):
+			player.give_item(StringName(id), 1)
 	_consume_one()
 	Sfx.play(&"stone_knock" if kind == &"stones" else &"rustle", global_position + Vector3.UP * 0.3, -4.0)
 
@@ -96,6 +108,7 @@ func on_hit(player: Node, item: ItemData) -> bool:
 		Events.toast(Loc.t("NEED_%s" % String(tag).to_upper()), &"warn")
 		return false
 	_give(player, cfg.hit_yield)
+	_roll_bonus(player)
 	_consume_one()
 	_shake()
 	Sfx.play(&"axe_chop" if String(kind).begins_with("tree") else &"stone_knock", global_position + Vector3.UP * 1.0)
@@ -117,6 +130,14 @@ func _give(player: Node, yields: Dictionary) -> void:
 		player.give_item(StringName(id), int(yields[id]))
 
 
+## Optional "hit_bonus": {item: chance} -- e.g. a flint nodule cracked out of a boulder now and then.
+func _roll_bonus(player: Node) -> void:
+	var bonus: Dictionary = cfg.get("hit_bonus", {})
+	for id: String in bonus.keys():
+		if randf() < float(bonus[id]):
+			player.give_item(StringName(id), 1)
+
+
 func _consume_one() -> void:
 	remaining -= 1
 	if regrow_seconds > 0.0 and regrow_left <= 0.0:
@@ -130,12 +151,12 @@ func _refresh() -> void:
 		p.visible = not depleted
 	for p in _depleted_parts:
 		p.visible = depleted
-	if kind in [&"rock", &"flint"]:
+	if kind in [&"rock", &"flint", &"clay"]:
 		var k := lerpf(0.45, 1.0, float(remaining) / float(capacity))
 		for p in _full_parts:
 			p.scale = p.get_meta("base_scale", Vector3.ONE) * k
 	if _shape:
-		var hide_when_empty := kind in [&"sticks", &"stones", &"mushroom", &"rock", &"flint"]
+		var hide_when_empty := kind in [&"sticks", &"stones", &"mushroom", &"rock", &"flint", &"clay", &"wild_grain", &"wild_carrot", &"herbs", &"flax", &"reeds"]
 		_shape.disabled = depleted and hide_when_empty
 		if kind in [&"tree_pine", &"tree_birch"]:
 			_shape.shape = _get_meta_shape("stump_shape") if depleted else _get_meta_shape("trunk_shape")
@@ -240,6 +261,35 @@ func _build(s: float) -> void:
 			_full(Graybox.part(_visual, Graybox.sphere(0.12, 7), Color(0.6, 0.42, 0.26), Vector3(0, 0.19, 0),
 				Vector3.ZERO, Vector3(1.2, 0.55, 1.2)))
 			_shape = Graybox.add_shape(self, Graybox.box_shape(Vector3(0.5, 0.4, 0.5)), Vector3(0, 0.15, 0))
+		&"hazel":
+			# A hazel bush: leafy sprigs with clusters of brown nuts in their husks.
+			var rngh := RandomNumberGenerator.new()
+			rngh.seed = hash(node_id + "hazel")
+			for i in 11:
+				var sprig := _art(AssetLib.PLANTS[&"shrub"][i % 3], Vector3.ONE * rngh.randf_range(3.0, 4.0) * s)
+				var a := TAU * i / 11.0 + rngh.randf() * 0.4
+				sprig.position = Vector3(cos(a), 0, sin(a)) * rngh.randf_range(0.1, 0.45) * s
+				sprig.rotation = Vector3(cos(a) * 0.3, rngh.randf() * TAU, sin(a) * 0.3)
+			var nuts := Node3D.new()
+			_visual.add_child(nuts)
+			var nm := Graybox.mat(Color(0.45, 0.3, 0.16), 0.5)
+			var husk := Graybox.mat(Color(0.48, 0.55, 0.25), 0.8)
+			for i in 9:
+				var a := rngh.randf() * TAU
+				var r := rngh.randf_range(0.25, 0.7) * s
+				var c := Vector3(cos(a) * r, rngh.randf_range(0.35, 0.85) * s, sin(a) * r)
+				for k in 3:
+					Graybox.part_mat(nuts, Graybox.sphere(0.03, 6), nm, c + Vector3(k * 0.035 - 0.035, 0, 0))
+				Graybox.part_mat(nuts, Graybox.sphere(0.045, 6), husk, c + Vector3(0, 0.03, 0), Vector3.ZERO, Vector3(1.6, 0.6, 1.0))
+			_full(nuts)
+			_shape = Graybox.add_shape(self, Graybox.box_shape(Vector3(1.8, 1.2, 1.8) * s), Vector3(0, 0.55 * s, 0))
+		&"wild_grain", &"wild_carrot", &"herbs", &"flax", &"reeds", &"clay":
+			var plant := Node3D.new()
+			_visual.add_child(plant)
+			WildPlants.build(kind, plant, hash(node_id), s)
+			_full(plant)
+			var h: float = {&"reeds": 1.6, &"flax": 0.7, &"wild_grain": 0.8, &"clay": 0.3}.get(kind, 0.5)
+			_shape = Graybox.add_shape(self, Graybox.box_shape(Vector3(1.1, h, 1.1) * s), Vector3(0, h * 0.5 * s, 0))
 
 
 func _art(path: String, scl: Vector3) -> Node3D:

@@ -4,35 +4,40 @@
 		"walk": 1.5, "run": 9.5, "turn": 3.2, "sight": 48, "fov": 300, "hearing": 32, "smell": 60,
 		"radius": 0.35, "height": 1.5, "length": 1.4,
 		"loot": {"meat_raw": 6, "hide": 2, "bone": 3}, "group": [2, 4], "max": 8, "track": "hoof",
-		"spawn_min": 55, "spawn_max": 95
+		"spawn_min": 55, "spawn_max": 95,
+		"habitat": ["aruun","tavren","meyra","kharum"], "min_wild": 0, "respawn_h": 2
 	},
 	"roe": {
 		"model": "res://assets/models/animals/SK_Roe.gltf", "diet": "prey", "common": true, "health": 45,
 		"walk": 1.3, "run": 10.5, "turn": 4.2, "sight": 44, "fov": 300, "hearing": 38, "smell": 55,
 		"radius": 0.22, "height": 1.0, "length": 0.95,
 		"loot": {"meat_raw": 3, "hide": 1, "bone": 2}, "group": [1, 3], "max": 5, "track": "hoof", "track_scale": 0.7,
-		"spawn_min": 50, "spawn_max": 95
+		"spawn_min": 50, "spawn_max": 95,
+		"habitat": ["aruun","tavren","meyra"], "min_wild": 0, "respawn_h": 2
 	},
 	"reindeer": {
 		"model": "res://assets/models/animals/SK_Reindeer.gltf", "diet": "prey", "health": 90,
 		"walk": 1.5, "run": 10.0, "turn": 3.2, "sight": 45, "fov": 300, "hearing": 36, "smell": 70,
 		"radius": 0.3, "height": 1.4, "length": 1.3,
 		"loot": {"meat_raw": 5, "hide": 2, "bone": 3}, "group": [3, 6], "max": 6, "track": "hoof", "track_scale": 1.1,
-		"spawn_min": 60, "spawn_max": 110
+		"spawn_min": 60, "spawn_max": 110,
+		"habitat": ["tundra","varkai","kharum"], "min_wild": 0, "respawn_h": 4
 	},
 	"megaloceros": {
 		"model": "res://assets/models/animals/SK_Megaloceros.gltf", "diet": "prey", "health": 220,
 		"walk": 1.6, "run": 11.0, "turn": 2.6, "sight": 50, "fov": 300, "hearing": 36, "smell": 60,
 		"radius": 0.45, "height": 2.4, "length": 2.0,
 		"loot": {"meat_raw": 14, "hide": 4, "bone": 6}, "group": [2, 4], "max": 4, "track": "hoof", "track_scale": 1.4,
-		"spawn_min": 60, "spawn_max": 110
+		"spawn_min": 60, "spawn_max": 110,
+		"habitat": ["meyra","ossara","aruun","tavren"], "min_wild": 350, "respawn_h": 8
 	},
 	"horse": {
 		"model": "res://assets/models/animals/SK_Horse.gltf", "diet": "prey", "health": 140,
 		"walk": 1.6, "run": 12.5, "turn": 3.0, "sight": 55, "fov": 320, "hearing": 40, "smell": 60,
 		"radius": 0.35, "height": 1.6, "length": 1.9,
 		"loot": {"meat_raw": 10, "hide": 3, "bone": 4}, "group": [3, 6], "max": 6, "track": "hoof", "track_scale": 1.2,
-		"spawn_min": 60, "spawn_max": 110
+		"spawn_min": 60, "spawn_max": 110,
+		"habitat": ["ossara","varkai","kharum"], "min_wild": 0, "respawn_h": 4
 	},
 	"boar": {
 		"model": "res://assets/models/animals/SK_Boar.gltf", "diet": "defensive", "health": 120,
@@ -41,21 +46,24 @@
 		"damage": 22, "attack_range": 1.6, "attack_windup": 0.35, "attack_cooldown": 1.6, "bleed_chance": 0.6,
 		"charge_range": 7.0, "give_up": 8.0, "flee_health": 0.35, "fire_fear": 6.0,
 		"loot": {"meat_raw": 7, "hide": 2, "bone": 3}, "group": [2, 4], "max": 4, "track": "hoof", "track_scale": 0.8,
-		"spawn_min": 55, "spawn_max": 100
+		"spawn_min": 55, "spawn_max": 100,
+		"habitat": ["aruun","tavren","meyra"], "min_wild": 220, "respawn_h": 8
 	},
 	"hare": {
 		"model": "res://assets/models/animals/SK_Hare.gltf", "diet": "prey", "health": 12,
 		"walk": 1.0, "run": 13.0, "turn": 6.0, "sight": 35, "fov": 340, "hearing": 55, "smell": 60,
 		"radius": 0.1, "height": 0.35, "length": 0.4,
 		"loot": {"meat_raw": 1, "hide": 1, "bone": 1}, "group": [1, 1], "max": 3, "track": "paw", "track_scale": 0.4,
-		"spawn_min": 40, "spawn_max": 90
+		"spawn_min": 40, "spawn_max": 90,
+		"habitat": ["aruun","tavren","meyra","kharum","ossara","varkai","tundra"], "min_wild": 0, "respawn_h": 1
 	},
 	"fox": {
 		"model": "res://assets/models/animals/SK_Fox.gltf", "diet": "prey", "health": 25,
 		"walk": 1.2, "run": 11.0, "turn": 5.0, "sight": 40, "fov": 260, "hearing": 46, "smell": 80,
 		"radius": 0.15, "height": 0.5, "length": 0.6,
 		"loot": {"meat_raw": 1, "hide": 1, "bone": 1}, "group": [1, 1], "max": 2, "track": "paw", "track_scale": 0.55,
-		"spawn_min": 50, "spawn_max": 100
+		"spawn_min": 50, "spawn_max": 100,
+		"habitat": ["aruun","tavren","meyra","kharum","ossara","varkai","tundra"], "min_wild": 0, "respawn_h": 3
 	},
 	"wolf": {
 		"model": "res://assets/models/animals/SK_Wolf.gltf", "diet": "predator", "health": 70,
@@ -64,7 +72,8 @@
 		"damage": 14, "attack_range": 1.7, "attack_windup": 0.45, "attack_cooldown": 1.6, "bleed_chance": 0.35,
 		"give_up": 22.0, "flee_health": 0.4, "fire_fear": 7.0, "max_prey_health": 160,
 		"loot": {"meat_raw": 3, "hide": 1, "bone": 2}, "group": [2, 3], "max": 3, "track": "paw",
-		"spawn_min": 75, "spawn_max": 110
+		"spawn_min": 75, "spawn_max": 110,
+		"habitat": ["aruun","tavren","kharum","varkai","tundra"], "min_wild": 380, "respawn_h": 24
 	},
 	"lion": {
 		"model": "res://assets/models/animals/SK_Lion.gltf", "diet": "predator", "territory": 10.0, "max_prey_health": 250,
@@ -73,7 +82,8 @@
 		"damage": 38, "attack_range": 2.0, "attack_windup": 0.4, "attack_cooldown": 1.8, "bleed_chance": 0.7,
 		"give_up": 15.0, "flee_health": 0.35, "fire_fear": 7.0,
 		"loot": {"meat_raw": 10, "hide": 3, "bone": 5}, "group": [1, 2], "max": 2, "track": "paw", "track_scale": 1.7,
-		"spawn_min": 90, "spawn_max": 140
+		"spawn_min": 90, "spawn_max": 140,
+		"habitat": ["ossara","kharum"], "min_wild": 700, "respawn_h": 48
 	},
 	"bear": {
 		"model": "res://assets/models/animals/SK_Bear.gltf", "diet": "predator", "hunts": false, "territory": 14.0,
@@ -82,7 +92,8 @@
 		"damage": 32, "attack_range": 2.3, "attack_windup": 0.6, "attack_cooldown": 2.2, "bleed_chance": 0.6,
 		"give_up": 14.0, "flee_health": 0.3, "fire_fear": 6.0,
 		"loot": {"meat_raw": 14, "hide": 4, "bone": 6}, "group": [1, 1], "max": 1, "track": "paw", "track_scale": 1.9,
-		"spawn_min": 90, "spawn_max": 140
+		"spawn_min": 90, "spawn_max": 140,
+		"habitat": ["tavren","kharum","varkai"], "min_wild": 600, "respawn_h": 48
 	},
 	"rhino": {
 		"model": "res://assets/models/animals/SK_Rhino.gltf", "diet": "defensive", "health": 600,
@@ -91,7 +102,8 @@
 		"damage": 45, "attack_range": 2.9, "attack_windup": 0.55, "attack_cooldown": 2.4, "bleed_chance": 0.5,
 		"charge_range": 12.0, "give_up": 8.0, "flee_health": 0.2, "fire_fear": 7.0,
 		"loot": {"meat_raw": 24, "hide": 6, "bone": 8}, "group": [1, 2], "max": 2, "track": "pad", "track_scale": 1.6,
-		"spawn_min": 80, "spawn_max": 130
+		"spawn_min": 80, "spawn_max": 130,
+		"habitat": ["tundra","varkai","ossara"], "min_wild": 600, "respawn_h": 24
 	},
 	"bison": {
 		"model": "res://assets/models/animals/SK_Bison.gltf", "diet": "defensive", "health": 380,
@@ -100,7 +112,8 @@
 		"damage": 30, "attack_range": 2.4, "attack_windup": 0.5, "attack_cooldown": 2.0, "bleed_chance": 0.4,
 		"charge_range": 6.0, "give_up": 7.0, "flee_health": 0.3, "fire_fear": 7.0,
 		"loot": {"meat_raw": 18, "hide": 5, "bone": 7}, "group": [3, 5], "max": 6, "track": "hoof", "track_scale": 1.5,
-		"spawn_min": 70, "spawn_max": 120
+		"spawn_min": 70, "spawn_max": 120,
+		"habitat": ["ossara","varkai","tundra"], "min_wild": 300, "respawn_h": 12
 	},
 	"mammoth": {
 		"model": "res://assets/models/animals/SK_Mammoth.gltf", "diet": "defensive", "health": 900,
@@ -109,6 +122,7 @@
 		"damage": 55, "attack_range": 3.6, "attack_windup": 0.7, "attack_cooldown": 2.6, "bleed_chance": 0.2,
 		"charge_range": 9.0, "give_up": 9.0, "flee_health": 0.2, "fire_fear": 8.0,
 		"loot": {"meat_raw": 40, "hide": 8, "bone": 14}, "group": [2, 3], "max": 3, "track": "pad", "track_scale": 3.2,
-		"spawn_min": 80, "spawn_max": 130
+		"spawn_min": 80, "spawn_max": 130,
+		"habitat": ["tundra","varkai"], "min_wild": 700, "respawn_h": 24
 	}
 }
