@@ -17,9 +17,9 @@ const DEFAULTS := {
 const DIFFICULTY_MULT := [0.6, 1.0, 1.45]
 ## Graphics presets (index = video.quality): low / medium / high.
 const QUALITY := [
-	{"shadow_dist": 45.0, "shadow_atlas": 2048, "splits": 2, "volfog": false, "ssao": false, "grass_range": 26.0, "fern_range": 45.0},
-	{"shadow_dist": 65.0, "shadow_atlas": 2048, "splits": 2, "volfog": true, "ssao": true, "grass_range": 34.0, "fern_range": 60.0},
-	{"shadow_dist": 120.0, "shadow_atlas": 4096, "splits": 4, "volfog": true, "ssao": true, "grass_range": 55.0, "fern_range": 90.0},
+	{"shadow_dist": 45.0, "shadow_atlas": 2048, "splits": 2, "volfog": false, "ssao": false, "ssil": false, "sdfgi": false, "grass_range": 26.0, "fern_range": 45.0},
+	{"shadow_dist": 65.0, "shadow_atlas": 2048, "splits": 2, "volfog": true, "ssao": true, "ssil": true, "sdfgi": false, "grass_range": 34.0, "fern_range": 60.0},
+	{"shadow_dist": 120.0, "shadow_atlas": 4096, "splits": 4, "volfog": true, "ssao": true, "ssil": true, "sdfgi": true, "grass_range": 55.0, "fern_range": 90.0},
 ]
 const AUDIO_BUSES := ["Music", "Ambience", "SFX"]
 

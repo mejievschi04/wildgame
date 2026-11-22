@@ -29,21 +29,39 @@ func _ready() -> void:
 	environment.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
 	environment.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
 	environment.tonemap_mode = Environment.TONE_MAPPER_AGX
-	environment.tonemap_exposure = 1.05
+	environment.tonemap_exposure = 0.9
 	environment.ssao_enabled = true
 	environment.ssao_radius = 1.2
-	environment.ssao_intensity = 1.6
+	environment.ssao_intensity = 1.8
+	environment.ssao_light_affect = 0.2  # contact darkening also under direct sun (grass roots, armpits, fur)
+	environment.ssao_detail = 0.6
+	# Bounced light: screen-space indirect (medium+) and SDFGI (high) — warm light off the ground onto bodies.
+	environment.ssil_enabled = true
+	environment.ssil_radius = 4.0
+	environment.ssil_intensity = 1.1
+	environment.sdfgi_use_occlusion = true
+	environment.sdfgi_cascades = 4
+	environment.sdfgi_min_cell_size = 0.2
+	environment.sdfgi_energy = 0.9
+	# Film-like grade: a touch more contrast, slightly muted colours.
+	environment.adjustment_enabled = true
+	environment.adjustment_contrast = 1.07
+	environment.adjustment_saturation = 0.93
 	environment.volumetric_fog_enabled = true
 	environment.volumetric_fog_density = 0.006
 	environment.volumetric_fog_length = 90.0
 	environment.volumetric_fog_anisotropy = 0.6
 	environment.volumetric_fog_sky_affect = 0.0
 	environment.glow_enabled = true
-	environment.glow_intensity = 0.5
-	environment.glow_bloom = 0.05
+	environment.glow_intensity = 0.45
+	environment.glow_bloom = 0.03
+	environment.glow_hdr_threshold = 1.1  # only real highlights (fire, sun on water) bloom
 	environment.fog_enabled = true
 	environment.fog_density = 0.006
 	environment.fog_sky_affect = 0.35
+	environment.fog_aerial_perspective = 0.55  # distant hills dissolve into the sky colour
+	environment.fog_height = ForestWorld.WATER_LEVEL + 2.0
+	environment.fog_height_density = 0.0
 	var we := WorldEnvironment.new()
 	we.environment = environment
 	add_child(we)
@@ -75,6 +93,8 @@ func _apply_settings() -> void:
 		else DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
 	environment.volumetric_fog_enabled = q.volfog
 	environment.ssao_enabled = q.ssao
+	environment.ssil_enabled = bool(q.get("ssil", false))
+	environment.sdfgi_enabled = bool(q.get("sdfgi", false))
 
 
 func _process(delta: float) -> void:
@@ -128,8 +148,10 @@ func update_visuals() -> void:
 	var day_k := smoothstep(-0.08, 0.3, elev)  # 0 night … 1 day
 	var dusk_k := 1.0 - absf(clampf(elev * 3.0, -1.0, 1.0))  # strongest near the horizon
 	sun.visible = elev > -0.05
-	sun.light_energy = 1.35 * day_k * (1.0 - 0.8 * cloud)
-	sun.light_color = Color(1.0, 0.93, 0.82).lerp(Color(1.0, 0.55, 0.3), dusk_k * 0.8)
+	# Strong warm key light vs. a dimmer blue sky fill: the contrast that reads as "real daylight".
+	# High sun is a bit gentler than low golden light (keeps midday from washing out).
+	sun.light_energy = lerpf(2.4, 1.9, clampf(elev, 0.0, 1.0)) * day_k * (1.0 - 0.75 * cloud)
+	sun.light_color = Color(1.0, 0.91, 0.78).lerp(Color(1.0, 0.52, 0.26), dusk_k * 0.85)
 	moon.visible = day_k < 0.6
 	moon.light_energy = 0.16 * (1.0 - day_k)
 
@@ -146,8 +168,13 @@ func update_visuals() -> void:
 	sky_material.ground_horizon_color = hor.darkened(0.2)
 	sky_material.ground_bottom_color = Color(0.08, 0.09, 0.07).lerp(Color(0.2, 0.22, 0.17), day_k)
 	sky_material.sky_energy_multiplier = lerpf(0.25, 1.0, day_k)
-	environment.ambient_light_energy = lerpf(0.35, 0.9, day_k) * (1.0 - 0.25 * cloud)
+	# Overcast days lose the sun but gain sky light.
+	environment.ambient_light_energy = lerpf(0.35, 0.62, day_k) * (1.0 + 0.5 * cloud)
 	environment.fog_light_color = hor.darkened(0.15)
 	environment.fog_density = lerpf(0.010, 0.0022, day_k) + fog_extra + cloud * 0.0015
 	environment.volumetric_fog_albedo = hor.lightened(0.2)
-	environment.volumetric_fog_density = lerpf(0.012, 0.0028, day_k)
+	environment.volumetric_fog_density = lerpf(0.012, 0.0028, day_k) + 0.006 * dusk_k * day_k  # shafts at low sun
+	# Valley mist: thick in the early morning and at dusk, burnt off by midday.
+	var morning := clampf(1.0 - absf(time_hours - 6.5) / 3.0, 0.0, 1.0)
+	var evening := clampf(1.0 - absf(time_hours - 20.0) / 2.5, 0.0, 1.0)
+	environment.fog_height_density = 0.06 * maxf(morning, evening * 0.6) + fog_extra * 3.0
