@@ -841,6 +841,104 @@ def gait(rig, sp, g):
     return n
 
 
+def _yz(v):
+    return math.degrees(math.atan2(v[2], v[1]))
+
+
+def _rot(p, pivot, deg):
+    """Rotate point p about the X axis through pivot (sagittal plane)."""
+    a = math.radians(deg)
+    y, z = p[1] - pivot[1], p[2] - pivot[2]
+    return (p[0], pivot[1] + y * math.cos(a) - z * math.sin(a), pivot[2] + y * math.sin(a) + z * math.cos(a))
+
+
+def gait_ik(rig, sp, g):
+    """Quadruped gait with planted hooves: each leg's cannon/foot is placed on an explicit path (stance =
+    on the ground sliding back at body speed, swing = lifted and folded), the upper two segments are solved
+    with 2-bone IK (elbow points back, stifle points forward). The cycle length matches the species' game
+    speed so the animation never skates at speed_scale 1."""
+    J = sp["J"]
+    v = sp["speeds"][g.get("kind", "walk")]
+    run = g.get("kind") == "run"
+    duty = g.get("ik_duty", max(0.22, g["duty"] * 0.75) if run else g["duty"])
+    legL = J["hp.L"][2]
+    T = 0.82 * legL / max(v * duty, 1e-3)
+    T = min(max(T, 0.22), g["period"] * 1.6)
+    stride = v * T
+    n = max(8, int(round(T * FPS)))
+    lift = g.get("ik_lift", 0.28 if run else 0.13) * legL
+    fold_f = g.get("fold_f", 85 if run else 55)
+    fold_h = g.get("fold_h", 22 if run else 18)
+    exc = min(stride * duty, 0.8 * legL)      # stance sweep a leg can really make; faster gaits skate slightly
+    legs = {}
+    for s in ("L", "R"):
+        for leg, (a, b, c, d) in (("f", ("sh", "el", "ca", "fh")), ("h", ("hp", "st", "ho", "hh"))):
+            P = [J[f"{k}.{s}"] for k in (a, b, c, d)]
+            legs[leg + s] = {"P": P, "L1": math.dist(P[0][1:], P[1][1:]), "L2": math.dist(P[1][1:], P[2][1:]),
+                            "L3": math.dist(P[2][1:], P[3][1:]), "a1": _yz(np.subtract(P[1], P[0])),
+                            "a2": _yz(np.subtract(P[2], P[1])), "a3": _yz(np.subtract(P[3], P[2])),
+                            "back": leg == "f",
+                            "bones": (f"upperarm.{s}", f"forearm.{s}", f"hoof_f.{s}") if leg == "f" else
+                                     (f"thigh.{s}", f"shin.{s}", f"hoof_h.{s}")}
+    for f in range(n + 1):
+        t = f / n
+        w = t * math.tau
+        r = zero_pose(rig)
+        bob = g["bob"] * (0.5 + 0.5 * math.cos(w * g.get("bob_freq", 2))) + g.get("crouch", 0.0) * legL
+        loc = (0, 0, -bob)
+        a_sp = g.get("spine", 0) * math.sin(w)
+        a_ch = -g.get("spine", 0) * 0.6 * math.sin(w)
+        r["spine"] = (a_sp, 0, g.get("yaw", 0) * math.sin(w))
+        r["chest"] = (a_ch, 0, -g.get("yaw", 0) * math.sin(w))
+        r["neck"] = (g.get("head", 0) * math.sin(2 * w + 0.6), 0, 0)
+        r["head"] = (-g.get("head", 0) * 0.6 * math.sin(2 * w + 0.6), 0, 0)
+        r["tail"] = (g.get("tail", 4) * math.sin(2 * w), 0, g.get("tail", 4) * math.sin(w))
+        r["tail_tip"] = (0, 0, g.get("tail", 4) * 1.4 * math.sin(w - 0.8))
+        for name, Lg in legs.items():
+            front = Lg["back"]
+            P = Lg["P"]
+            # hip / shoulder joint after spine flex + bob (nested rotations about rest pivots)
+            if front:
+                top = _rot(_rot(P[0], J["spine"], a_ch), J["hips"], a_sp)
+                parent = a_sp + a_ch
+            else:
+                top = P[0]
+                parent = 0.0
+            top = (top[0], top[1] + loc[1], top[2] + loc[2])
+            u = (t + g["phases"][name]) % 1.0
+            hoof0 = P[3]
+            back = 0.0 if front else -0.12 * legL   # hind feet land a little behind the hip (no over-gathering)
+            if u < duty:
+                st = u / duty
+                hy = hoof0[1] + back + exc * (0.5 - st)
+                hz = hoof0[2]
+                c_ang = Lg["a3"] + (8 if front else -6) * smooth01((st - 0.6) / 0.4)   # fetlock/heel roll at push-off
+            else:
+                sw = (u - duty) / (1 - duty)
+                hy = hoof0[1] + back - exc / 2 + exc * smooth01(sw ** 0.9)
+                hz = hoof0[2] + lift * math.sin(math.pi * sw) ** 1.1
+                fold = math.sin(math.pi * min(sw / 0.8, 1.0))
+                c_ang = Lg["a3"] - fold_f * fold if front else Lg["a3"] - fold_h * fold
+            cr = math.radians(c_ang)
+            wy, wz = hy - Lg["L3"] * math.cos(cr), hz - Lg["L3"] * math.sin(cr)      # wrist / hock target
+            dy, dz = wy - top[1], wz - top[2]
+            L1, L2 = Lg["L1"], Lg["L2"]
+            dd = min(max(math.hypot(dy, dz), abs(L1 - L2) + 1e-3), (L1 + L2) * 0.999)
+            aa = math.degrees(math.acos(max(-1.0, min(1.0, (L1 * L1 + dd * dd - L2 * L2) / (2 * L1 * dd)))))
+            th = math.degrees(math.atan2(dz, dy))
+            a1 = th - aa if front else th + aa
+            ky, kz = top[1] + L1 * math.cos(math.radians(a1)), top[2] + L1 * math.sin(math.radians(a1))
+            a2 = math.degrees(math.atan2(wz - kz, wy - ky))
+            r1 = a1 - Lg["a1"] - parent
+            r2 = a2 - Lg["a2"] - (r1 + parent)
+            r3 = c_ang - Lg["a3"] - (r1 + r2 + parent)
+            b1, b2, b3 = Lg["bones"]
+            r[b1] = (r1, 0, 0); r[b2] = (r2, 0, 0); r[b3] = (r3, 0, 0)
+        sp.get("gait_extra", lambda r, t, g: None)(r, t, g)
+        key(rig, f + 1, r, loc)
+    return n
+
+
 def make_clips(rig, sp):
     rig.animation_data_create()
     clips = sp["clips"](rig)
@@ -934,7 +1032,8 @@ def std_clips(rig, sp, walk, run, extra=None):
             key(rig, f + 1, r, (0, 0, -height * 0.70 * e))
         return n
 
-    clips = {"idle": idle, "walk": lambda: gait(rig, sp, walk), "run": lambda: gait(rig, sp, run),
+    G = gait_ik if sp.get("speeds") else gait
+    clips = {"idle": idle, "walk": lambda: G(rig, sp, dict(walk, kind="walk")), "run": lambda: G(rig, sp, dict(run, kind="run")),
              "graze": graze, "alert": alert, "attack": attack, "death": death}
     clips.update(extra or {})
     return clips

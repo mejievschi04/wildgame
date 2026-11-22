@@ -65,10 +65,12 @@ def make_body(spec, sex):
         c = sum(pts, Vector()) / len(pts)
         r = max((p - c).length for p in pts)
         eyes.append((c, r))
+    MOUTH = {"helper-upper-teeth", "helper-lower-teeth", "helper-tongue"}
+    LASH = {"helper-l-eyelashes-1", "helper-l-eyelashes-2", "helper-r-eyelashes-1", "helper-r-eyelashes-2"}
     bmh = bmesh.new()
     bmh.from_mesh(bm.data)
     deform = bmh.verts.layers.deform.active
-    kill = [v for v in bmh.verts if not ({gidx[i] for i in v[deform].keys()} & {"body"})]
+    kill = [v for v in bmh.verts if not ({gidx[i] for i in v[deform].keys()} & ({"body"} | MOUTH | LASH))]
     bmesh.ops.delete(bmh, geom=kill, context="VERTS")
     bmh.to_mesh(bm.data)
     bmh.free()
@@ -77,7 +79,34 @@ def make_body(spec, sex):
             bm.modifiers.remove(mod)
     for p in bm.data.polygons:
         p.use_smooth = True
-    return bm, rig, eyes
+    # teeth, tongue and eyelashes become their own object (keeps the expression shape keys, own materials)
+    gidx = {g.index: g.name for g in bm.vertex_groups}
+    fl.activate(bm)
+    bpy.ops.object.mode_set(mode="EDIT")
+    bmh = bmesh.from_edit_mesh(bm.data)
+    deform = bmh.verts.layers.deform.active
+    for v in bmh.verts:
+        v.select = bool({gidx[i] for i, w in v[deform].items() if w > 0.5} & (MOUTH | LASH))
+    bmh.select_flush(True)
+    bmesh.update_edit_mesh(bm.data)
+    bpy.ops.mesh.separate(type="SELECTED")
+    bpy.ops.object.mode_set(mode="OBJECT")
+    extra = [o for o in bpy.context.selected_objects if o != bm]
+    mouth = extra[0] if extra else None
+    if mouth:
+        mouth.name = "Mouth"
+        teeth = gh.mat_flat("M_Teeth", (0.58, 0.53, 0.44), 0.55)
+        tongue = gh.mat_flat("M_Tongue", (0.58, 0.30, 0.30), 0.45)
+        lash = gh.mat_flat("M_Lash", (0.06, 0.045, 0.035), 0.8)
+        mouth.data.materials.clear()
+        for m in (teeth, tongue, lash):
+            mouth.data.materials.append(m)
+        mg = {g.index: g.name for g in mouth.vertex_groups}
+        for p in mouth.data.polygons:
+            names = {mg[g.group] for g in mouth.data.vertices[p.vertices[0]].groups if g.weight > 0.5}
+            p.material_index = 1 if "helper-tongue" in names else (2 if names & LASH else 0)
+            p.use_smooth = True
+    return bm, rig, eyes, mouth
 
 
 def add_expressions(bm, race):
@@ -748,6 +777,118 @@ def garments_sapiens(body, sex, lm, spec):
     return out
 
 
+# ============================================================== dynamic bones (skirt strips & long hair, driven by Godot spring bones)
+
+def add_dynamic_bones(rig, lm, hf, kilt, hair_objs, hair_len):
+    """8 two-bone chains around the hips for the strip kilt/skirt and 3 chains for long hair. The game's
+    SpringBoneSimulator3D swings them (see human_npc.gd); in the baked clips they just follow."""
+    import bpy
+    co = [kilt.matrix_world @ v.co for v in kilt.data.vertices] if kilt else []
+    chains = {"skirt": [], "hair": []}
+    fl.activate(rig)
+    bpy.ops.object.mode_set(mode="EDIT")
+    eb = rig.data.edit_bones
+    if co:
+        ztop = lm["hip"].z + 0.06
+        zbot = min(c.z for c in co) + 0.01
+        cy = sum(c.y for c in co) / len(co)
+
+        def radius(z, ang):
+            best = 0.0
+            for c in co:
+                if abs(c.z - z) < 0.035:
+                    a = math.atan2(c.x, -(c.y - cy))
+                    if abs((a - ang + math.pi) % math.tau - math.pi) < 0.35:
+                        best = max(best, math.hypot(c.x, c.y - cy))
+            return best or 0.15
+        for k in range(8):
+            ang = k / 8 * math.tau
+            d = Vector((math.sin(ang), -math.cos(ang), 0))
+            zs = (ztop, (ztop + zbot) / 2, zbot)
+            pts = [Vector((0, cy, z)) + d * radius(z, ang) for z in zs]
+            b1 = eb.new(f"skirt_{k}_1"); b1.head, b1.tail = pts[0], pts[1]; b1.parent = eb["pelvis"]
+            b2 = eb.new(f"skirt_{k}_2"); b2.head, b2.tail = pts[1], pts[2]; b2.parent = b1; b2.use_connect = True
+            chains["skirt"].append((ang, pts))
+    if hair_objs:
+        ymid = (hf["y"][0] + hf["y"][1]) / 2
+        z0 = hf["z"][0] + 0.55 * (hf["z"][1] - hf["z"][0])
+        drop = hair_len * 0.85
+        for k, (dx, dy) in enumerate(((0.0, 1.0), (0.75, 0.66), (-0.75, 0.66))):
+            dvec = Vector((dx, dy, 0)).normalized()
+            p0 = Vector((0, ymid, z0)) + dvec * 0.085
+            p1 = p0 + dvec * 0.03 + Vector((0, 0, -drop * 0.5))
+            p2 = p1 + dvec * 0.03 + Vector((0, 0.02, -drop * 0.5))
+            b1 = eb.new(f"hair_{k}_1"); b1.head, b1.tail = p0, p1; b1.parent = eb["head"]
+            b2 = eb.new(f"hair_{k}_2"); b2.head, b2.tail = p1, p2; b2.parent = b1; b2.use_connect = True
+            chains["hair"].append(((p0, p1), (p1, p2)))
+    bpy.ops.object.mode_set(mode="OBJECT")
+    # ---- weights: skirt strips hang from the chains (angle blend between neighbours, height blend along the chain)
+    if co:
+        groups = {g.name: g for g in kilt.vertex_groups}
+        def grp(n):
+            if n not in groups:
+                groups[n] = kilt.vertex_groups.new(name=n)
+            return groups[n]
+        allg = list(kilt.vertex_groups)
+        for v in kilt.data.vertices:
+            c = kilt.matrix_world @ v.co
+            if c.z > ztop:
+                continue
+            t = min(max((ztop - c.z) / max(ztop - zbot, 1e-3), 0.0), 1.0)
+            a = math.atan2(c.x, -(c.y - cy)) % math.tau
+            fk = a / math.tau * 8
+            k0 = int(fk) % 8; k1 = (k0 + 1) % 8; fr = fk - int(fk)
+            for g in allg:
+                g.remove([v.index])
+            top = max(0.0, 1 - t / 0.12)                        # waistband stays on the pelvis
+            if top > 0:
+                grp("pelvis").add([v.index], top, "REPLACE")
+            seg2 = smooth01((t - 0.35) / 0.4)
+            for k, wk in ((k0, 1 - fr), (k1, fr)):
+                w = (1 - top) * wk
+                if w > 0.01:
+                    grp(f"skirt_{k}_1").add([v.index], w * (1 - seg2), "ADD")
+                    grp(f"skirt_{k}_2").add([v.index], w * seg2, "ADD")
+    # ---- weights: long hair follows the head at the roots, the hair chains further down
+    for h in hair_objs:
+        me = h.data
+        tv = {}
+        uv = me.uv_layers["UVMap"].data
+        for lp in me.loops:
+            tv[lp.vertex_index] = uv[lp.index].uv[1]
+        groups = {g.name: g for g in h.vertex_groups}
+        allg = list(h.vertex_groups)
+        for v in me.vertices:
+            t = tv.get(v.index, 0.0)
+            if t < 0.15:
+                continue
+            c = h.matrix_world @ v.co
+            ds = []
+            for k, segs in enumerate(chains["hair"]):
+                for j, (a, b) in enumerate(segs):
+                    ab = b - a
+                    u = max(0.0, min(1.0, (c - a).dot(ab) / ab.length_squared))
+                    ds.append(((c - (a + ab * u)).length, f"hair_{k}_{j + 1}"))
+            ds.sort()
+            for g in allg:
+                g.remove([v.index])
+            wh = 1 - smooth01((t - 0.15) / 0.35)
+            if wh > 0.01:
+                (groups.get("head") or h.vertex_groups.new(name="head")).add([v.index], wh, "REPLACE")
+                groups["head"] = h.vertex_groups["head"]
+            inv = [(1 / max(d, 0.01), n) for d, n in ds[:2]]
+            tot = sum(w for w, _ in inv)
+            for w, n in inv:
+                if n not in groups:
+                    groups[n] = h.vertex_groups.new(name=n)
+                groups[n].add([v.index], (1 - wh) * w / tot, "ADD")
+
+
+def smooth01(x):
+    x = min(max(x, 0.0), 1.0)
+    return x * x * (3 - 2 * x)
+
+
 # ============================================================== species (concept sheet)
 
 def soft(d, w):
@@ -796,14 +937,16 @@ def build(variant):
     for o in list(bpy.context.scene.objects):
         bpy.data.objects.remove(o)
     bpy.context.scene.render.fps = gh.FPS
-    body, rig, eyes = make_body(spec, sex)
+    body, rig, eyes, mouth = make_body(spec, sex)
     lm = landmarks(rig)
     BONE_NAMES.clear(); BONE_NAMES.update(b.name for b in rig.data.bones)
     ref = keyless_copy(body, "BodyRef")          # garments, collisions and weights read this (no shape keys)
     hf = head_frame(ref)
     skin_attributes(body, spec, sex, lm, hf)
     bake_skin(body, spec, sex, f"Human_{variant}")
-    pieces = []
+    pieces = [mouth] if mouth else []
+    if mouth:
+        mouth.parent = rig
     eye_objs = make_eyes(eyes, f"Human_{variant}", spec["iris"])
     gar = spec["garments"](ref, sex, lm, spec)
     pieces += list(gar.values())
@@ -870,9 +1013,12 @@ def build(variant):
         p.parent = rig
         if not any(m.type == "ARMATURE" for m in p.modifiers):
             m = p.modifiers.new("Armature", "ARMATURE"); m.object = rig
-        if p.data.shape_keys:
+        if p.data.shape_keys and p.name != "Mouth":
             p.shape_key_clear()
+    hair_objs = [p for p in pieces if p.name.endswith("Hair")] if spec["hair_len"][sex] > 0.25 else []
+    add_dynamic_bones(rig, lm, hf, gar.get("kilt"), hair_objs, spec["hair_len"][sex])
     bpy.data.objects.remove(ref)
+    gh.PARTS["head"] = {"head"} | {b.name for b in rig.data.bones if b.name.startswith("hair_")}
     gh.export_parts(variant, [body] + [p for p in pieces if "Hair" not in p.name or True], {b.name for b in rig.data.bones})
     clips = human_anim.make_clips(rig)
     bpy.ops.object.select_all(action="DESELECT")

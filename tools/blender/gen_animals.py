@@ -242,7 +242,16 @@ SPECIES = {"wolf": WOLF, "deer": more.DEER, "roe": more.ROE, "bear": more.BEAR, 
 
 # ===================================================================== build
 
+def game_speeds(sp):
+    """Walk / run speeds of the species in data/animals.json (the clips are timed to them)."""
+    import json
+    data = json.load(open(os.path.join(ROOT, "data", "animals.json")))
+    d = data.get(sp["name"].lower())
+    return {"walk": float(d["walk"]), "run": float(d["run"])} if d else None
+
+
 def build(sp):
+    sp["speeds"] = game_speeds(sp)
     bpy.ops.wm.read_factory_settings(use_empty=True)
     bpy.context.scene.render.fps = fl.FPS
     J = sp["J"]

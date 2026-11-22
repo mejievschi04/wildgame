@@ -134,3 +134,34 @@ func test_relations_and_deaths_persist() -> void:
 	check(s2.world.factions.known.has(&"gatherers"), "discovery restored")
 	check(_npc(s2, "hunters", 2).is_dead(), "dead stay dead")
 	await _teardown(s2)
+
+
+func test_faces_follow_behaviour() -> void:
+	var s: GameSession = await _boot()
+	var npc := _npc(s, "gatherers", 0)
+	npc.set_physics_process(false)  # hold the state; drive the face directly
+	check(npc.expression_weight(&"angry") == 0.0, "sapiens gatherer starts with a neutral face")
+	npc.state = HumanNPC.State.WARN
+	for i in 30:
+		npc._update_face(0.05)
+	check(npc.expression_weight(&"angry") > 0.9, "warning someone off → angry face (%.2f)" % npc.expression_weight(&"angry"))
+	npc.state = HumanNPC.State.GREET
+	for i in 30:
+		npc._update_face(0.05)
+	check(npc.expression_weight(&"happy") > 0.9 and npc.expression_weight(&"angry") < 0.1, "greeting → smile, anger fades")
+	npc._hurt_face_t = 1.0
+	for i in 5:
+		npc._update_face(0.05)
+	check(npc.expression_weight(&"pain") > 0.9, "hit → pain")
+	await _teardown(s)
+
+
+func test_sapiens_have_spring_cloth_and_hair() -> void:
+	var s: GameSession = await _boot()
+	var npc := _npc(s, "gatherers", 0)
+	var sims := npc.find_children("*", "SpringBoneSimulator3D", true, false)
+	check(sims.size() == 1, "hominin NPC gets a spring-bone simulator")
+	if sims.size() == 1:
+		var sim: SpringBoneSimulator3D = sims[0]
+		check(sim.setting_count >= 8, "skirt strips (and hair) are simulated (%d chains)" % sim.setting_count)
+	await _teardown(s)

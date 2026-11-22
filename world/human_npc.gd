@@ -49,6 +49,8 @@ var _strafe_dir := 1.0
 
 var _goal := Vector3.ZERO
 var _speed := 0.0
+var _face_meshes: Array[MeshInstance3D] = []   # meshes carrying the expr_* blend shapes (new hominin models)
+var _hurt_face_t := 0.0
 var _uptime := 0.0
 var _think_t := 0.0
 var _attack_cd := 0.0
@@ -100,6 +102,9 @@ func _ready() -> void:
 	_model.rotation.y = PI  # MPFB characters face -Y in Blender → +Z in Godot
 	add_child(_model)
 	_tune_skin(_model)
+	for mi: MeshInstance3D in _model.find_children("*", "MeshInstance3D", true, false):
+		if mi.mesh and mi.mesh.get_blend_shape_count() > 0:
+			_face_meshes.append(mi)
 	var players := _model.find_children("*", "AnimationPlayer", true, false)
 	_anim = players[0] if not players.is_empty() else null
 	if _anim:
@@ -111,6 +116,7 @@ func _ready() -> void:
 	if _skel:
 		_severed_mod = SeveredBones.new()
 		_skel.add_child(_severed_mod)
+		_add_spring_bones()
 	if armed:
 		_attach_spear()
 	_set_state(State.SIT if rng.randf() < 0.5 else State.IDLE)
@@ -126,6 +132,47 @@ static func _tune_skin(root: Node) -> void:
 				d.subsurf_scatter_enabled = true
 				d.subsurf_scatter_strength = 0.35
 				mi.set_surface_override_material(s, d)
+
+
+## Secondary motion: strip skirt and long hair swing on their bone chains (hominin models only).
+func _add_spring_bones() -> void:
+	var chains: Array = []  # [root, end, stiffness, drag, gravity, radius]
+	for k in 8:
+		if _skel.find_bone("skirt_%d_1" % k) >= 0:
+			chains.append(["skirt_%d_1" % k, "skirt_%d_2" % k, 2.4, 0.5, 0.4, 0.025])
+	for k in 3:
+		if _skel.find_bone("hair_%d_1" % k) >= 0:
+			chains.append(["hair_%d_1" % k, "hair_%d_2" % k, 1.0, 0.55, 0.9, 0.03])
+	if chains.is_empty():
+		return
+	var sim := SpringBoneSimulator3D.new()
+	sim.name = "SpringBones"
+	_skel.add_child(sim)
+	sim.setting_count = chains.size()
+	for i in chains.size():
+		var c: Array = chains[i]
+		var root := _skel.find_bone(c[0])
+		var end := _skel.find_bone(c[1])
+		sim.set_root_bone_name(i, c[0])
+		sim.set_end_bone_name(i, c[1])
+		sim.set_extend_end_bone(i, true)
+		sim.set_end_bone_length(i, _skel.get_bone_rest(end).origin.length() if end >= 0 else 0.15)
+		sim.set_stiffness(i, c[2])
+		sim.set_drag(i, c[3])
+		sim.set_gravity(i, c[4])
+		sim.set_radius(i, c[5])
+		sim.set_enable_all_child_collisions(i, true)
+		if root < 0:
+			push_warning("spring chain without bones: %s" % c[0])
+	for b: Array in [["thigh_l", 0.085, 0.45], ["thigh_r", 0.085, 0.45], ["spine_03", 0.13, 0.32]]:
+		if _skel.find_bone(b[0]) < 0:
+			continue
+		var cap := SpringBoneCollisionCapsule3D.new()
+		cap.bone_name = b[0]
+		cap.radius = b[1]
+		cap.height = b[2]
+		cap.position_offset = Vector3(0, b[2] * 0.45, 0)  # capsule axis runs along the bone
+		sim.add_child(cap)
 
 
 func _attach_spear() -> void:
@@ -262,6 +309,7 @@ func is_staggered() -> bool:
 ## Damage with hit location. weapon = the item that hit (cutting weapons can sever); heavy = charged blow.
 func take_damage(amount: float, source: Node3D = null, hit_pos: Vector3 = Vector3.INF,
 		weapon: ItemData = null, heavy: bool = false) -> void:
+	_hurt_face_t = 1.4
 	var region: StringName = BodyRegions.region_at(_skel, hit_pos) if hit_pos != Vector3.INF else &"torso"
 	if region in severed:
 		region = &"torso"
@@ -398,6 +446,46 @@ func die(by_player: bool) -> void:
 	died.emit(self)
 
 
+# ---------------------------------------------------------------- face
+
+## Expression that fits the current state (concept sheet: focused, angry, surprised, pain, happy).
+func wanted_expression() -> StringName:
+	if is_dead() or _hurt_face_t > 0.0:
+		return &"pain"
+	match state:
+		State.WARN, State.COMBAT:
+			return &"angry"
+		State.FLEE:
+			return &"surprised"
+		State.SUSPICIOUS, State.INVESTIGATE:
+			return &"focused"
+		State.GREET:
+			return &"happy"
+	return &""
+
+
+func expression_weight(expr: StringName) -> float:
+	for mi in _face_meshes:
+		var i := mi.find_blend_shape_by_name("expr_" + String(expr))
+		if i >= 0:
+			return mi.get_blend_shape_value(i)
+	return 0.0
+
+
+func _update_face(delta: float) -> void:
+	if _face_meshes.is_empty():
+		return
+	_hurt_face_t = maxf(_hurt_face_t - delta, 0.0)
+	var want := "expr_" + String(wanted_expression())
+	var rate := delta * (6.0 if want == "expr_pain" else 3.0)
+	for mi in _face_meshes:
+		for i in mi.mesh.get_blend_shape_count():
+			var n := String(mi.mesh.get_blend_shape_name(i))
+			if n.begins_with("expr_"):
+				var target := 0.6 if (n == want and is_dead()) else (1.0 if n == want else 0.0)
+				mi.set_blend_shape_value(i, move_toward(mi.get_blend_shape_value(i), target, rate))
+
+
 # ---------------------------------------------------------------- brain
 
 func _set_state(s: State) -> void:
@@ -413,6 +501,7 @@ func _set_state(s: State) -> void:
 
 func _physics_process(delta: float) -> void:
 	_uptime += delta
+	_update_face(delta)
 	if not is_on_floor():
 		velocity.y -= _gravity * delta
 	if is_dead():

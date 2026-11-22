@@ -88,7 +88,25 @@ class Body:
         return a.y, a.z
 
 
+def skirt_follow(rig, rots):
+    """Strip skirt follows the thighs in the baked clips: front strips are pushed by a thigh swinging
+    forward, back strips by one swinging back (the game adds spring-bone inertia on top)."""
+    if "skirt_0_1" not in rig.pose.bones:
+        return
+    th = {s: sum(d for ax, d in rots.get("thigh_" + s, []) if ax == X) for s in ("l", "r")}
+    for k in range(8):
+        ang = k / 8 * math.tau
+        wl = 0.5 + 0.5 * math.sin(ang)                  # +X side = left leg
+        sw = wl * th["l"] + (1 - wl) * th["r"]
+        front, back = max(0.0, math.cos(ang)), max(0.0, -math.cos(ang))
+        rot = 0.85 * (front * min(sw, 0.0) + back * max(sw, 0.0))
+        side = 0.25 * abs(math.sin(ang)) * min(sw, 0.0)   # side strips open a little on a big stride
+        rots[f"skirt_{k}_1"] = [(X, rot + side * 0.5)]
+        rots[f"skirt_{k}_2"] = [(X, rot * 0.25)]
+
+
 def key(rig, frame, rots, root=(0, 0, 0)):
+    skirt_follow(rig, rots)
     for pb in rig.pose.bones:
         pb.rotation_mode = "QUATERNION"
     for bone, parts in rots.items():
