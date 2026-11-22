@@ -574,3 +574,117 @@ LION = {
     "attack": lion_pounce, "clips": lion_clips,
     "graze_pose": {"neck": -30, "neck2": -15, "head": -8, "arm": 4, "drop": 0.02},
 }
+
+
+# ===================================================================== WILD BOAR (Sus scrofa)
+
+BOAR_J = mirror_joints({
+    "nose": (0, 0.98, 0.48), "head": (0, 0.62, 0.72), "neck2": (0, 0.52, 0.75), "neck": (0, 0.42, 0.78),
+    "chest": (0, 0.28, 0.80), "spine": (0, -0.05, 0.74), "hips": (0, -0.40, 0.70),
+    "tail": (0, -0.52, 0.68), "tail2": (0, -0.56, 0.52), "tail3": (0, -0.57, 0.42),
+    "ear.L": (0.07, 0.58, 0.86), "ear_t.L": (0.11, 0.55, 0.96),
+    "sh.L": (0.12, 0.32, 0.55), "el.L": (0.11, 0.24, 0.36), "ca.L": (0.10, 0.28, 0.12), "fh.L": (0.10, 0.31, 0.02),
+    "hp.L": (0.11, -0.42, 0.58), "st.L": (0.12, -0.28, 0.38), "ho.L": (0.10, -0.46, 0.18), "hh.L": (0.10, -0.42, 0.02),
+})
+BOAR_EYE = (0.095, 0.72, 0.69)
+
+
+def boar_sculpt(J):
+    sc = Sculpt()
+    sc.ell((0, 0.12, 0.60), (0.20, 0.36, 0.24), k=0.08)
+    sc.ell((0, 0.30, 0.74), (0.17, 0.20, 0.16), k=0.08)           # high withers
+    sc.ell((0, -0.15, 0.58), (0.19, 0.30, 0.21), k=0.08)
+    sc.ell((0, -0.40, 0.62), (0.15, 0.15, 0.14), k=0.07)          # sloping rump
+    for s in (1, -1):
+        sc.ell((0.10 * s, -0.38, 0.52), (0.08, 0.14, 0.17), (-10, 0, 0), k=0.06)
+        sc.ell((0.13 * s, 0.30, 0.55), (0.09, 0.14, 0.20), (15, 0, 0), k=0.06)
+    sc.cone((0, 0.30, 0.66), (0, 0.55, 0.70), 0.22, 0.17, k=0.08)  # no-neck
+    sc.cone((0, 0.55, 0.70), (0, 0.95, 0.50), 0.16, 0.06, k=0.05)  # wedge head
+    sc.ell((0, 0.62, 0.66), (0.14, 0.12, 0.12), k=0.05)           # cheeks
+    sc.cone((0, 0.58, 0.58), (0, 0.90, 0.45), 0.08, 0.04, k=0.04)  # jaw
+    sc.ell((0, 0.98, 0.48), (0.065, 0.03, 0.055), k=0.025)        # snout disc
+    for s in (1, -1):
+        sc.sphere((0.10 * s, BOAR_EYE[1], BOAR_EYE[2]), 0.016, k=0.01, sub=True)
+        sc.leaf((0.07 * s, 0.58, 0.85), (0.11 * s, 0.55, 0.96), 0.05, 0.012, (s * 0.4, 1, 0.2), k=0.02)
+        L = lambda k: X(J[k + ".L"], s)
+        sc.cone(L("sh"), L("el"), 0.08, 0.05, k=0.05)
+        sc.cone(L("el"), L("ca"), 0.045, 0.03, k=0.03)
+        sc.cone(L("ca"), np.add(L("fh"), (0, -0.01, 0.03)), 0.028, 0.026, k=0.015)
+        sc.ell(np.add(L("fh"), (0, 0.01, 0.015)), (0.03, 0.04, 0.025), (-15, 0, 0), k=0.012)
+        sc.cone(L("hp"), L("st"), 0.09, 0.05, k=0.05)
+        sc.cone(L("st"), L("ho"), 0.045, 0.028, k=0.03)
+        sc.cone(L("ho"), np.add(L("hh"), (0, -0.01, 0.03)), 0.026, 0.025, k=0.015)
+        sc.ell(np.add(L("hh"), (0, 0.01, 0.015)), (0.029, 0.038, 0.024), (-15, 0, 0), k=0.012)
+    sc.cone(J["tail"], J["tail2"], 0.025, 0.015, k=0.02)
+    sc.cone(J["tail2"], J["tail3"], 0.015, 0.012, k=0.01)
+    return sc
+
+
+def boar_coat(p, n, bone):
+    x, y, z = p
+    pb = part(bone)
+    base, tip, black, disc = (0.22, 0.19, 0.16), (0.38, 0.33, 0.27), (0.10, 0.09, 0.08), (0.36, 0.29, 0.27)
+    fur, rough = 1.0, 0.9
+    c = mix(base, tip, (n[2] - 0.2) * 0.8)
+    if abs(x) < 0.05 and n[2] > 0.6:
+        c = mix(base, black, 0.6)                                           # dark dorsal crest
+    if pb in LEG:
+        c = mix(base, black, (0.45 - z) * 3)
+        if z < 0.04:
+            c, fur, rough = (0.07, 0.06, 0.055), 0.0, 0.5
+    if pb in ("head", "snout"):
+        c = mix(base, tip, 0.3)
+        if y > 0.80 and abs(x) > 0.05 and z < 0.6:
+            c = mix(c, (0.55, 0.50, 0.44), 0.4)                             # pale cheek band
+        if y > 0.955:
+            c, fur, rough = disc, 0.0, 0.4
+        if abs(abs(x) - BOAR_EYE[0]) < 0.02 and abs(y - BOAR_EYE[1]) < 0.02 and abs(z - BOAR_EYE[2]) < 0.02:
+            c = black
+    if pb == "ear":
+        c = black if z > 0.88 else base
+    return c, fur, rough
+
+
+def boar_hair(p, n, bone):
+    x, y, z = p
+    pb = part(bone)
+    if abs(x) < 0.05 and n[2] > 0.6 and -0.35 < y < 0.62:
+        return 0.085, 0.8, 0.2, 0.022, (0, -0.4, 1)                         # erect dorsal crest
+    if pb == "ear" and z < 0.88:
+        return 0.04, 0.2, 0.3, 0.018, (0, -1, -0.3)
+    if pb in ("head", "snout"):
+        return (0.04 if y < 0.85 else 0.0), 0.2, 0.3, 0.018, (0, -1, -0.3)
+    if pb in TORSO or pb in ("neck", "neck2"):
+        return 0.055, 0.2, 0.6, 0.02, (0, -0.7, -1)                         # bristles
+    if pb in ("upperarm", "thigh"):
+        return 0.04, 0.1, 0.7, 0.018, (0, -0.3, -1)
+    if pb == "tail_tip":
+        return 0.07, 0.1, 0.9, 0.02, (0, 0, -1)
+    return 0.0, 0, 0, 0, (0, 0, -1)
+
+
+def boar_parts():
+    ivory = fl.simple_mat("M_Boar_Tusk", (0.78, 0.72, 0.60), 0.35)
+    return [(fl.tube("Tusk", [(0.05 * s, 0.86, 0.465), (0.08 * s, 0.885, 0.53), (0.07 * s, 0.86, 0.58)], 0.012, 0.003,
+                     ring=7, n=8, mat=ivory), "head") for s in (1, -1)]
+
+
+def boar_clips(rig):
+    walk = {"period": 0.8, "duty": 0.62, "amp_f": 18, "amp_h": 16, "lift": 45,
+            "phases": {"hL": 0.0, "fL": -0.25, "hR": -0.5, "fR": -0.75},
+            "bob": 0.01, "bob_freq": 2, "spine": 1, "yaw": 3, "head": 3, "tail": 8}
+    run = {"period": 0.42, "duty": 0.45, "amp_f": 30, "amp_h": 28, "lift": 55,
+           "phases": {"hL": 0.0, "hR": -0.12, "fR": -0.45, "fL": -0.55},
+           "bob": 0.035, "bob_freq": 1, "spine": 5, "yaw": 1, "head": 3, "tail": 15}
+    return std_clips(rig, BOAR, walk, run)
+
+
+BOAR = {
+    "name": "Boar", "J": BOAR_J, "sculpt": boar_sculpt, "voxel": 0.007, "tris": 14000,
+    "coat": boar_coat, "hair": boar_hair, "card_density": 2600,
+    "hair_palette": [(0.22, 0.19, 0.16), (0.38, 0.33, 0.27), (0.10, 0.09, 0.08), (0.30, 0.26, 0.21)],
+    "fur_scale": 280.0, "fur_stretch": 7.0, "bump": 0.6,
+    "eyes": [(BOAR_EYE, 0.014)], "eye_color": (0.10, 0.06, 0.03),
+    "parts": boar_parts, "attack": lambda rig: horn_attack(rig, 0.4, 0.8), "clips": boar_clips,
+    "graze_pose": {"neck": -25, "neck2": -12, "head": -20, "arm": 4, "drop": 0.02},
+}

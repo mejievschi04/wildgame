@@ -5,6 +5,9 @@ extends Node3D
 
 const BALANCE_INTERVAL := 3.0
 const DESPAWN_DISTANCE := 165.0
+## Hard cap on live animals (performance: each carries a skinned body + fur cards). Species flagged
+## "common" (the core hunting prey) are topped up first; the rest compete in random order.
+const MAX_TOTAL := 24
 
 var world: ForestWorld
 var enabled := true
@@ -42,13 +45,24 @@ func balance() -> void:
 		if a.global_position.distance_to(p.global_position) > DESPAWN_DISTANCE \
 				and not a.state in [Animal.State.CHASE, Animal.State.ATTACK]:
 			a.queue_free()
+	var common: Array[StringName] = []
+	var rest: Array[StringName] = []
 	for species: StringName in ItemDB.animals.keys():
+		(common if bool(ItemDB.get_animal(species).get("common", false)) else rest).append(species)
+	for i in range(rest.size() - 1, 0, -1):  # deterministic shuffle (seeded rng)
+		var j := _rng.randi_range(0, i)
+		var tmp := rest[i]
+		rest[i] = rest[j]
+		rest[j] = tmp
+	var total := living().size()
+	for species: StringName in common + rest:
 		var def := ItemDB.get_animal(species)
 		var have := living(species).size()
-		if have >= int(def.get("max", 4)):
+		if have >= int(def.get("max", 4)) or total >= MAX_TOTAL:
 			continue
 		var group: Array = def.get("group", [1, 2])
-		var n := mini(_rng.randi_range(int(group[0]), int(group[1])), int(def.max) - have)
+		var n := mini(mini(_rng.randi_range(int(group[0]), int(group[1])), int(def.max) - have), MAX_TOTAL - total)
+		total += maxi(n, 0)
 		if n > 0:
 			spawn_group(species, n, p.global_position)
 

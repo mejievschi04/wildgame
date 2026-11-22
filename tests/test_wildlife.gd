@@ -147,6 +147,9 @@ func test_director_spawns_out_of_sight() -> void:
 	var wolves := s.world.wildlife.living(&"wolf")
 	check(deer.size() > 0 and deer.size() <= 8, "deer population within limit (%d)" % deer.size())
 	check(wolves.size() <= 3, "wolf pack within limit (%d)" % wolves.size())
+	for i in 6:
+		s.world.wildlife.balance()
+	check(s.world.wildlife.living().size() <= Wildlife.MAX_TOTAL, "total population capped (%d)" % s.world.wildlife.living().size())
 	for a in deer + wolves:
 		check(a.global_position.distance_to(s.player.global_position) > 40.0, "spawned away from the player")
 	await _teardown(s)
