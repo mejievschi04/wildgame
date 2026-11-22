@@ -13,6 +13,13 @@
 		"loot": {"meat_raw": 3, "hide": 1, "bone": 2}, "group": [1, 3], "max": 5, "track": "hoof", "track_scale": 0.7,
 		"spawn_min": 50, "spawn_max": 95
 	},
+	"reindeer": {
+		"model": "res://assets/models/animals/SK_Reindeer.gltf", "diet": "prey", "health": 90,
+		"walk": 1.5, "run": 10.0, "turn": 3.2, "sight": 45, "fov": 300, "hearing": 36, "smell": 70,
+		"radius": 0.3, "height": 1.4, "length": 1.3,
+		"loot": {"meat_raw": 5, "hide": 2, "bone": 3}, "group": [3, 6], "max": 6, "track": "hoof", "track_scale": 1.1,
+		"spawn_min": 60, "spawn_max": 110
+	},
 	"megaloceros": {
 		"model": "res://assets/models/animals/SK_Megaloceros.gltf", "diet": "prey", "health": 220,
 		"walk": 1.6, "run": 11.0, "turn": 2.6, "sight": 50, "fov": 300, "hearing": 36, "smell": 60,

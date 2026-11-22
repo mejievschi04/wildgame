@@ -362,6 +362,7 @@
 		"ANIMAL_MEGALOCEROS": "Большерогий олень",
 		"ANIMAL_LION": "Пещерный лев",
 		"ANIMAL_BOAR": "Кабан",
+		"ANIMAL_REINDEER": "Северный олень",
 		"CARCASS_OF": "Туша: {name}",
 		"TRACKS_OF": "Следы: {name}",
 		"TRACK_FRESH": "совсем свежие",

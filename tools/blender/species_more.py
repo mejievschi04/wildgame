@@ -547,3 +547,51 @@ MEGA.update({
 })
 MEGA["clips"] = cervid_clips(MEGA)
 MEGA["attack"] = cervid_attack(MEGA)
+
+
+# ===================================================================== REINDEER (Rangifer tarandus)
+
+REIN_F = 0.92
+
+
+def reindeer_sculpt(J):
+    f = REIN_F
+    sc = deer_sculpt(DEER_J).scaled(f)
+    sc.cone((0, 0.36 * f, 0.99 * f), (0, 0.77 * f, 1.46 * f), 0.175 * f, 0.085 * f, k=0.08)  # thick neck
+    sc.ell((0, 1.07 * f, 1.39 * f), (0.045 * f, 0.05 * f, 0.04 * f), k=0.03)                  # broad, hairy muzzle
+    sc.ell((0, -0.05 * f, 0.93 * f), (0.17 * f, 0.5 * f, 0.22 * f), k=0.08)                   # stocky barrel
+    for s in (1, -1):                                                                       # big splayed hooves
+        for jn in ("fh", "hh"):
+            p = DEER_J[jn + ".L"]
+            sc.ell((p[0] * s * f, (p[1] + 0.015) * f, 0.022), (0.034, 0.05, 0.026), k=0.012)
+    return sc
+
+
+def reindeer_parts():
+    mat = fl.simple_mat("M_Reindeer_Antler", (0.48, 0.41, 0.32), 0.65)
+    out = []
+    for s in (1, -1):
+        def T(pts, r0, r1, n=10):
+            return (fl.tube("Antler", [(x * s, y, z) for x, y, z in pts], r0, r1, ring=8, n=n, mat=mat), "head")
+        out.append(T([(0.05, 0.77, 1.47), (0.14, 0.66, 1.60), (0.24, 0.52, 1.80), (0.26, 0.58, 2.00), (0.20, 0.74, 2.10)], 0.03, 0.012, 18))
+        out.append(T([(0.06, 0.78, 1.50), (0.05, 0.92, 1.55), (0.03, 1.02, 1.52)], 0.02, 0.006))      # brow shovel
+        out.append(T([(0.15, 0.66, 1.63), (0.17, 0.78, 1.70), (0.16, 0.86, 1.68)], 0.017, 0.005))     # bez tine
+        out.append(T([(0.26, 0.56, 1.95), (0.33, 0.52, 2.06)], 0.014, 0.004, 6))
+        out.append(T([(0.23, 0.68, 2.07), (0.28, 0.74, 2.18)], 0.012, 0.004, 6))
+    return out
+
+
+REIN = dict(DEER)
+REIN.update({
+    "name": "Reindeer", "J": scaleJ(DEER_J, REIN_F), "scale": REIN_F, "sculpt": reindeer_sculpt,
+    "voxel": 0.009, "tris": 15000,
+    "coat": make_cervid_coat(REIN_F, [(0.42, 0.36, 0.29), (0.34, 0.29, 0.23), (0.80, 0.77, 0.70), (0.88, 0.86, 0.80),
+                                      (0.25, 0.20, 0.16), (0.32, 0.26, 0.21), (0.52, 0.49, 0.45), (0.82, 0.79, 0.72)]),
+    "hair": make_cervid_hair(REIN_F, 0.17), "card_density": 2800,
+    "hair_palette": [(0.42, 0.36, 0.29), (0.34, 0.29, 0.23), (0.85, 0.82, 0.76), (0.60, 0.55, 0.48)],
+    "fur_scale": 240.0, "bump": 0.55,
+    "eyes": [((0.055 * REIN_F, 0.897 * REIN_F, 1.555 * REIN_F), 0.0165 * REIN_F)],
+    "parts": reindeer_parts,
+})
+REIN["clips"] = cervid_clips(REIN)
+REIN["attack"] = cervid_attack(REIN)
