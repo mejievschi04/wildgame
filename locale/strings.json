@@ -358,6 +358,7 @@
 		"ANIMAL_MAMMOTH": "Шерстистый мамонт",
 		"ANIMAL_RHINO": "Шерстистый носорог",
 		"ANIMAL_BISON": "Степной бизон",
+		"ANIMAL_HORSE": "Дикая лошадь",
 		"CARCASS_OF": "Туша: {name}",
 		"TRACKS_OF": "Следы: {name}",
 		"TRACK_FRESH": "совсем свежие",

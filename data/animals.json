@@ -13,6 +13,13 @@
 		"loot": {"meat_raw": 3, "hide": 1, "bone": 2}, "group": [1, 3], "max": 5, "track": "hoof", "track_scale": 0.7,
 		"spawn_min": 50, "spawn_max": 95
 	},
+	"horse": {
+		"model": "res://assets/models/animals/SK_Horse.gltf", "diet": "prey", "health": 140,
+		"walk": 1.6, "run": 12.5, "turn": 3.0, "sight": 55, "fov": 320, "hearing": 40, "smell": 60,
+		"radius": 0.35, "height": 1.6, "length": 1.9,
+		"loot": {"meat_raw": 10, "hide": 3, "bone": 4}, "group": [3, 6], "max": 6, "track": "hoof", "track_scale": 1.2,
+		"spawn_min": 60, "spawn_max": 110
+	},
 	"wolf": {
 		"model": "res://assets/models/animals/SK_Wolf.gltf", "diet": "predator", "health": 70,
 		"walk": 1.7, "run": 8.2, "turn": 4.5, "sight": 42, "fov": 230, "hearing": 38, "smell": 75,

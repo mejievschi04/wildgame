@@ -298,3 +298,134 @@ BISON = {
     "parts": bison_parts, "attack": lambda rig: horn_attack(rig, 0.5), "clips": bison_clips,
     "graze_pose": {"neck": -30, "neck2": -12, "head": -10, "arm": 5, "drop": 0.03},
 }
+
+
+# ===================================================================== WILD HORSE (Equus ferus, Przewalski-type)
+
+HORSE_J = mirror_joints({
+    "nose": (0, 1.27, 1.10), "head": (0, 0.92, 1.52), "neck2": (0, 0.85, 1.50), "neck": (0, 0.66, 1.32),
+    "chest": (0, 0.45, 1.18), "spine": (0, 0.0, 1.12), "hips": (0, -0.50, 1.15),
+    "tail": (0, -0.66, 1.12), "tail2": (0, -0.76, 0.90), "tail3": (0, -0.80, 0.66),
+    "ear.L": (0.05, 0.90, 1.60), "ear_t.L": (0.075, 0.875, 1.73),
+    "sh.L": (0.16, 0.45, 1.00), "el.L": (0.15, 0.36, 0.78), "ca.L": (0.13, 0.40, 0.40), "fh.L": (0.12, 0.44, 0.04),
+    "hp.L": (0.15, -0.52, 1.05), "st.L": (0.17, -0.32, 0.80), "ho.L": (0.13, -0.58, 0.48), "hh.L": (0.12, -0.52, 0.04),
+})
+HORSE_EYE = (0.09, 1.0, 1.465)
+
+
+def horse_sculpt(J):
+    sc = Sculpt()
+    sc.ell((0, 0.15, 0.98), (0.24, 0.42, 0.30), k=0.1)            # ribcage
+    sc.ell((0, 0.44, 0.92), (0.17, 0.14, 0.20), (20, 0, 0), k=0.08)  # brisket
+    sc.ell((0, -0.15, 0.98), (0.24, 0.36, 0.27), k=0.1)           # round belly
+    sc.ell((0, -0.05, 1.16), (0.14, 0.50, 0.08), k=0.08)          # topline
+    sc.ell((0, -0.50, 1.08), (0.20, 0.22, 0.17), k=0.08)          # croup
+    for s in (1, -1):
+        sc.ell((0.13 * s, -0.46, 0.95), (0.10, 0.20, 0.24), (-12, 0, 0), k=0.07)
+        sc.ell((0.15 * s, 0.40, 1.05), (0.07, 0.13, 0.22), (25, 0, 0), k=0.07)
+        sc.ell((0.13 * s, -0.32, 0.85), (0.09, 0.14, 0.10), (-10, 0, 0), k=0.07)
+    sc.cone((0, 0.42, 1.05), (0, 0.86, 1.47), 0.23, 0.13, k=0.08)  # neck
+    sc.ell((0, 0.63, 1.37), (0.09, 0.22, 0.12), (-40, 0, 0), k=0.07)  # crest
+    sc.ell((0, 0.95, 1.41), (0.10, 0.14, 0.14), k=0.05)           # jowls
+    sc.cone((0, 0.94, 1.47), (0, 1.24, 1.13), 0.092, 0.072, k=0.05)  # long head
+    sc.cone((0, 0.92, 1.36), (0, 1.20, 1.07), 0.07, 0.05, k=0.05)   # jaw
+    sc.ell((0, 1.26, 1.10), (0.08, 0.075, 0.08), k=0.04)          # muzzle
+    for s in (1, -1):
+        sc.sphere((0.098 * s, HORSE_EYE[1], HORSE_EYE[2]), 0.022, k=0.012, sub=True)
+        sc.leaf((0.05 * s, 0.90, 1.58), (0.075 * s, 0.875, 1.73), 0.035, 0.012, (s * 0.3, 1, 0), k=0.02)
+        L = lambda k: X(J[k + ".L"], s)
+        sc.cone(L("sh"), L("el"), 0.10, 0.07, k=0.06)
+        sc.ell(np.add(L("el"), (0, 0.01, -0.09)), (0.05, 0.06, 0.11), k=0.04)
+        sc.cone(L("el"), L("ca"), 0.065, 0.036, k=0.04)
+        sc.cone(L("ca"), np.add(L("fh"), (0, -0.01, 0.08)), 0.034, 0.03, k=0.02)
+        sc.sphere(np.add(L("fh"), (0, -0.01, 0.085)), 0.04, k=0.02)                      # fetlock
+        sc.cone(np.add(L("fh"), (0, 0.0, 0.07)), np.add(L("fh"), (0, 0.02, 0.0)), 0.038, 0.055, k=0.02)  # hoof
+        sc.cone(L("hp"), L("st"), 0.13, 0.075, k=0.06)
+        sc.ell(np.add(L("st"), (0, -0.08, -0.08)), (0.05, 0.07, 0.11), (25, 0, 0), k=0.04)
+        sc.cone(L("st"), L("ho"), 0.07, 0.036, k=0.04)
+        sc.cone(L("ho"), np.add(L("hh"), (0, -0.01, 0.08)), 0.034, 0.03, k=0.02)
+        sc.sphere(np.add(L("hh"), (0, -0.01, 0.085)), 0.04, k=0.02)
+        sc.cone(np.add(L("hh"), (0, 0.0, 0.07)), np.add(L("hh"), (0, 0.02, 0.0)), 0.038, 0.055, k=0.02)
+    sc.cone(J["tail"], J["tail2"], 0.05, 0.035, k=0.04)
+    return sc
+
+
+def horse_coat(p, n, bone):
+    x, y, z = p
+    pb = part(bone)
+    dun, pale, dark, mealy = (0.62, 0.50, 0.34), (0.80, 0.72, 0.58), (0.14, 0.11, 0.09), (0.82, 0.76, 0.64)
+    fur, rough = 1.0, 0.85
+    c = mix(dun, pale, (-n[2] - 0.35) * 2.0)
+    if pb in TORSO and abs(x) < 0.03 and n[2] > 0.8:
+        c = mix(c, dark, 0.7)                                                # dorsal stripe
+    if pb in LEG:
+        c = mix(c, dark, (0.62 - z) * 3.0)                                   # dark points
+        if z < 0.07:
+            c, fur, rough = (0.10, 0.09, 0.08), 0.0, 0.5
+    if 0.40 < y < 0.93 and z > 1.15 and n[2] > 0.5 and abs(x) < 0.06:
+        c = dark                                                             # mane base
+    if pb in ("head", "snout"):
+        c = dun
+        if y > 1.12:
+            c = mealy                                                        # mealy muzzle
+        if y > 1.28 or (y > 1.2 and z < 1.06):
+            c, fur, rough = (0.12, 0.10, 0.09), 0.3, 0.4
+        if abs(abs(x) - HORSE_EYE[0]) < 0.03 and abs(y - HORSE_EYE[1]) < 0.03 and abs(z - HORSE_EYE[2]) < 0.03:
+            c = mix(c, mealy, 0.5)                                           # pale eye ring
+    if pb == "ear":
+        c = mix(dun, dark, (z - 1.62) * 8)
+    if pb in ("tail", "tail_tip"):
+        c = dark
+    return c, fur, rough
+
+
+def horse_hair(p, n, bone):
+    x, y, z = p
+    pb = part(bone)
+    if 0.40 < y < 0.93 and z > 1.2 and n[2] > 0.2 and abs(x) < 0.085:
+        return 0.15, 0.92, 0.05, 0.03, (0, -0.2, 1)                          # short erect mane, poll→withers
+    if pb == "head" and y < 0.98 and n[2] > 0.5:
+        return 0.08, 0.6, 0.2, 0.03, (0, 1, 0.3)                             # forelock
+    if pb in ("tail", "tail_tip") and abs(x) < 0.06 and y < -0.64:
+        return 0.62, 0.05, 1.0, 0.05, (0, -0.15, -1)                         # long tail
+    if pb in TORSO or pb in ("neck",):
+        return 0.03, 0.08, 0.5, 0.02, (0, -1, -0.5)                          # winter coat
+    return 0.0, 0, 0, 0, (0, 0, -1)
+
+
+def horse_clips(rig):
+    walk = {"period": 1.1, "duty": 0.62, "amp_f": 20, "amp_h": 18, "lift": 55,
+            "phases": {"hL": 0.0, "fL": -0.25, "hR": -0.5, "fR": -0.75},
+            "bob": 0.015, "bob_freq": 2, "spine": 1, "yaw": 2, "head": 5, "tail": 4}
+    run = {"period": 0.48, "duty": 0.32, "amp_f": 40, "amp_h": 36, "lift": 85,
+           "phases": {"hL": 0.0, "hR": -0.1, "fL": -0.42, "fR": -0.52},
+           "bob": 0.07, "bob_freq": 1, "spine": 5, "yaw": 1, "head": 6, "tail": 12}
+    return std_clips(rig, HORSE, walk, run)
+
+
+def horse_kick(rig):
+    n = int(0.9 * fl.FPS)
+    for f in range(n + 1):
+        t = f / n
+        k = math.sin(min(t / 0.5, 1.0) * math.pi)
+        r = fl.zero_pose(rig)
+        r["spine"] = (-10 * k, 0, 0)
+        r["neck"] = (-15 * k, 0, 0)
+        for s in ("L", "R"):
+            r[f"thigh.{s}"] = (-45 * k, 0, 0)
+            r[f"shin.{s}"] = (25 * k, 0, 0)
+            r[f"upperarm.{s}"] = (10 * k, 0, 0)
+        r["tail"] = (40 * k, 0, 0)
+        fl.key(rig, f + 1, r, (0, 0.05 * k, 0.04 * k))
+    return n
+
+
+HORSE = {
+    "name": "Horse", "J": HORSE_J, "sculpt": horse_sculpt, "voxel": 0.010, "tris": 16000,
+    "coat": horse_coat, "hair": horse_hair, "card_density": 1500,
+    "hair_palette": [(0.62, 0.50, 0.34), (0.14, 0.11, 0.09), (0.80, 0.72, 0.58), (0.50, 0.40, 0.27)],
+    "fur_scale": 260.0, "fur_stretch": 8.0, "bump": 0.4,
+    "eyes": [(HORSE_EYE, 0.019)], "eye_color": (0.08, 0.05, 0.03),
+    "attack": horse_kick, "clips": horse_clips,
+    "graze_pose": {"neck": -50, "neck2": -20, "head": -12, "arm": 8, "drop": 0.03},
+}
