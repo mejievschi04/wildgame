@@ -351,6 +351,9 @@ func _apply_bench() -> void:
 			"far":
 				for v in root.find_children("FarForest", "", true, false):
 					v.visible = false
+			"backdrop":
+				for v in root.find_children("Backdrop", "", true, false):
+					v.visible = false
 			"volfog": env.volumetric_fog_enabled = false
 			"ssil": env.ssil_enabled = false
 			"sdfgi": env.sdfgi_enabled = false
@@ -396,6 +399,18 @@ func _apply_bench() -> void:
 
 func _process(delta: float) -> void:
 	_n += 1
+	if _n == 5 and _env("hide") != "":
+		var w: Node = get_parent().get("world")
+		for nm in _env("hide").split(","):
+			var c := w.get_node_or_null(nm)
+			if c and c is Node3D:
+				(c as Node3D).visible = false
+	if _n == 6 and _env("list") != "":
+		var w: Node = get_parent().get("world")
+		for c in w.get_children():
+			print("CHILD ", c.name, " ", c.get_class(), " ", c.find_children("*", "", true, false).size())
+	if _n == 3:
+		RenderingServer.viewport_set_measure_render_time(get_viewport().get_viewport_rid(), true)
 	if _n == 5 and not bench_off.is_empty():
 		_apply_bench()
 	if _n > frames - 120:
@@ -451,7 +466,7 @@ func _process(delta: float) -> void:
 		for f in _fps_samples:
 			avg += f
 		avg /= maxf(_fps_samples.size(), 1.0)
-		print("AutoShot saved ", out_path, "  fps=", Engine.get_frames_per_second(), " avg_last120=", snappedf(avg, 0.1), " off=", bench_off, "  draw_calls=", RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME))
+		print("AutoShot saved ", out_path, "  fps=", Engine.get_frames_per_second(), " avg_last120=", snappedf(avg, 0.1), " off=", bench_off, " gpu_ms=", snappedf(RenderingServer.viewport_get_measured_render_time_gpu(get_viewport().get_viewport_rid()), 0.1), " cpu_ms=", snappedf(RenderingServer.viewport_get_measured_render_time_cpu(get_viewport().get_viewport_rid()) + RenderingServer.get_frame_setup_time_cpu(), 0.1), "  draw_calls=", RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME), " objects=", RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_OBJECTS_IN_FRAME), " prims=", RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_PRIMITIVES_IN_FRAME))
 		get_tree().quit()
 
 

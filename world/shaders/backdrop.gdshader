@@ -99,7 +99,7 @@ void fragment() {
 	col = mix(col, mix(forest, ash_plain * 0.8, south * 0.5), tree);
 
 	// ---- snow: on ledges and gentle slopes above the snowline, deep in the couloirs, blown off the steep faces
-	float snowline = mix(mix(1300.0, 1050.0, north), 2300.0, south) + (n - 0.5) * 300.0 + (n2 - 0.5) * 120.0;
+	float snowline = mix(mix(1400.0, 1250.0, north), 2300.0, south) + (n - 0.5) * 300.0 + (n2 - 0.5) * 120.0;
 	float above = smoothstep(snowline - 60.0, snowline + 140.0, h);
 	float hold = 1.0 - smoothstep(0.32 + 0.22 * smoothstep(snowline, snowline + 900.0, h), 0.62, slope + (n3 - 0.5) * 0.16);
 	float couloir = smoothstep(0.35, 0.8, flow) * smoothstep(snowline - 250.0, snowline + 100.0, h) * (1.0 - smoothstep(0.6, 0.85, slope));

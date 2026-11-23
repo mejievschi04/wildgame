@@ -101,8 +101,6 @@ void fragment() {
 	vec4 c = texture(atlas, uv);
 	ALPHA = c.a;
 	ALPHA_SCISSOR_THRESHOLD = 0.45;
-	ALPHA_ANTIALIASING_EDGE = 0.3;
-	ALPHA_TEXTURE_COORDINATE = uv * vec2(2048.0, 1024.0);
 	NORMAL = v_up;
 	float top = 1.0 - UV.y;
 	vec3 albedo = c.rgb * v_tint * mix(vec3(0.86, 1.0, 1.05), vec3(1.05, 1.0, 0.85), v_dry * 0.6);

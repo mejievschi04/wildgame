@@ -5,8 +5,8 @@ extends Node3D
 ## vertex shader (grass_cards.gdshader). 6 triangles per clump; nothing is rebuilt while walking — only the list
 ## of bare spots (fires, buildings) is refreshed every second.
 
-const SPACING := {0: 0.5, 1: 0.38, 2: 0.32}   # clump grid spacing by video quality (low / medium / high)
-const RADIUS := {0: 16.0, 1: 24.0, 2: 32.0}
+const SPACING := {0: 0.5, 1: 0.4, 2: 0.32}   # clump grid spacing by video quality (low / medium / high)
+const RADIUS := {0: 15.0, 1: 20.0, 2: 30.0}
 const BARE_SLOTS := 12
 
 var world: ForestWorld

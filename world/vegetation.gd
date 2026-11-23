@@ -16,6 +16,8 @@ var _grass_meshes: Array[Mesh] = []
 var _fern_meshes: Array[Mesh] = []
 var _ground_prop_meshes: Array[Mesh] = []
 var _rock_meshes: Array[Mesh] = []
+var _log_mesh: Mesh
+var _log_box := AABB()
 var _active: Dictionary = {}
 var _last_center := Vector2i(2147483647, 2147483647)
 
@@ -189,12 +191,73 @@ func _chunk(key: Vector2i, origin: Vector2, grass: Array[Mesh], ferns: Array[Mes
 		f_xf[_rng.randi() % ferns.size()].append(xf)
 	var center := Vector3(origin.x + CHUNK * 0.5, 0, origin.y + CHUNK * 0.5)
 	_place_rocks(key, origin, root, pile_positions)
+	_place_groves(key, origin, region, species, tree_density, root, occupied)
 	for i in grass.size():
 		_multimesh(grass[i], g_xf[i], center, GRASS_RANGE, root)
 	for i in ferns.size():
 		_multimesh(ferns[i], f_xf[i], center, FERN_RANGE, root)
 	for i in _ground_prop_meshes.size():
 		_multimesh(_ground_prop_meshes[i], p_xf[i], center, FERN_RANGE, root)
+
+
+## Dense stands where the grove field (FarForest.grove_at) is high: extra fellable trees, a third of them spruce
+## among broadleaf species, saplings at the edges, and fallen trunks on the floor. Own RNG and "_grove_" ids, so
+## the chunk's original trees keep their ids and saved states.
+func _place_groves(key: Vector2i, origin: Vector2, region: StringName, species: StringName, density: float,
+		root: Node3D, occupied: Array[Vector2]) -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = int(hash(Vector3i(key.x, key.y, ForestWorld.SEED + 2727)))
+	var tries := int(CHUNK * CHUNK * clampf(density * 1.1, 0.0025, 0.006))
+	var logs: Array = []
+	for i in tries:
+		var x := origin.x + rng.randf() * CHUNK
+		var z := origin.y + rng.randf() * CHUNK
+		var g := FarForest.grove_at(x, z)
+		if rng.randf() > g * g or Vector2(x, z).distance_to(ForestWorld.SPAWN) < 135.0 or world.river_distance(x, z) < 20.0:
+			continue
+		if not _ok_tree_ground(x, z) or not world.is_scatter_site_free(x, z, 1.0):
+			continue
+		var clear := false
+		for at in occupied:
+			if at.distance_squared_to(Vector2(x, z)) < 3.2 * 3.2:
+				clear = true
+				break
+		if clear:
+			continue
+		occupied.append(Vector2(x, z))
+		var sp := species
+		if species != &"spruce" and rng.randf() < 0.35:
+			sp = &"spruce"
+		var kind := &"tree_birch" if sp == &"alder" else &"tree_pine"
+		var sc := rng.randf_range(0.7, 1.3) * lerpf(0.75, 1.0, g)  # younger, smaller trees at the grove's edge
+		world.spawn_region_resource(root, "region_%d_%d_grove_%d" % [key.x, key.y, i], kind, Vector2(x, z), sc,
+			rng.randf() * TAU, sp)
+		if g > 0.7 and rng.randf() < 0.06:
+			logs.append(Vector2(x + rng.randf_range(-4, 4), z + rng.randf_range(-4, 4)))
+	# fallen trunks on the forest floor
+	if logs.is_empty():
+		return
+	if _log_mesh == null:
+		_log_mesh = AssetLib.mesh(AssetLib.TREES[&"dead_trunk"][0])
+		var probe := AssetLib.instance(AssetLib.TREES[&"dead_trunk"][0])
+		_log_box = AssetLib.aabb(probe)
+		probe.free()
+	var xfs: Array = []
+	for at: Vector2 in logs:
+		if not _ok_ground(at.x, at.y) or not world.is_scatter_site_free(at.x, at.y, 1.5):
+			continue
+		var yaw := rng.randf() * TAU
+		var p := world.ground_point(at.x, at.y) - Vector3(0, 0.1, 0)
+		var sc := rng.randf_range(0.8, 1.3)
+		xfs.append(Transform3D(Basis(Vector3.UP, yaw).scaled(Vector3.ONE * sc), p))
+		var body := StaticBody3D.new()
+		body.collision_layer = 1
+		body.collision_mask = 0
+		body.position = p
+		body.rotation.y = yaw
+		Graybox.add_shape(body, Graybox.box_shape(_log_box.size * sc * 0.8), (_log_box.position + _log_box.size * 0.5) * sc)
+		root.add_child(body)
+	_multimesh(_log_mesh, xfs, Vector3(origin.x + CHUNK * 0.5, 0, origin.y + CHUNK * 0.5), ROCK_RANGE, root)
 
 
 ## Mossy boulders in groups out in the meadows and forest, and stones along and in the river (half sunk in the

@@ -121,6 +121,22 @@ FPS: neschimbat (start ~45, sud ~43, noaptea 60).
   - pe vulcani lava curge pe ravenele de sub crater; ceața se adună în văi dimineața.
 - `backdrop.gd` citește relieful copt, îl așază pe înălțimile marginii hărții și pune fumul pe craterul real.
 
+## Pasul 6: păduri în crânguri și performanță (2026-11-23)
+
+- **Crânguri** (`FarForest.grove_at`, câmp comun): pădurea îndepărtată și copacii reali din apropiere folosesc
+  același zgomot, deci pâlcurile de pe dealuri continuă exact în jurul jucătorului. `Vegetation._place_groves` adaugă
+  copaci reali (care se pot tăia) în crânguri: o treime molizi printre foioase, copaci mai mici la margine și trunchiuri
+  căzute (cu coliziune). Au RNG propriu și ID-uri `_grove_`, deci copacii existenți și salvările nu se schimbă.
+  Impostorii îndepărtați sunt mai deși în crânguri, iar pădurea îndepărtată e grupată în bucăți de 640 m (mai puține apeluri).
+- **Probleme de performanță găsite și rezolvate** (cauzate de camera de 14 km din pasul 4):
+  - luminile focurilor din toate taberele și bazele își randau umbrele (de 6 ori scena, inclusiv terenul) din orice
+    distanță: 14 milioane de triunghiuri pe cadru. Acum se estompează după 110 m (umbrele după 45 m);
+  - obiectele de joc (resurse, construcții, tabere, POI) primesc automat o distanță de vizibilitate de 600 m
+    (`ForestWorld._limit_view_distance`, grupul `far_scenery` e exceptat: teren, apă, munți, pădure îndepărtată);
+  - iarba: fără alpha-to-coverage (nu ajută cu TAA), rază 20 m la calitate medie.
+- FPS (calitate medie): start 46 → 50, Meyra 34 → 45, râu ~53, Tavren ~30.
+- Unealta de capturi: `SHOT_HIDE=Nod1,Nod2` ascunde copii ai lumii; raportul arată `objects`/`prims`/`draw_calls`.
+
 ## Următorii pași propuși
 
 1. **Pădurea de aproape**: copacii reali sunt așezați uniform; grupați în pâlcuri, cu tufișuri și bușteni căzuți.

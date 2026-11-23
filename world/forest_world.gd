@@ -75,7 +75,13 @@ var structures_root: Node3D
 var pickups_root: Node3D
 
 
+## Gameplay geometry (resources, props, camps, buildings, pickups) is hidden beyond this distance. The camera sees
+## ~14 km for the border mountains; without a limit every object on the 4 km map would be drawn every frame.
+const PROP_VIEW_DIST := 600.0
+
+
 func _ready() -> void:
+	get_tree().node_added.connect(_limit_view_distance)
 	_noise.seed = SEED
 	_noise.frequency = 0.0018
 	_noise.fractal_octaves = 4
@@ -91,6 +97,7 @@ func _ready() -> void:
 	structures_root = _child_root("Structures")
 	pickups_root = _child_root("Pickups")
 	day_night = DayNight.new()
+	day_night.add_to_group("far_scenery")
 	day_night.name = "DayNight"
 	add_child(day_night)
 	weather = Weather.new()
@@ -134,18 +141,22 @@ func _ready() -> void:
 	add_child(veg)
 	veg.build(self, forest_mask)
 	var backdrop := Backdrop.new()
+	backdrop.add_to_group("far_scenery")
 	backdrop.name = "Backdrop"
 	add_child(backdrop)
 	backdrop.build(self)
 	far_forest = FarForest.new()
+	far_forest.add_to_group("far_scenery")
 	far_forest.name = "FarForest"
 	add_child(far_forest)
 	far_forest.build(self, forest_mask)
 	var fx := AtmosphereFX.new()
+	fx.add_to_group("far_scenery")  # follows the camera
 	fx.name = "AtmosphereFX"
 	fx.world = self
 	add_child(fx)
 	meadow_grass = MeadowGrass.new()
+	meadow_grass.add_to_group("far_scenery")  # positioned around the camera in its shader
 	meadow_grass.name = "MeadowGrass"
 	add_child(meadow_grass)
 	meadow_grass.build(self, _terrain_heights, forest_mask, _terrain_mat.get_shader_parameter("macro_noise"))
@@ -184,6 +195,8 @@ func get_map_image() -> Image:
 
 
 func _exit_tree() -> void:
+	if get_tree().node_added.is_connected(_limit_view_distance):
+		get_tree().node_added.disconnect(_limit_view_distance)
 	if _map_task >= 0:
 		WorkerThreadPool.wait_for_task_completion(_map_task)
 		_map_task = -1
@@ -482,6 +495,7 @@ func _build_terrain() -> void:
 	_terrain_mat.set_shader_parameter("macro_noise", ImageTexture.create_from_image(macro_img))
 	var mi := MeshInstance3D.new()
 	mi.name = "Terrain"
+	mi.add_to_group("far_scenery")
 	mi.mesh = mesh
 	mi.material_override = _terrain_mat
 	add_child(mi)
@@ -534,6 +548,7 @@ func _build_lake(material: ShaderMaterial) -> void:
 			st.set_uv(Vector2(p.x / 18.0, p.z / 18.0))
 			st.add_vertex(p)
 	var surface := MeshInstance3D.new()
+	surface.add_to_group("far_scenery")
 	surface.name = "SouthernLake_Surface"
 	surface.mesh = st.commit()
 	surface.material_override = material
@@ -578,6 +593,7 @@ func _build_water_channel(channel_name: String, start_z: float, end_z: float, st
 		st.add_index(d)
 		st.add_index(c)
 	var surface := MeshInstance3D.new()
+	surface.add_to_group("far_scenery")
 	surface.name = "%s_Surface" % channel_name
 	surface.mesh = st.commit()
 	surface.material_override = material
@@ -683,6 +699,21 @@ func _count_kind(kind: StringName) -> int:
 	var c: int = _kind_counts.get(kind, 0)
 	_kind_counts[kind] = c + 1
 	return c
+
+
+## Gives every newly added mesh under the world a view distance, unless it already has one or belongs to the
+## far scenery (group "far_scenery": terrain, water, mountains, distant forest, sky).
+func _limit_view_distance(n: Node) -> void:
+	var g := n as GeometryInstance3D
+	if g == null or g.visibility_range_end > 0.0 or not is_ancestor_of(g):
+		return
+	var p: Node = g
+	while p != null and p != self:
+		if p.is_in_group("far_scenery"):
+			return
+		p = p.get_parent()
+	g.visibility_range_end = PROP_VIEW_DIST
+	g.visibility_range_end_margin = 60.0
 
 
 ## legacy: sample the pre-valley-rework terrain (only for kinds that existed before it, to keep their save ids).

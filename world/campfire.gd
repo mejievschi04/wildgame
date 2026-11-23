@@ -54,6 +54,12 @@ func _build() -> void:
 	_light.light_energy = 2.2
 	_light.shadow_enabled = true
 	_light.position = Vector3(0, 0.7, 0)
+	# Far fires stop lighting (and casting point shadows: 6 extra scene renders each) — the plume and the
+	# flames still show where they are.
+	_light.distance_fade_enabled = true
+	_light.distance_fade_begin = 110.0
+	_light.distance_fade_length = 30.0
+	_light.distance_fade_shadow = 45.0
 	add_child(_light)
 	_flames = CPUParticles3D.new()
 	_flames.amount = 70

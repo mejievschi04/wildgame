@@ -6,8 +6,8 @@ extends Node3D
 ## MultiMesh chunks without shadows. Each card hides itself closer than BEGIN (vertex shader), where the real trees
 ## stand. Positions are computed on a worker thread.
 
-const CHUNK := 256.0
-const STEP := 8.0
+const CHUNK := 640.0  # big chunks: each (chunk, tree model) is one draw call
+const STEP := 6.0
 const BEGIN := 165.0
 const END := {0: 650.0, 1: 950.0, 2: 1400.0}
 const SPAWN_CLEAR := 135.0
@@ -88,10 +88,6 @@ func _impostor(path: String) -> Mesh:
 func _compute(mask: Image) -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = ForestWorld.SEED + 4242
-	var groves := FastNoiseLite.new()  # real forests grow in stands and groves, with meadows between them
-	groves.seed = ForestWorld.SEED + 77
-	groves.frequency = 0.006
-	groves.fractal_octaves = 3
 	var chunks := {}  # Vector2i -> {"sp:i": Array[Transform3D]}
 	var lim := ForestWorld.PLAYABLE - 10.0
 	var z := -lim
@@ -104,8 +100,8 @@ func _compute(mask: Image) -> void:
 			var row: Array = REGION_TREES.get(world.region_at(px, pz), [&"pine", 0.0012])
 			var forest := _mask(mask, px, pz)
 			# ~40 % of the near density, drawn a little larger: in the haze the canopy reads just as closed
-			var grove := smoothstep(-0.05, 0.35, groves.get_noise_2d(px, pz)) * 2.4
-			var p := float(row[1]) * STEP * STEP * (0.3 + forest) * 0.4 * grove
+			var g := grove_at(px, pz)
+			var p := float(row[1]) * STEP * STEP * (0.3 + forest) * (0.1 + 3.2 * g * g)
 			if rng.randf() > p:
 				continue
 			if Vector2(px, pz).distance_to(ForestWorld.SPAWN) < SPAWN_CLEAR or world.river_distance(px, pz) < 20.0:
@@ -115,7 +111,7 @@ func _compute(mask: Image) -> void:
 				continue
 			var sp: StringName = row[0]
 			var i := rng.randi() % (_meshes[sp] as Array).size()
-			var s := rng.randf_range(1.0, 1.45)
+			var s := rng.randf_range(1.05, 1.6)
 			var xf := Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3.ONE * s), Vector3(px, h - 0.3, pz))
 			var key := Vector2i(floori(px / CHUNK), floori(pz / CHUNK))
 			if not chunks.has(key):
@@ -127,6 +123,20 @@ func _compute(mask: Image) -> void:
 		z += STEP
 	if not _abort:
 		_finish.call_deferred(chunks)
+
+
+static var _groves: FastNoiseLite
+
+
+## 0 open meadow … 1 inside a grove. Real forests grow in stands with clearings between them; FarForest and the
+## near, fellable grove trees (Vegetation) share this field so the two meet seamlessly.
+static func grove_at(x: float, z: float) -> float:
+	if _groves == null:
+		_groves = FastNoiseLite.new()
+		_groves.seed = ForestWorld.SEED + 77
+		_groves.frequency = 0.006
+		_groves.fractal_octaves = 3
+	return smoothstep(-0.05, 0.35, _groves.get_noise_2d(x, z))
 
 
 func _mask(mask: Image, x: float, z: float) -> float:
