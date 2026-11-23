@@ -788,7 +788,7 @@ def garments_sapiens(body, sex, lm, spec):
     wc = Vector((0, lm["hip"].y, 0))
     out["belt"] = ribbon("Belt", tree, ring_pts(wc, 0.25, 0.25, hip + 0.11, 48), 0.04, strap, lift=0.02, closed=True)
     # fur boots
-    out["boots"] = gh.cut_garment(body, "Boots", gh.FEET | gh.LEGS_LOW, furbase, 0.01, 0.016, z_max=ankle + 0.24, smooth=3)
+    out["boots"] = gh.cut_garment(body, "Boots", gh.FEET | gh.LEGS_LOW, furbase, 0.01, 0.016, z_max=ankle + spec.get("boot_h", 0.24), smooth=3)
     # wrist wraps
     def wrist(c):
         return min((c - lm["wrist_l"]).length, (c - lm["wrist_r"]).length) < 0.075
@@ -802,8 +802,11 @@ def garments_sapiens(body, sex, lm, spec):
             out[f"wrap_{side}{k}"] = ribbon(f"Wrap", tree, pts, 0.022, strap, lift=0.004, closed=True)
     if sex == "M":
         # fur mantle on the shoulders, open over the chest; crossed straps on the bare torso
+        drop = spec.get("mantle_drop", 0.10)
+        back = spec.get("mantle_back", 0.0)       # a cape: the mantle hangs lower down the back
+
         def mantle(c):
-            low = sh - 0.10 + (0.07 if (c.y < 0 and abs(c.x) < 0.13) else 0.0)
+            low = sh - drop + (0.07 if (c.y < 0 and abs(c.x) < 0.13) else 0.0) - (back if c.y > lm["chest"].y + 0.04 else 0.0)
             return low < c.z < neck + 0.03
         out["mantle"] = gh.cut_garment(body, "Mantle", gh.TORSO | gh.UPPERARM, furbase, 0.012, 0.02, keep_fn=mantle, smooth=10)
         yf = min(v.co.y for v in body.data.vertices if abs(v.co.z - chest) < 0.03) - 0.05   # in front of the chest
@@ -814,7 +817,11 @@ def garments_sapiens(body, sex, lm, spec):
             out[f"strap{i}"] = ribbon("Strap", tree, front + back, 0.034, strap, lift=0.006)
     else:
         out["top"] = gh.cut_garment(body, "Top", gh.TORSO, hide, 0.008, 0.014, keep_fn=lambda c: chest - 0.07 < c.z < chest + 0.13, smooth=6)
+        both = spec.get("female_mantle") == "both"   # fur collar over both shoulders instead of one
+
         def shoulder(c):
+            if both:
+                return sh - 0.09 + (0.05 if (c.y < 0 and abs(c.x) < 0.11) else 0.0) < c.z < neck + 0.02
             return c.x > 0.02 and sh - 0.07 < c.z < neck + 0.02
         out["mantle"] = gh.cut_garment(body, "Mantle", gh.TORSO | gh.UPPERARM, furbase, 0.012, 0.02, keep_fn=shoulder, smooth=8)
     return out
@@ -1055,7 +1062,50 @@ SAPIENS = {
               ((0.27, -0.03, 1.22), (0.30, -0.06, 1.13), 0.008),          # left upper arm
               ((-0.06, -0.13, 1.28), (0.05, -0.14, 1.22), 0.007)],        # chest slash
 }
-SPECIES = {"Sapiens": SAPIENS}
+
+
+def paint_neanderthal(xx, yy, zz, x):
+    """Red ochre: one broad smear across each cheekbone (no white paint, unlike Homo sapiens)."""
+    if yy < 0.45 and 0.40 < zz < 0.56:
+        return soft(abs(zz - 0.48 + (xx - 0.5) * 0.08), 0.06) * soft(abs(xx - 0.58), 0.2) * 0.85
+    return 0.0
+
+
+# Neanderthal: short, very robust, barrel chest; heavy brow ridge, sloping forehead, long low skull, broad
+# projecting nose and midface, weak chin. Lighter skin, reddish-brown hair, heavier furs for the cold.
+NEANDERTHAL = {
+    "macro": {
+        "M": {"gender": 1.0, "age": 0.55, "muscle": 0.95, "weight": 0.62, "height": 0.30, "proportions": 0.35,
+              "race": {"african": 0.05, "asian": 0.10, "caucasian": 0.85}},
+        "F": {"gender": 0.0, "age": 0.48, "muscle": 0.80, "weight": 0.58, "height": 0.25, "proportions": 0.35,
+              "race": {"african": 0.05, "asian": 0.10, "caucasian": 0.85}},
+    },
+    "morphs": {"eyebrows-trans-forward": 1.0, "eyebrows-trans-down": 0.35, "forehead-trans-backward": 0.8,
+               "forehead-scale-vert-decr": 0.5, "forehead-nubian-decr": 0.4,
+               "head-scale-depth-incr": 0.55, "head-back-scale-depth-incr": 0.6, "head-scale-horiz-incr": 0.2,
+               "nose-scale-horiz-incr": 0.8, "nose-volume-incr": 0.75, "nose-flaring-incr": 0.6, "nose-trans-forward": 0.5,
+               "nose-width3-incr": 0.6, "nose-scale-vert-incr": 0.3,
+               "chin-prominent-decr": 0.6, "chin-prognathism-incr": 0.25, "chin-width-incr": 0.35, "chin-bones-incr": 0.4,
+               "mouth-trans-forward": 0.4, "mouth-scale-horiz-incr": 0.2, "l-cheek-bones-decr": 0.3, "r-cheek-bones-decr": 0.3,
+               "neck-scale-horiz-incr": 0.6, "neck-scale-depth-incr": 0.4, "torso-scale-depth-incr": 0.55,
+               "torso-scale-horiz-incr": 0.25, "measure-shoulder-dist-incr": 0.3},
+    "face_units": "caucasian",
+    "skin": {"M": (0.64, 0.46, 0.35), "F": (0.68, 0.50, 0.39)},
+    "skin_red": (0.70, 0.34, 0.26),
+    "hair": {"M": (0.24, 0.13, 0.07), "F": (0.27, 0.15, 0.08)},
+    "fur_palette": [(0.36, 0.25, 0.15), (0.50, 0.38, 0.25), (0.24, 0.17, 0.10), (0.62, 0.50, 0.36)],
+    "leather": (0.80, 0.60, 0.42),
+    "iris": (0.26, 0.20, 0.12),
+    "paint": paint_neanderthal, "paint_color": (0.55, 0.22, 0.12),
+    "hair_len": {"M": 0.38, "F": 0.44}, "beard": {"M": 0.10, "F": 0.0},
+    "garments": garments_sapiens, "necklace": True,
+    "face_depth": 0.14, "front_sweep": 0.45,
+    "mantle_drop": 0.17, "mantle_back": 0.16, "female_mantle": "both", "boot_h": 0.32, "fur_len": 0.12,
+    "scars": [((0.05, -0.11, 1.52), (0.075, -0.10, 1.49), 0.006),        # brow
+              ((-0.26, -0.04, 1.15), (-0.29, -0.07, 1.06), 0.009),        # right upper arm
+              ((0.08, -0.14, 1.20), (0.14, -0.12, 1.13), 0.008)],         # ribs
+}
+SPECIES = {"Sapiens": SAPIENS, "Neanderthal": NEANDERTHAL}
 
 
 def build(variant):
@@ -1092,7 +1142,7 @@ def build(variant):
         out = (c - crown); out.z = 0
         front = yy < 0.4
         if front:   # swept back and to the sides, clear of the face
-            flow = Vector((math.copysign(0.8, c.x), 1.0, 0.2))
+            flow = Vector((math.copysign(spec.get("front_sweep", 0.8), c.x), 1.0, 0.2))
         else:
             flow = (out.normalized() if out.length > 1e-3 else Vector((0, 1, 0))) * 0.6 + Vector((0, 0.5, -0.6))
         return {"face_box": face_box, "length": hl * (0.75 if front else 1.0), "width": 0.013, "lift": 0.0, "droop": 0.9 if not front else 0.7,
@@ -1102,12 +1152,14 @@ def build(variant):
     face_y = hf["y"][0]
     hairline_z = hf["z"][0] + 0.8 * (hf["z"][1] - hf["z"][0])
 
+    face_d = spec.get("face_depth", 0.09)   # a sloping (Neanderthal) forehead lies further back than the brow ridge
+
     def face_box(q):   # the face: forehead below the hairline down to the chin, front half of the head
-        return q.y < face_y + 0.09 and q.z < hairline_z and abs(q.x) < 0.075
+        return q.y < face_y + face_d and q.z < hairline_z and abs(q.x) < 0.075
 
     def avoid(q):   # keep strands off the face: anything in front of it slides out to the side
         zz = (q.z - hf["z"][0]) / (hf["z"][1] - hf["z"][0])
-        if q.y < face_y + 0.06 and -0.1 < zz < 0.8 and abs(q.x) < 0.085:
+        if q.y < face_y + face_d - 0.03 and -0.1 < zz < 0.8 and abs(q.x) < 0.085:
             q = Vector((math.copysign(0.085, q.x if abs(q.x) > 1e-4 else 1.0), q.y, q.z))
         return q
     pieces.append(strand_cards(f"Human_{variant}Hair", ref, scalp, {"hair": True, "avoid": avoid}, hair_pal, collide, ref, 38000, seed=3))
@@ -1126,7 +1178,7 @@ def build(variant):
         if key not in gar:
             continue
         g = gar[key]
-        ln = 0.09 if key == "mantle" else 0.045
+        ln = spec.get("fur_len", 0.09) if key == "mantle" else spec.get("fur_len", 0.09) * 0.5
 
         def fur(c, n, ln=ln):
             return {"length": ln, "width": 0.03, "lift": 0.3, "droop": 0.8, "flow": (0, 0.2, -1), "segs": 3, "layer": 0.004, "follow": 0.0}
