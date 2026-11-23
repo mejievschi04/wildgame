@@ -25,7 +25,9 @@ var frozen := false
 var sun: DirectionalLight3D
 var moon: DirectionalLight3D
 var environment: Environment
-var sky_material: ProceduralSkyMaterial
+var sky_material: ShaderMaterial
+var cloud_cover := 0.1  # set by Weather
+var _cloud_offset := Vector2.ZERO
 var _moon_disc: MeshInstance3D
 var _moon_mat: ShaderMaterial
 var _stars: MeshInstance3D
@@ -33,7 +35,19 @@ var _stars_mat: ShaderMaterial
 
 
 func _ready() -> void:
-	sky_material = ProceduralSkyMaterial.new()
+	sky_material = ShaderMaterial.new()
+	sky_material.shader = preload("res://world/shaders/sky.gdshader")
+	var cn := NoiseTexture2D.new()
+	cn.width = 512
+	cn.height = 512
+	cn.seamless = true
+	cn.generate_mipmaps = true
+	var noise := FastNoiseLite.new()
+	noise.seed = ForestWorld.SEED + 9
+	noise.frequency = 0.012
+	noise.fractal_octaves = 4
+	cn.noise = noise
+	sky_material.set_shader_parameter("cloud_noise", cn)
 	var sky := Sky.new()
 	sky.sky_material = sky_material
 	environment = Environment.new()
@@ -42,7 +56,8 @@ func _ready() -> void:
 	environment.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
 	environment.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
 	environment.tonemap_mode = Environment.TONE_MAPPER_AGX
-	environment.tonemap_exposure = 0.9
+	environment.tonemap_exposure = 1.0
+	environment.tonemap_agx_contrast = 1.45  # deeper shadows and richer mid-tones than the neutral AgX curve
 	environment.ssao_enabled = true
 	environment.ssao_radius = 0.85
 	environment.ssao_intensity = 1.25
@@ -56,10 +71,11 @@ func _ready() -> void:
 	environment.sdfgi_cascades = 4
 	environment.sdfgi_min_cell_size = 0.2
 	environment.sdfgi_energy = 0.9
-	# Film-like grade: a touch more contrast, slightly muted colours.
+	# Film-like grade (as in Far Cry Primal / The Forest): warm sunlit highlights, cool teal shadows, lush greens.
 	environment.adjustment_enabled = true
-	environment.adjustment_contrast = 1.035
-	environment.adjustment_saturation = 0.92
+	environment.adjustment_contrast = 1.06
+	environment.adjustment_saturation = 1.16
+	environment.adjustment_color_correction = _grade_lut()
 	environment.volumetric_fog_enabled = true
 	environment.volumetric_fog_density = 0.006
 	environment.volumetric_fog_length = 90.0
@@ -72,6 +88,7 @@ func _ready() -> void:
 	environment.fog_enabled = true
 	environment.fog_density = 0.006
 	environment.fog_sky_affect = 0.35
+	environment.fog_sun_scatter = 0.25  # the haze glows warm toward the sun
 	environment.fog_aerial_perspective = 0.55  # distant hills dissolve into the sky colour
 	environment.fog_height = ForestWorld.WATER_LEVEL + 2.0
 	environment.fog_height_density = 0.0
@@ -96,6 +113,31 @@ func _ready() -> void:
 	update_visuals()
 
 
+## 3D colour-grading LUT (32³): split toning — shadows lean teal-blue, highlights warm — and lusher greens
+## (yellow-greens pushed toward a fresh green and saturated a little more than other hues).
+static func _grade_lut(n := 32) -> ImageTexture3D:
+	var layers: Array[Image] = []
+	for b in n:
+		var img := Image.create_empty(n, n, false, Image.FORMAT_RGB8)
+		for g in n:
+			for r in n:
+				var c := Color(r / float(n - 1), g / float(n - 1), b / float(n - 1))
+				var lum := c.r * 0.2126 + c.g * 0.7152 + c.b * 0.0722
+				var shadow := clampf(1.0 - lum * 2.2, 0.0, 1.0)
+				var high := clampf((lum - 0.45) * 1.8, 0.0, 1.0)
+				c = Color(c.r - 0.025 * shadow + 0.035 * high, c.g + 0.008 * shadow + 0.012 * high, c.b + 0.03 * shadow - 0.045 * high)
+				var greenness := clampf((c.g - maxf(c.r, c.b)) * 6.0, 0.0, 1.0)
+				if greenness > 0.0:
+					var h := c.h
+					var sat := minf(c.s * (1.0 + 0.22 * greenness), 1.0)
+					c = Color.from_hsv(lerpf(h, maxf(h, 0.26), 0.35 * greenness), sat, c.v)
+				img.set_pixel(r, g, Color(clampf(c.r, 0, 1), clampf(c.g, 0, 1), clampf(c.b, 0, 1)))
+		layers.append(img)
+	var tex := ImageTexture3D.new()
+	tex.create(Image.FORMAT_RGB8, n, n, n, false, layers)
+	return tex
+
+
 func _apply_settings() -> void:
 	day_length_sec = maxf(float(Settings.get_value("gameplay", "day_length_min")), 4.0) * 60.0
 	sun.shadow_enabled = bool(Settings.get_value("video", "shadows"))
@@ -117,6 +159,9 @@ func _process(delta: float) -> void:
 
 
 func advance(sim_seconds: float) -> void:
+	var w: Weather = get_parent().get("weather") if get_parent() else null
+	var wd := w.wind_dir if w else Vector2(0.8, 0.6)
+	_cloud_offset += wd * (0.002 + 0.006 * (w.wind if w else 0.2)) * minf(sim_seconds, 1.0)  # drifting with the wind
 	time_hours += sim_seconds * 24.0 / day_length_sec
 	while time_hours >= 24.0:
 		time_hours -= 24.0
@@ -194,12 +239,12 @@ func update_visuals() -> void:
 	var elev_deg := maxf(elev, 0.02) * 62.0
 	sun.rotation = Vector3(deg_to_rad(-elev_deg), deg_to_rad(lerpf(100.0, -100.0, t)), 0.0)
 	var day_k := smoothstep(-0.08, 0.3, elev)  # 0 night … 1 day
-	var dusk_k := 1.0 - absf(clampf(elev * 3.0, -1.0, 1.0))  # strongest near the horizon
+	var dusk_k := 1.0 - absf(clampf(elev * 1.9, -1.0, 1.0))  # strongest near the horizon: a long golden hour
 	sun.visible = elev > -0.05
 	# Strong warm key light vs. a dimmer blue sky fill: the contrast that reads as "real daylight".
 	# High sun is a bit gentler than low golden light (keeps midday from washing out).
 	sun.light_energy = lerpf(2.4, 1.9, clampf(elev, 0.0, 1.0)) * day_k * (1.0 - 0.75 * cloud)
-	sun.light_color = Color(1.0, 0.91, 0.78).lerp(Color(1.0, 0.52, 0.26), dusk_k * 0.85)
+	sun.light_color = Color(1.0, 0.89, 0.72).lerp(Color(1.0, 0.55, 0.24), dusk_k * 0.85)
 	# Moon: crosses the sky through the night, light and brightness follow its phase.
 	var m_elev := moon_elevation()
 	var m_up := smoothstep(-0.02, 0.1, m_elev)
@@ -211,23 +256,29 @@ func update_visuals() -> void:
 
 	var night_top := Color(0.02, 0.03, 0.06)
 	var night_hor := Color(0.05, 0.06, 0.09)
-	var day_top := Color(0.36, 0.52, 0.70)
-	var day_hor := Color(0.72, 0.77, 0.78)
-	var dusk_hor := Color(0.86, 0.52, 0.32)
+	var day_top := Color(0.20, 0.42, 0.78)   # deep blue overhead
+	var day_hor := Color(0.64, 0.75, 0.87)   # pale blue at the horizon, never grey
+	var dusk_hor := Color(0.95, 0.56, 0.30)
 	day_top = day_top.lerp(Color(0.42, 0.45, 0.48), cloud * 0.8)
 	day_hor = day_hor.lerp(Color(0.55, 0.57, 0.58), cloud * 0.8)
-	sky_material.sky_top_color = night_top.lerp(day_top, day_k)
+	sky_material.set_shader_parameter("top_color", night_top.lerp(day_top, day_k))
 	var hor := night_hor.lerp(day_hor, day_k).lerp(dusk_hor, dusk_k * 0.75 * clampf(day_k * 2.0, 0.0, 1.0))
-	sky_material.sky_horizon_color = hor
-	sky_material.ground_horizon_color = hor.darkened(0.2)
-	sky_material.ground_bottom_color = Color(0.08, 0.09, 0.07).lerp(Color(0.2, 0.22, 0.17), day_k)
-	sky_material.sky_energy_multiplier = lerpf(0.25, 1.0, day_k)
+	sky_material.set_shader_parameter("horizon_color", hor)
+	sky_material.set_shader_parameter("ground_horizon", hor.darkened(0.2))
+	sky_material.set_shader_parameter("ground_bottom", Color(0.08, 0.09, 0.07).lerp(Color(0.2, 0.22, 0.17), day_k))
+	sky_material.set_shader_parameter("energy", lerpf(0.25, 1.0, day_k))
+	sky_material.set_shader_parameter("day", day_k)
+	sky_material.set_shader_parameter("cloud_cover", cloud_cover)
+	sky_material.set_shader_parameter("cloud_offset", _cloud_offset)
+	# Overcast: the cloud undersides go a heavier grey.
+	sky_material.set_shader_parameter("cloud_shade", Color(0.52, 0.58, 0.68).lerp(Color(0.42, 0.45, 0.5), cloud))
 	# Overcast days lose the sun but gain sky light.
-	environment.ambient_light_energy = lerpf(0.35, 0.62, day_k) * (1.0 + 0.5 * cloud)
-	environment.fog_light_color = hor.darkened(0.15)
-	environment.fog_density = lerpf(0.010, 0.0022, day_k) + fog_extra + cloud * 0.0015
-	environment.volumetric_fog_albedo = hor.lightened(0.2)
-	environment.volumetric_fog_density = lerpf(0.012, 0.0028, day_k) + 0.006 * dusk_k * day_k  # shafts at low sun
+	environment.ambient_light_energy = lerpf(0.35, 0.52, day_k) * (1.0 + 0.6 * cloud)
+	# Distance takes the sky's blue (aerial perspective), warmer toward evening.
+	environment.fog_light_color = hor.lerp(day_top, 0.25 * day_k).darkened(0.05)
+	environment.fog_density = lerpf(0.010, 0.0012, day_k) + fog_extra + cloud * 0.0018
+	environment.volumetric_fog_albedo = Color(1.0, 0.96, 0.9).lerp(hor, 0.4)
+	environment.volumetric_fog_density = lerpf(0.012, 0.0016, day_k) + 0.007 * dusk_k * day_k  # shafts at low sun
 	# Valley mist: thick in the early morning and at dusk, burnt off by midday.
 	var morning := clampf(1.0 - absf(time_hours - 6.5) / 3.0, 0.0, 1.0)
 	var evening := clampf(1.0 - absf(time_hours - 20.0) / 2.5, 0.0, 1.0)

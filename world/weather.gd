@@ -222,9 +222,8 @@ func _apply_visuals() -> void:
 	if world == null:
 		return
 	var dn := world.day_night
-	if dn and dn.sky_material:
-		dn.sky_material.sky_cover = _clouds
-		dn.sky_material.sky_cover_modulate = Color(1, 1, 1, clampf(cloud * 1.1, 0.0, 1.0))
+	if dn:
+		dn.cloud_cover = clampf(0.15 + cloud * 0.9, 0.0, 1.0)
 	var cam := get_viewport().get_camera_3d() if is_inside_tree() else null
 	if cam:
 		_rain_fx.global_position = cam.global_position + Vector3.UP * 9.0

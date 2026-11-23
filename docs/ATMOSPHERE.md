@@ -1,0 +1,75 @@
+# Atmosfera lumii — analiză și primul pas
+
+De ce WILDBOUND arăta palid și fără viață, comparat cu The Forest și Far Cry Primal, și ce s-a schimbat.
+Capturile de verificare se fac cu `godot --path . res://scenes/game.tscn -- --autoshot=/abs/out.png --shot-hour=10`
+(și `--shot-hour=6.6`, `18.6`, `--shot-scenario=river`, `--shot-scenario=camp --shot-hour=21.3`).
+
+## Ce creează atmosfera în cele două jocuri
+
+| | The Forest (Unity 5) | Far Cry Primal (Dunia) |
+|---|---|---|
+| Lumină | Soare cald, filtrat prin coroane; umbre adânci, ocluzie ambientală puternică | Soare auriu, umbre reci: contrast cald/rece („teal & orange”) |
+| Cer și distanță | Ceață colorată de cer, groasă dimineața; raze de lumină | Cer albastru adânc; ceață de înălțime în văi; perspectivă aeriană albastră |
+| Culoare | Gradare cu verzi bogați, negri adânci | LUT cu saturație ridicată în verzi și galbeni |
+| Sol | Ferigi, iarbă, frunze uscate, bușteni: nicăieri pământ gol | Pajiști dese, flori sălbatice, petice verzi și uscate |
+| Aer | Particule în raze, insecte | Polen, licurici, frunze, păsări |
+| Timp | Răsărit și apus dramatice | „Golden hour” lung, nopți albastre |
+
+## Ce avea WILDBOUND (cauzele aspectului palid)
+
+- Saturația era redusă intenționat (`adjustment_saturation = 0.92`), iar curba AgX era neutră și plată.
+- Cerul la orizont era gri (0.72, 0.77, 0.78), iar ceața și perspectiva aeriană luau acest gri: dealurile deveneau bej-cenușii.
+- Ceața de zi și ceața volumetrică erau dense și albicioase (un văl lăptos peste tot).
+- Textura scanată de iarbă e de fapt pământ uscat, bej: de departe lumea părea deșert.
+- Iarba 3D: smocuri rare (0,9/m²) de 500 de triunghiuri fiecare. Nu se putea îndesi.
+- Lumina de apus apărea doar foarte aproape de orizont: la 18:30 arăta ca la prânz.
+- Aerul era gol: fără polen, insecte sau licurici.
+
+## Ce s-a schimbat (pasul 1)
+
+- **Gradare** (`day_night.gd`): AgX cu contrast 1,45, saturație 1,16, contrast 1,06 și un **LUT 3D generat în cod**
+  (`_grade_lut`): umbrele trag spre albastru-verzui, luminile spre cald, iar verzii-gălbui devin verzi proaspeți, puțin mai saturați.
+- **Cer și ceață**: albastru adânc sus, albastru pal la orizont (niciodată gri); ceața ia culoarea cerului; densitatea
+  de zi e înjumătățită; ceața strălucește cald spre soare (`fog_sun_scatter`); golden hour mai lung (`dusk_k`).
+- **Teren** (`terrain.gdshader`): stratul de iarbă păstrează detaliul scanat (luminozitatea), dar primește culoare de
+  pajiște, verde cu petice uscate pe zone mari (același zgomot colorează și firele de iarbă). Malurile noroioase rămân
+  pământii, nu portocalii.
+- **Gazon dens** (`meadow_grass.gd`, `meadow_grass.gdshader`): smocuri de 12 fire subțiri (36 de triunghiuri) pe o grilă care
+  se mută odată cu camera în shader. Iarba stă exact pe teren (aceeași interpolare ca `height_at`) și se mișcă în vânt
+  (direcția și tăria vin din vreme). Lipsește în apă, pe stânci abrupte, sub pădure, la foc și la construcții. Flori
+  sălbatice în pâlcuri (galbene, albe, mov, albastre, portocalii). LOD: de la ~40 % din rază, două treimi din fire dispar.
+- **Aer** (`atmosphere_fx.gd`): polen și praf în lumina zilei; licurici seara (20–23:30) pe vreme senină.
+
+Performanță (fereastra AutoShot, calitate medie, M4): **48 FPS înainte → 51,5 FPS acum**. Gradarea și ceața mai ușoară
+au câștigat ~7 FPS; gazonul costă ~4. `--bench-off=meadow,fx` le dezactivează pentru măsurători.
+
+## Pasul 2: păduri, cer, apă, sol (2026-11-23)
+
+- **Păduri până la orizont** (`far_forest.gd`): copacii reali se încarcă doar pe ~150 m, de aceea dealurile erau goale.
+  La pornire, fiecare model de copac e fotografiat o singură dată (viewport ascuns, nelit) într-un **impostor**: două
+  plane încrucișate, 4 triunghiuri. Impostorii sunt plasați pe toată harta după densitatea pe regiuni și masca de
+  pădure, grupați în crânguri (zgomot), în bucăți de 256 m, fără umbre. Sub 165 m dispar (shader), iar acolo stau
+  copacii reali. Pozițiile se calculează pe un thread. În modul headless (teste) nu se generează.
+- **Coroane** (`foliage.gdshader`): umbrite ca un volum moale (normale dinspre axa trunchiului), interior și parte
+  inferioară mai întunecate, verde mai adânc. Gata cu frunzele galben-pale în soare.
+- **Solul pădurii**: litieră brună și petice de mușchi, nu nisip portocaliu; un al treilea strat GPU cu frunze arcuite
+  joase (ferigă, rogoz) sub copaci; dincolo de raza ierbii, terenul e mai verde, iar pădurile sunt în umbra coroanelor.
+- **Cer** (`sky.gdshader`): gradient, disc și halo de soare, nori fractali care se mișcă după vânt, cu margini argintii
+  spre soare, baze gri-albastre și culori aurii la apus. Acoperirea vine din vreme (`DayNight.cloud_cover`).
+- **Apă** (`water.gdshader`): reflexie clară a cerului (Fresnel, rugozitate mică); fundul văzut prin apă trece prin
+  emisie (nu mai e luminat de două ori, de aceea apa era cenușie); turcoaz la mică adâncime, albastru-verde închis la
+  adâncime; spumă animată la mal.
+
+FPS (fereastra AutoShot, calitate medie): la start ~51 (ca înainte de ambii pași), la apus ~43, în pădurea densă
+Tavren ~30 (la fel ca înainte: zona e scumpă din cauza copacilor reali). `--bench-off=far` / `meadow` / `fx` pentru
+măsurători, `SHOT_AT=x,z,yaw` și `SHOT_PITCH` pentru capturi oriunde pe hartă.
+
+## Următorii pași propuși
+
+1. **Pădurea de aproape**: copacii reali sunt așezați uniform; grupați în pâlcuri, cu tufișuri și bușteni căzuți.
+   (Pozițiile lor intră în salvări, deci schimbarea are nevoie de migrare.)
+2. **Umbre de nori** pe teren, care se mișcă odată cu norii.
+3. **Malurile apei**: trestie, pietre, nămol umed.
+4. **Variație de biom**: pajiști cu flori la sud, mesteacăn și ferigă la est, stepă rece cu iarbă înaltă uscată la nord.
+5. **Păsări și sunete**: stoluri pe cer, păsări care zboară din iarbă, ciripit care se schimbă cu ora din zi.
+6. **Raze de lumină** prin coroane în pădure, cu ceață volumetrică locală în pădurile dese.

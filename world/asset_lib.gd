@@ -105,6 +105,12 @@ static func tuned(m: Material, profile: StringName = &"ground") -> Material:
 		if profile == &"tree":
 			f.set_shader_parameter("sway", 0.7)
 			f.set_shader_parameter("height_ref", 14.0)
+			var conifer := "Spruce" in String(b.resource_name) or "Pine" in String(b.resource_name)
+			f.set_shader_parameter("crown", true)
+			f.set_shader_parameter("crown_center", 8.0 if conifer else 10.0)
+			f.set_shader_parameter("crown_radius", 3.0 if conifer else 4.0)
+			f.set_shader_parameter("color_mul", Vector3(0.78, 0.9, 0.66) if not conifer else Vector3(0.85, 0.95, 0.8))
+			f.set_shader_parameter("backlight_color", Color(0.32, 0.38, 0.14))
 		else:
 			f.set_shader_parameter("sway", 0.12)
 			f.set_shader_parameter("height_ref", 0.35)

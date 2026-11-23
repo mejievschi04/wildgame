@@ -42,6 +42,8 @@ var wildlife: Wildlife
 var factions: Factions
 var camps: Camps
 var npc_nav: NpcNav
+var meadow_grass: MeadowGrass
+var far_forest: FarForest
 var _camp_sites: Array[Vector2] = []
 var _camp_heights: Array[float] = []
 var _camp_clearings: Array[Vector2] = []
@@ -131,6 +133,18 @@ func _ready() -> void:
 	veg.name = "Vegetation"
 	add_child(veg)
 	veg.build(self, forest_mask)
+	far_forest = FarForest.new()
+	far_forest.name = "FarForest"
+	add_child(far_forest)
+	far_forest.build(self, forest_mask)
+	var fx := AtmosphereFX.new()
+	fx.name = "AtmosphereFX"
+	fx.world = self
+	add_child(fx)
+	meadow_grass = MeadowGrass.new()
+	meadow_grass.name = "MeadowGrass"
+	add_child(meadow_grass)
+	meadow_grass.build(self, _terrain_heights, forest_mask, _terrain_mat.get_shader_parameter("macro_noise"))
 	if menu_mode:
 		day_night.frozen = true
 	else:

@@ -1,9 +1,11 @@
-// River water: depth-based colour/opacity, scrolling normal waves, screen-space refraction.
+// River water: depth-based colour/opacity, scrolling normal waves, screen-space refraction, sky reflection
+// (low roughness + Fresnel), animated foam along the banks.
 shader_type spatial;
 render_mode blend_mix, depth_draw_never, cull_back, diffuse_burley, specular_schlick_ggx;
 
-uniform vec3 shallow_color : source_color = vec3(0.15, 0.23, 0.20);
-uniform vec3 deep_color : source_color = vec3(0.025, 0.065, 0.07);
+uniform vec3 shallow_color : source_color = vec3(0.12, 0.30, 0.27);
+uniform vec3 deep_color : source_color = vec3(0.015, 0.07, 0.09);
+uniform vec3 foam_color : source_color = vec3(0.85, 0.88, 0.85);
 uniform float depth_fade = 1.6;
 uniform sampler2D wave_a : hint_normal, filter_linear_mipmap, repeat_enable;
 uniform sampler2D wave_b : hint_normal, filter_linear_mipmap, repeat_enable;
@@ -34,10 +36,18 @@ void fragment() {
 	vec2 refr = SCREEN_UV + n.xy * 0.02 * k;
 	vec3 behind = textureLod(screen_tex, refr, 1.0).rgb;
 	vec3 tint = mix(shallow_color, deep_color, k);
-	// Opaque surface showing the refracted bottom through clear shallows; soft shoreline.
-	ALBEDO = mix(behind * 0.85, tint, clamp(k * 0.9 + 0.08, 0.0, 1.0));
-	ROUGHNESS = 0.14;
+	// The riverbed seen through the water is light that already reached the eye: pass it as emission (lighting
+	// it again as albedo made the water grey); the water's own colour takes over with depth.
+	float clear_k = 1.0 - clamp(k * 0.92 + 0.05, 0.0, 1.0);
+	ALBEDO = tint * (1.0 - clear_k);
+	EMISSION = behind * tint * 3.2 * clear_k;
+	// Foam: a broken, moving band where the water meets the bank.
+	float fn = texture(wave_a, wpos.xz * 0.6 + flow * TIME * 2.0).r * texture(wave_b, wpos.xz * 1.3 - flow * TIME).g;
+	float foam = (1.0 - smoothstep(0.03, 0.28, depth)) * smoothstep(0.18, 0.32, fn);
+	ALBEDO = mix(ALBEDO, foam_color, foam * 0.8);
+	float fres = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 4.0);
+	ROUGHNESS = mix(0.06, 0.6, foam);
 	METALLIC = 0.0;
-	SPECULAR = 0.38;
-	ALPHA = smoothstep(0.0, 0.4, depth);  // wide, soft shoreline instead of a hard cut along the terrain
+	SPECULAR = mix(0.5, 0.9, fres);
+	ALPHA = smoothstep(0.0, 0.25, depth);  // soft shoreline instead of a hard cut along the terrain
 }

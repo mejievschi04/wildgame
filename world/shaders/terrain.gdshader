@@ -63,7 +63,22 @@ void fragment() {
 		vec2 u2 = mat2(vec2(0.8, -0.6), vec2(0.6, 0.8)) * u * 0.43 + 0.5;
 		float mixv = smoothstep(0.35, 0.65, n2);
 		vec3 a = mix(texture(albedo_tex, vec3(u, float(i))).rgb, texture(albedo_tex, vec3(u2, float(i))).rgb, mixv);
-		if (i == 1) { a *= vec3(0.94, 0.99, 0.9); }  // restrained green tint keeps scanned grass natural
+		if (i == 1) {
+			// Meadow: keep the scan's detail (its brightness) but give it living colour — lush green with
+			// drier, yellowed patches (the same macro noise drives the grass blades' colour).
+			float lum = dot(a, vec3(0.299, 0.587, 0.114));
+			float dry = smoothstep(0.5, 0.85, texture(macro_noise, wpos.xz * 0.004).r + (n1 - 0.5) * 0.3);
+			vec3 meadow = mix(vec3(0.17, 0.26, 0.09), vec3(0.34, 0.32, 0.15), dry * 0.55);
+			a = mix(a, meadow * clamp(lum / 0.34, 0.65, 1.2), 0.75);
+		}
+		if (i == 0) {
+			// Forest floor: dark, damp litter with mossy patches (no bright bare dirt under the trees).
+			float moss = smoothstep(0.4, 0.75, n2 + (n1 - 0.5) * 0.4);
+			float l0 = dot(a, vec3(0.299, 0.587, 0.114));
+			vec3 litter = vec3(0.30, 0.24, 0.16) * (l0 / 0.32);   // brown needles and leaves, not orange sand
+			vec3 green = vec3(0.17, 0.22, 0.09) * (l0 / 0.32);    // moss
+			a = mix(a, mix(litter, green, moss), 0.7) * 0.82;
+		}
 		alb += a * w[i];
 		nrm += texture(normal_tex, vec3(u, float(i))).rgb * w[i];
 		arm += texture(arm_tex, vec3(u, float(i))).rgb * w[i];
@@ -76,6 +91,11 @@ void fragment() {
 	// Wet darkening near the waterline.
 	float wet = max(1.0 - smoothstep(-0.1, 0.5, h), rain_wetness * 0.75);
 	alb *= mix(1.0, 0.62, wet);
+	alb = mix(alb, vec3(dot(alb, vec3(0.299, 0.587, 0.114))), w[2] * 0.35);  // muddy banks: earthy, not orange
+	// Beyond the 3D grass, the ground reads as covered: meadows a deeper green, forests in their canopy's shade.
+	float far = smoothstep(18.0, 90.0, length(wpos - CAMERA_POSITION_WORLD));
+	alb = mix(alb, alb * vec3(0.82, 0.95, 0.72), far * w[1] * (1.0 - wet));
+	alb *= mix(1.0, 0.62, far * smoothstep(0.25, 0.8, forest));
 	ALBEDO = alb;
 	NORMAL_MAP = nrm;
 	NORMAL_MAP_DEPTH = 1.0;

@@ -158,6 +158,12 @@ func _ready() -> void:
 				var g := session.world.height_at(a.global_position.x, a.global_position.z)
 				print("FAUNA_GROUND %s body_y-ground=%.2f" % [a.species, a.global_position.y - g]))
 		p.head.rotation.x = -0.05
+	if _env("at") != "":  # SHOT_AT=x,z[,yaw_deg]: stand anywhere on the map (streams the region in)
+		var a := _env("at").split(",")
+		var pos := session.world.ground_point(float(a[0]), float(a[1])) + Vector3.UP * 0.3
+		p.global_position = pos
+		p.rotation.y = deg_to_rad(float(a[2])) if a.size() > 2 else 0.0
+		p.head.rotation.x = float(_env("pitch")) if _env("pitch") != "" else -0.05
 	if scenario == "tribe":  # the Neanderthal clan in a row with two Homo sapiens gatherers, held in their idle pose
 		session.world.wildlife.enabled = false
 		session.world.factions.change(&"clan", 100.0)
@@ -336,6 +342,15 @@ func _apply_bench() -> void:
 					for c in v.get_children():
 						if c is MultiMeshInstance3D and (f == "veg" or (c as MultiMeshInstance3D).visibility_range_end < 50.0):
 							c.visible = false
+			"meadow":
+				for v in root.find_children("MeadowGrass", "", true, false):
+					v.visible = false
+			"fx":
+				for v in root.find_children("AtmosphereFX", "", true, false):
+					v.visible = false
+			"far":
+				for v in root.find_children("FarForest", "", true, false):
+					v.visible = false
 			"volfog": env.volumetric_fog_enabled = false
 			"ssao": env.ssao_enabled = false
 			"shadows":
