@@ -6,14 +6,16 @@ const CHUNK := 48.0
 const LOAD_RADIUS := 3
 const GRASS_DENSITY := 0.9  # candidates per m²
 const GRASS_RANGE := 42.0
-const FERN_DENSITY := 0.07
+const FERN_DENSITY := 0.16
 const FERN_RANGE := 75.0
+const ROCK_RANGE := 160.0
 
 var world: ForestWorld
 var _rng := RandomNumberGenerator.new()
 var _grass_meshes: Array[Mesh] = []
 var _fern_meshes: Array[Mesh] = []
 var _ground_prop_meshes: Array[Mesh] = []
+var _rock_meshes: Array[Mesh] = []
 var _active: Dictionary = {}
 var _last_center := Vector2i(2147483647, 2147483647)
 
@@ -162,7 +164,7 @@ func _chunk(key: Vector2i, origin: Vector2, grass: Array[Mesh], ferns: Array[Mes
 		var prop_xf := Transform3D(Basis(Vector3.UP, _rng.randf() * TAU).scaled(Vector3.ONE * scale),
 			world.ground_point(x, z) - Vector3(0.0, 0.02, 0.0))
 		p_xf[index].append(prop_xf)
-	var n_grass := int(CHUNK * CHUNK * GRASS_DENSITY)
+	var n_grass := 0  # meadow grass is drawn by MeadowGrass (card clumps around the camera)
 	for i in n_grass:
 		var x := origin.x + _rng.randf() * CHUNK
 		var z := origin.y + _rng.randf() * CHUNK
@@ -178,18 +180,72 @@ func _chunk(key: Vector2i, origin: Vector2, grass: Array[Mesh], ferns: Array[Mes
 	for i in n_fern:
 		var x := origin.x + _rng.randf() * CHUNK
 		var z := origin.y + _rng.randf() * CHUNK
-		if _rng.randf() > _mask_at(mask, x, z) or not _ok_ground(x, z) or _within_clearance(x, z, pile_positions):
+		# under the trees and along forest edges; a few out in the meadow
+		if _rng.randf() > clampf(_mask_at(mask, x, z) * 1.3 + 0.08, 0.0, 1.0) or not _ok_ground(x, z) \
+				or _within_clearance(x, z, pile_positions):
 			continue
-		var xf := Transform3D(Basis(Vector3.UP, _rng.randf() * TAU).scaled(Vector3.ONE * _rng.randf_range(0.9, 1.6)),
+		var xf := Transform3D(Basis(Vector3.UP, _rng.randf() * TAU).scaled(Vector3.ONE * _rng.randf_range(1.1, 2.0)),
 			world.ground_point(x, z) + Vector3(0, -0.05, 0))
 		f_xf[_rng.randi() % ferns.size()].append(xf)
 	var center := Vector3(origin.x + CHUNK * 0.5, 0, origin.y + CHUNK * 0.5)
+	_place_rocks(key, origin, root, pile_positions)
 	for i in grass.size():
 		_multimesh(grass[i], g_xf[i], center, GRASS_RANGE, root)
 	for i in ferns.size():
 		_multimesh(ferns[i], f_xf[i], center, FERN_RANGE, root)
 	for i in _ground_prop_meshes.size():
 		_multimesh(_ground_prop_meshes[i], p_xf[i], center, FERN_RANGE, root)
+
+
+## Mossy boulders in groups out in the meadows and forest, and stones along and in the river (half sunk in the
+## shallows). Own RNG, so nothing else in the chunk (trees, piles, save ids) shifts. Visual MultiMeshes; boulders
+## big enough to block the way get a collision box.
+func _place_rocks(key: Vector2i, origin: Vector2, root: Node3D, avoid: Array[Vector2]) -> void:
+	if _rock_meshes.is_empty():
+		for path: String in AssetLib.ROCKS[&"medium"] + AssetLib.ROCKS[&"big"]:
+			_rock_meshes.append(AssetLib.mesh(path))
+	var rng := RandomNumberGenerator.new()
+	rng.seed = int(hash(Vector3i(key.x, key.y, ForestWorld.SEED + 1313)))
+	var xfs: Array = []
+	for i in _rock_meshes.size():
+		xfs.append([])
+	var add := func(x: float, z: float, sc: float, sink: float, solid: bool) -> void:
+		if _within_clearance(x, z, avoid) or not world.is_scatter_site_free(x, z, 0.8):
+			return
+		var k := rng.randi() % _rock_meshes.size()
+		var basis := Basis(Vector3.UP, rng.randf() * TAU) * Basis(Vector3.RIGHT, rng.randf_range(-0.15, 0.15))
+		var at := world.ground_point(x, z) - Vector3(0, sink * sc, 0)
+		xfs[k].append(Transform3D(basis.scaled(Vector3.ONE * sc), at))
+		if solid:
+			var body := StaticBody3D.new()
+			body.collision_layer = 1
+			body.collision_mask = 0
+			body.position = at + Vector3(0, 0.35 * sc, 0)
+			Graybox.add_shape(body, Graybox.box_shape(Vector3(1.1, 0.7, 1.1) * sc), Vector3.ZERO)
+			root.add_child(body)
+	# groups of boulders
+	for g in rng.randi_range(1, 3):
+		var cx := origin.x + rng.randf_range(4.0, CHUNK - 4.0)
+		var cz := origin.y + rng.randf_range(4.0, CHUNK - 4.0)
+		if Vector2(cx, cz).distance_to(ForestWorld.SPAWN) < 12.0 or not _ok_tree_ground(cx, cz):
+			continue
+		for r in rng.randi_range(2, 6):
+			var a := rng.randf() * TAU
+			var d := rng.randf_range(0.0, 3.5)
+			var sc := rng.randf_range(0.35, 1.0) if r > 0 else rng.randf_range(0.9, 1.6)
+			add.call(cx + cos(a) * d, cz + sin(a) * d, sc, 0.15, sc > 0.8)
+	# the river: stones on the banks and in the shallows
+	for i in 160:
+		var x := origin.x + rng.randf() * CHUNK
+		var z := origin.y + rng.randf() * CHUNK
+		var h := world.height_at(x, z)
+		if h < -0.9 or h > 1.0 or absf(x) > ForestWorld.PLAYABLE or absf(z) > ForestWorld.PLAYABLE:
+			continue
+		add.call(x, z, rng.randf_range(0.25, 0.9), 0.25, false)
+	var center := Vector3(origin.x + CHUNK * 0.5, 0, origin.y + CHUNK * 0.5)
+	for i in _rock_meshes.size():
+		if not (xfs[i] as Array).is_empty():
+			_multimesh(_rock_meshes[i], xfs[i], center, ROCK_RANGE, root)
 
 
 ## Flint outcrops beyond the start valley (which has its own hand-placed flint): river banks everywhere, and the
@@ -309,9 +365,10 @@ func _multimesh(mesh: Mesh, xfs: Array, center: Vector3, vis_range: float, root:
 	var mmi := MultiMeshInstance3D.new()
 	mmi.multimesh = mm
 	mmi.position = center
-	mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if vis_range == ROCK_RANGE \
+		else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	var q := Settings.quality()
-	mmi.visibility_range_end = q.grass_range if vis_range == GRASS_RANGE else q.fern_range
+	mmi.visibility_range_end = q.grass_range if vis_range == GRASS_RANGE else (ROCK_RANGE if vis_range == ROCK_RANGE else q.fern_range)
 	mmi.visibility_range_end_margin = 8.0
 	mmi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
 	root.add_child(mmi)

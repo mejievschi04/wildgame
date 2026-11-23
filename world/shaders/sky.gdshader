@@ -36,7 +36,9 @@ void sky() {
 	// sun: soft wide glow, a tighter halo and the disc
 	float sd = dot(d, LIGHT0_DIRECTION);
 	vec3 sun = LIGHT0_COLOR * LIGHT0_ENERGY;
-	if (LIGHT0_ENABLED) {
+	// The sun's disc and halo only where the eye sees the sky: in the radiance/ambient cubemap they would be
+	// blurred over every rough surface as a grey sheen (the DirectionalLight already lights and highlights them).
+	if (LIGHT0_ENABLED && !AT_CUBEMAP_PASS) {
 		col += sun * (pow(max(sd, 0.0), 6.0) * 0.12 + pow(max(sd, 0.0), 64.0) * 0.35) * day;
 		float disc = smoothstep(cos(radians(1.4)), cos(radians(1.0)), sd);
 		col += sun * disc * 6.0 * step(0.0, y);

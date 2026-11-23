@@ -64,6 +64,27 @@ FPS (fereastra AutoShot, calitate medie): la start ~51 (ca înainte de ambii pa�
 Tavren ~30 (la fel ca înainte: zona e scumpă din cauza copacilor reali). `--bench-off=far` / `meadow` / `fx` pentru
 măsurători, `SHOT_AT=x,z,yaw` și `SHOT_PITCH` pentru capturi oriunde pe hartă.
 
+## Pasul 3: vegetație și pietre, spre imaginea-țintă (2026-11-23)
+
+Ținta e `Downloads/scopjoc.png` (pajiște deasă, ferigi, pietre cu mușchi în râu, munți, pădure deasă). Pași: 1) vegetație
+și pietre (acesta), 2) munți în fundal, 3) pădure deasă, 4) râu de munte, 5) păsări și mâna la persoana întâi.
+
+- **Iarbă din carduri pictate** (`tools/blender/gen_grass_atlas.py` → `assets/textures/vegetation/T_GrassCards_D.png`):
+  4 smocuri generate procedural (pajiște, iarbă înaltă cu spice, smoc uscat, smoc înflorit cu flori mov, albe și
+  galbene), fiecare cu sute de fire subțiri. `grass_cards.gdshader` le desenează ca 3 carduri încrucișate (6
+  triunghiuri) pe grila care se mută cu camera. Shaderul alege smocul după zone: flori în pâlcuri, iarbă înaltă în fâșii,
+  smocuri uscate pe zonele uscate. De departe rămâne un singur card din trei. Vechile smocuri geometrice și vechea iarbă
+  de 500 de triunghiuri au fost scoase.
+- **Gazonul de sub iarbă**: aproape de cameră, terenul de sub smocuri e verde-închis, deci golurile par umbra ierbii,
+  nu pământ. Terenul e mat (rugozitate ≥ 0,85): textura scanată reflecta cerul și părea gri-albăstruie.
+- **Cerul nu mai luminează solul cu discul soarelui**: soarele e desenat doar pe cerul vizibil, nu și în cubemap-ul
+  de lumină ambientală (`AT_CUBEMAP_PASS`).
+- **Pietre** (`Vegetation._place_rocks`): grupuri de bolovani cu mușchi (scanări Poly Haven) pe pajiști și în pădure,
+  cu coliziune la cei mari; pietre pe maluri și în apa mică. RNG propriu, deci salvările nu se schimbă.
+- **Ferigi**: de 2,3 ori mai multe, mai mari, și la marginea pajiștilor; verde mai închis (nu mai sunt verde-lămâie).
+
+FPS: start ~46, râu ~47, Meyra ~51, Tavren ~32 (înainte: 51 / 55 / 49 / 30).
+
 ## Următorii pași propuși
 
 1. **Pădurea de aproape**: copacii reali sunt așezați uniform; grupați în pâlcuri, cu tufișuri și bușteni căzuți.

@@ -114,6 +114,9 @@ static func tuned(m: Material, profile: StringName = &"ground") -> Material:
 		else:
 			f.set_shader_parameter("sway", 0.12)
 			f.set_shader_parameter("height_ref", 0.35)
+			# ferns and shrubs: deeper, less yellow green (the scans read lime against the forest floor)
+			f.set_shader_parameter("color_mul", Vector3(0.62, 0.72, 0.5))
+			f.set_shader_parameter("backlight_color", Color(0.18, 0.24, 0.08))
 		out = f
 	_tuned[key] = out
 	return out

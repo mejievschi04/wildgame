@@ -352,6 +352,8 @@ func _apply_bench() -> void:
 				for v in root.find_children("FarForest", "", true, false):
 					v.visible = false
 			"volfog": env.volumetric_fog_enabled = false
+			"ssil": env.ssil_enabled = false
+			"sdfgi": env.sdfgi_enabled = false
 			"ssao": env.ssao_enabled = false
 			"shadows":
 				for l: DirectionalLight3D in root.find_children("*", "DirectionalLight3D", true, false):

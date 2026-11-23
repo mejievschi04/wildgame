@@ -93,7 +93,13 @@ void fragment() {
 	alb *= mix(1.0, 0.62, wet);
 	alb = mix(alb, vec3(dot(alb, vec3(0.299, 0.587, 0.114))), w[2] * 0.35);  // muddy banks: earthy, not orange
 	// Beyond the 3D grass, the ground reads as covered: meadows a deeper green, forests in their canopy's shade.
-	float far = smoothstep(18.0, 90.0, length(wpos - CAMERA_POSITION_WORLD));
+	float cam_d = length(wpos - CAMERA_POSITION_WORLD);
+	float far = smoothstep(18.0, 90.0, cam_d);
+	// Under the 3D grass the ground is the dark, shaded base of the sward: gaps between clumps read as grass, not dirt.
+	// (wherever MeadowGrass grows: open, dry ground up to fairly steep slopes, including the rock layer's edge)
+	float grassy = (1.0 - smoothstep(0.42, 0.62, slope)) * (1.0 - w[2] - w[4] - w[5]) * (1.0 - smoothstep(0.62, 0.9, forest));
+	float sward = clamp(grassy, 0.0, 1.0) * (1.0 - smoothstep(20.0, 34.0, cam_d)) * (1.0 - wet);
+	alb = mix(alb, vec3(0.04, 0.055, 0.02) * (0.8 + 0.4 * n2), sward);
 	alb = mix(alb, alb * vec3(0.82, 0.95, 0.72), far * w[1] * (1.0 - wet));
 	alb *= mix(1.0, 0.62, far * smoothstep(0.25, 0.8, forest));
 	ALBEDO = alb;
@@ -101,6 +107,8 @@ void fragment() {
 	NORMAL_MAP_DEPTH = 1.0;
 	AO = arm.r;
 	AO_LIGHT_AFFECT = 0.4;
-	ROUGHNESS = mix(arm.g, 0.25, wet * 0.7);
+	// Ground is matte (scanned roughness on the meadow layer let it mirror the bright sky at grazing angles).
+	ROUGHNESS = mix(max(arm.g, 0.85), 0.25, wet * 0.7);
+	SPECULAR = mix(0.25, 0.5, wet);
 	METALLIC = 0.0;
 }
