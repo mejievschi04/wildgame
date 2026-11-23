@@ -41,6 +41,7 @@ var tracks: Tracks
 var wildlife: Wildlife
 var factions: Factions
 var camps: Camps
+var npc_nav: NpcNav
 var _camp_sites: Array[Vector2] = []
 var _camp_heights: Array[float] = []
 var _camp_clearings: Array[Vector2] = []
@@ -115,6 +116,10 @@ func _ready() -> void:
 		factions.name = "Factions"
 		factions.world = self
 		add_child(factions)
+		npc_nav = NpcNav.new()
+		npc_nav.name = "NpcNav"
+		npc_nav.world = self
+		add_child(npc_nav)
 		camps = Camps.new()
 		camps.name = "Camps"
 		camps.world = self
@@ -363,6 +368,11 @@ func _terrain_height(x: float, z: float, legacy_river := false) -> float:
 
 
 ## Interpolate the same two triangles used by the visible terrain and its collision mesh.
+## Dry, walkable ground well inside the map (hunting grounds, forage spots).
+func habitat_ok_for_people(p: Vector3) -> bool:
+	return height_at(p.x, p.z) > WATER_LEVEL + 0.4 and absf(p.x) < PLAYABLE - 20.0 and absf(p.z) < PLAYABLE - 20.0
+
+
 func height_at(x: float, z: float) -> float:
 	if _terrain_heights.is_empty() or absf(x) > HALF or absf(z) > HALF:
 		return _terrain_height(x, z)

@@ -542,6 +542,7 @@
 		"NPC_CLAN": "Человек клана",
 		"NPC_GATHERERS": "Собиратель",
 		"NPC_DEAD": "мёртв",
+		"NPC_ASLEEP": "спит",
 		"STANCE_HOSTILE": "враждебен",
 		"STANCE_WARY": "насторожен",
 		"STANCE_NEUTRAL": "спокоен",

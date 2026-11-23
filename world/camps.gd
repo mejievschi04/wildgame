@@ -15,6 +15,7 @@ const GUARD_UNLOAD_RADIUS := 210.0
 var world: ForestWorld
 var factions: Factions
 var npcs: Dictionary = {}  # id -> HumanNPC
+var groups: Dictionary = {}  # group id -> TribeGroup (one per camp / active base)
 var _regional_guards: Dictionary = {}  # base id -> Array[HumanNPC]
 var _regional_states: Dictionary = {}  # guard id -> saved health/death while inactive
 var _stream_t := 0.0
@@ -109,6 +110,7 @@ func spawn_people() -> void:
 		var c := site(d)
 		var center := world.ground_point(c.x, c.y)
 		var variants: Array = d.get("variants", ["M1"])
+		var g := _make_group("camp_%s" % f, f, c, int(d.get("count", 2)))
 		for i in int(d.get("count", 2)):
 			var a := TAU * i / float(d.count) + 0.3
 			var pp := center + Vector3(cos(a), 0, sin(a)) * 2.4
@@ -116,9 +118,36 @@ func spawn_people() -> void:
 			var id := "npc_%s_%d" % [f, i]
 			npc.setup(id, f, str(variants[i % variants.size()]), factions, world, center,
 				world.ground_point(pp.x, pp.z) + Vector3.UP * 0.1, hash(id))
+			npc.group = g
+			g.members.append(npc)
 			add_child(npc)
 			npc.rotation.y = atan2(center.x - pp.x, center.z - pp.z)
 			npcs[id] = npc
+	_bake_camps.call_deferred()
+
+
+## A camp's shared places: the fire, the store (approached from the fire side) and sleeping spots around
+## the hearth, clear of the shelters and the store.
+func _make_group(id: String, f: StringName, c: Vector2, count: int) -> TribeGroup:
+	var center := world.ground_point(c.x, c.y)
+	var store := world.ground_point(c.x - 3.5, c.y + 2.5)
+	var g := TribeGroup.new(id, f, center, store.lerp(center, 0.4))
+	for i in count:
+		var a := 1.8 + TAU * i / float(maxi(count, 1)) * 0.8
+		var p := center + Vector3(cos(a), 0, sin(a)) * 2.7
+		g.beds.append(world.ground_point(p.x, p.z))
+	groups[id] = g
+	return g
+
+
+func _bake_camps() -> void:
+	if world.npc_nav == null or not is_inside_tree():
+		return
+	for i in 2:  # new colliders reach the physics space on the next step
+		await get_tree().physics_frame
+	for f: StringName in factions.defs.keys():
+		var c := site(factions.defs[f])
+		world.npc_nav.add_site("camp_%s" % f, world.ground_point(c.x, c.y), 30.0)
 
 
 func _process(delta: float) -> void:
@@ -143,6 +172,9 @@ func _stream_regional_guards(at: Vector3) -> void:
 					remove_child(n)
 					n.queue_free()
 				_regional_guards.erase(id)
+				groups.erase("base_%s" % id)
+				if world.npc_nav:
+					world.npc_nav.remove_site("base_%s" % id)
 		elif distance < GUARD_LOAD_RADIUS:
 			_spawn_regional_guards(id, c, int(d.level), float(d.wall_radius))
 
@@ -151,6 +183,8 @@ func _spawn_regional_guards(base_id: String, c: Vector2, level: int, wall_radius
 	var guards: Array[HumanNPC] = []
 	var center := world.ground_point(c.x, c.y)
 	var variants: Array = factions.def_of(&"clan").variants
+	var g := _make_group("base_%s" % base_id, &"clan", c, level + 1)
+	g.guards = true
 	for i in level + 1:
 		var a := 0.3 + TAU * i / float(level + 1)
 		var pos := c + Vector2(cos(a), sin(a)) * (3.5 if level < 4 else 5.5)
@@ -160,6 +194,8 @@ func _spawn_regional_guards(base_id: String, c: Vector2, level: int, wall_radius
 			world.ground_point(pos.x, pos.y) + Vector3.UP * 0.1, hash(id))
 		n.territory_radius = maxf(20.0, wall_radius + 12.0)
 		n.warn_time = 12.0 - level * 2.0
+		n.group = g
+		g.members.append(n)
 		add_child(n)
 		n.rotation.y = atan2(c.x - pos.x, c.y - pos.y)
 		if _regional_states.has(id):
@@ -168,6 +204,8 @@ func _spawn_regional_guards(base_id: String, c: Vector2, level: int, wall_radius
 		guards.append(n)
 		npcs[id] = n
 	_regional_guards[base_id] = guards
+	if world.npc_nav:
+		world.npc_nav.add_site("base_%s" % base_id, center, maxf(24.0, wall_radius + 12.0))
 
 
 func save_state() -> Dictionary:

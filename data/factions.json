@@ -31,10 +31,10 @@
 		"start": -15,
 		"temper": "territorial",
 		"variants": [
-			"M1",
-			"M2",
-			"M3",
-			"F2"
+			"NM1",
+			"NM2",
+			"NF1",
+			"NM3"
 		],
 		"count": 4,
 		"armed": true,

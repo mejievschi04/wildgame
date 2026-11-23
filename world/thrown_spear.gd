@@ -42,7 +42,7 @@ func _orient() -> void:
 
 
 func _on_body_entered(body: Node) -> void:
-	if not flying:
+	if not flying or body == thrower:
 		return
 	if body is HumanNPC and not (body as HumanNPC).is_dead():
 		(body as HumanNPC).take_damage(base_damage * clampf(linear_velocity.length() / ref_speed, 0.4, 1.2), thrower, global_position)

@@ -3,6 +3,7 @@ extends Node
 ## DEV TOOL: deterministic screenshots for verification.
 ## Usage: godot --path . -- --autoshot=/abs/out.png [--shot-frames=120] [--shot-hour=21.5] [--shot-scenario=inventory]
 ## Scenarios: none, inventory, journal, pause, camp (lit fire + bed in view), kit (starter items), prompt (aim at sticks),
+## tribe (Neanderthal clan + two sapiens in a row), tribelife (a camp at work / asleep; SHOT_CAMP=hunters|clan|gatherers),
 ## build (hut + lean-to + blueprint + active ghost), buildmenu (radial menu), fauna (all species, live), spear / club / bow (weapon in hand; bow mid-draw), river (main river valley from the bank), house (3/4 view of the build demo), farm (garden beds + wild plants).
 
 var out_path := ""
@@ -152,6 +153,38 @@ func _ready() -> void:
 				var g := session.world.height_at(a.global_position.x, a.global_position.z)
 				print("FAUNA_GROUND %s body_y-ground=%.2f" % [a.species, a.global_position.y - g]))
 		p.head.rotation.x = -0.05
+	if scenario == "tribe":  # the Neanderthal clan in a row with two Homo sapiens gatherers, held in their idle pose
+		session.world.wildlife.enabled = false
+		session.world.factions.change(&"clan", 100.0)
+		var cam := p.get_viewport().get_camera_3d()
+		var fwd := -cam.global_transform.basis.z
+		fwd.y = 0.0
+		fwd = fwd.normalized()
+		var right := fwd.cross(Vector3.UP)
+		var ids := ["npc_clan_0", "npc_clan_2", "npc_clan_1", "npc_gatherers_0", "npc_gatherers_1", "npc_clan_3"]
+		for i in ids.size():
+			var n: HumanNPC = session.world.camps.npcs[ids[i]]
+			var dist := float(OS.get_environment("SHOT_DIST")) if OS.get_environment("SHOT_DIST") != "" else 3.4
+			var pos: Vector3 = p.global_position + fwd * (dist + absf(i - 2.5) * 0.25) + right * (i - 2.5) * 0.9
+			n.global_position = session.world.ground_point(pos.x, pos.z)
+			n.rotation.y = atan2(-fwd.x, -fwd.z) + deg_to_rad(float(OS.get_environment("SHOT_TURN")) if OS.get_environment("SHOT_TURN") != "" else 0.0)
+			n.set_physics_process(false)
+			var clip := OS.get_environment("SHOT_ANIM")  # e.g. life/sleep, life/work, combat/throw
+			n._play(clip if clip != "" and n._anim.has_animation(clip) else "idle")
+			if OS.get_environment("SHOT_ANIM_T") != "" and n._anim.has_animation(clip):
+				n._anim.speed_scale = 0.0
+				n._anim.seek(float(OS.get_environment("SHOT_ANIM_T")), true)
+		p.head.rotation.x = -0.12
+	if scenario == "tribelife":  # a camp seen from outside: at work by day, asleep around the fire at night
+		session.world.wildlife.enabled = false
+		var g: TribeGroup = session.world.camps.groups["camp_" + str(OS.get_environment("SHOT_CAMP") if OS.get_environment("SHOT_CAMP") != "" else "hunters")]
+		var at := g.home + Vector3(1.5, 0.0, -9.5)  # the side without shelters
+		p.global_position = session.world.ground_point(at.x, at.z) + Vector3.UP * 0.3
+		p.look_at(Vector3(g.home.x, p.global_position.y, g.home.z))
+		p.rotation.x = 0
+		p.head.rotation.x = -0.3
+		for f: StringName in session.world.factions.defs:
+			session.world.factions.change(f, 60.0)
 	if scenario == "carcass":
 		var cpos: Vector3 = session.world.get_node("POI_Carcass").global_position
 		p.global_position = cpos + Vector3(3.0, 0.5, 2.0)

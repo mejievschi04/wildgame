@@ -39,10 +39,9 @@ Relation −100…+100 → stance: hostile ≤ −40 < wary < 10 ≤ neutral < 5
 aggression, NPC spear hit, discovery journal + sleep safety, persistence of relations/discoveries/deaths.
 
 ## Limitations
-- Bodies are realistic but skin/clothes are untextured-by-hand (flat skin tone, leather), hair is a shell (no strands),
-  faces have no expressions; NPC hands hold the spear rigidly.
-- No pathfinding — NPCs move in straight lines inside their camps; no NPC-vs-wolf fights yet.
-- Barter is one-for-one; no quests yet (Act II goal: find where your group went).
+- NPC hands hold the spear rigidly; carried food/sticks are held in the left hand without a grip pose.
+- Pathfinding covers the camps and bases only (NpcNav); hunting trips steer directly with local avoidance.
+- Barter is one-for-one and does not draw from the camp's stock yet; no quests yet (Act II goal: find where your group went).
 
 ## Hominin races (concept sheet) — step 1: Homo sapiens (2026-11-22)
 The six races follow the user's concept sheet: Heidelbergensis, Neanderthal, Homo sapiens, Denisovan,
@@ -62,3 +61,43 @@ about 60 s per model. It reuses the rig, clips and severable parts from `gen_hum
 - Preview: `tools/blender/preview_face.py` (expression sheet), web bestiary "Oameni" section.
 - Budget: M ≈ 124k tris including hair and fur cards (body + clothes ≈ 47k), F ≈ 89k. That's above the sheet's 25–40k; a hair-card LOD
   pass is the follow-up.
+
+## Hominin races — step 2: Neanderthal (2026-11-23)
+`gen_hominins.py -- NeanderthalM NeanderthalF`. Short, very robust, barrel chest (macros + torso/neck morphs); heavy brow
+ridge, sloping forehead, long low skull, broad projecting nose and midface, weak chin. Lighter skin, reddish-brown hair,
+full beard, red-ochre smear on the cheekbones (no white paint). Heavier furs per the concept: the mantle drops lower and
+hangs down the back as a cape; women wear a fur collar over both shoulders; tall fur boots. New spec options shared by
+all races: `mantle_drop`, `mantle_back`, `female_mantle`, `boot_h`, `fur_len`, `face_depth` / `front_sweep` (keeps hair off
+a sloping forehead). Budget: M ≈ 137k tris (body + clothes ≈ 47k), F ≈ 107k — the hair-card LOD pass is still open.
+In game the **clan** (and the regional garrisons) are Neanderthals: variants `NM1–NM3`, `NF1–NF2` in `HumanNPC.BODY_STYLES`.
+
+## NPC AI v2 — a day in camp, beasts, fighting together, movement (2026-11-23)
+New clips, baked onto the shipped rigs by `bake_human_combat.py` (no mesh rebuild): `combat/feint`, `combat/throw`
+(release frame 17), `combat/hit_l`, `combat/hit_r`, and a `life` library — `sleep` (on the side, breathing), `work`
+(squat and pick at the ground), `step` (stepping on the spot while the body pivots). All four hominin models have both.
+
+**Camp life** (`TribeGroup`, one per camp / active base): by the clock — night 22:00–5:30 everyone sleeps around the
+hearth except one watch (garrisons: every other guard); morning and evening by the fire (sit, talk, tend the fire); by
+day the temper's plan: gatherers forage → pick (`work`) → carry it to the store (`DELIVER`, the camp's `stock` grows);
+hunters work, patrol, talk; the clan patrols its edge. Kin tend a wounded member (`TEND`: +35 hp, stops bleeding).
+**Hunting party**: once a day two armed hunters walk 50–85 m out, search, stalk prey (prey now notices people within
+10 m), throw and thrust, butcher the kill (8 s), pick their thrown spears back up and carry the meat to the store.
+
+**Beasts**: armed people fight predators that come close or go for one of them — kin within 25 m join; lions and bears
+only when three or more armed are near, otherwise everyone runs to the fire (beasts fear it). Charging defensive
+animals are avoided. Predators (wolves, cats) on a hungry day or at night go for a person alone and away from the fire;
+their bites hurt NPCs; spears hurt animals, which fight back.
+
+**Fighting together**: each fighter gets a slot around the foe, spread evenly; only two hold attack tokens and close
+in, the rest circle on their slot and sometimes fake a lunge. A raised guard draws a **feint**; a spear is **thrown**
+from 6–15 m (one spare each); a blow during the wind-up spoils the attack and plays a directional hit reaction; the
+group falls back when half of its fighters on that foe are badly hurt.
+
+**Movement**: `NpcNav` bakes a navigation mesh (terrain + every collider's footprint + the fire) around each camp and
+active base on a worker thread; people path around fires, shelters and palisades. Head and neck turn toward what the
+person attends to (foe, stranger, partner, next path point) before the body (`LookAtModifier3D`, about ±80°);
+turning on the spot plays `life/step`; walking speeds build up and run down over a step or two.
+
+Screenshots: `--shot-scenario=tribe` (clan lineup; `SHOT_ANIM=life/sleep`, `SHOT_DIST`, `SHOT_TURN`) and
+`--shot-scenario=tribelife` (a camp from outside, `SHOT_CAMP=hunters|clan|gatherers`, with `--shot-hour`).
+Tests: `tests/test_npc_ai.gd` (12).

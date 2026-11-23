@@ -219,14 +219,14 @@ func take_damage(amount: float, source: Node3D = null, hit_pos: Vector3 = Vector
 		if health < max_health * float(def.get("flee_health", 0.4)):
 			calm_until = _uptime + 120.0
 			_set_state(State.FLEE)
-		elif source and source.is_in_group("player"):
+		elif source and (source.is_in_group("player") or source is HumanNPC):
 			awareness = 1.0
 			_set_state(State.CHASE)
 	elif is_defensive():
 		if health < max_health * float(def.get("flee_health", 0.25)):
 			calm_until = _uptime + 120.0
 			_set_state(State.FLEE)
-		elif source and source.is_in_group("player"):
+		elif source and (source.is_in_group("player") or source is HumanNPC):
 			awareness = 1.0
 			calm_until = 0.0
 			_set_state(State.CHASE)
@@ -341,8 +341,12 @@ func _think_prey(_dt: float, p: Node3D, stim: float) -> void:
 	var d := p.global_position.distance_to(global_position) if p else INF
 	match state:
 		State.IDLE, State.GRAZE, State.WANDER:
+			var person := _person_close(10.0)
 			if awareness > 0.35:
 				threat = p
+				_set_state(State.ALERT)
+			elif person:
+				threat = person
 				_set_state(State.ALERT)
 			elif state == State.GRAZE and state_time > rng.randf_range(6.0, 14.0):
 				_set_state(State.WANDER)
@@ -351,7 +355,10 @@ func _think_prey(_dt: float, p: Node3D, stim: float) -> void:
 			elif state == State.WANDER and (global_position.distance_to(_goal) < 1.5 or state_time > 25.0):
 				_set_state(State.IDLE if rng.randf() < 0.4 else State.GRAZE)
 		State.ALERT:
-			if awareness > 0.8 or (d < 12.0 and stim > 0.2):
+			if threat is HumanNPC and is_instance_valid(threat) and threat.global_position.distance_to(global_position) < 8.0:
+				_alarm_herd(threat)
+				_set_state(State.FLEE)
+			elif awareness > 0.8 or (d < 12.0 and stim > 0.2):
 				_alarm_herd(p)
 				_set_state(State.FLEE)
 			elif awareness < 0.15 and state_time > 4.0:
@@ -372,12 +379,25 @@ func _think_predator(_dt: float, p: Node3D, stim: float) -> void:
 	var d := p.global_position.distance_to(global_position) if p else INF
 	var near_fire := _fire_near(p.global_position if p else global_position)
 	var may_engage := _uptime >= calm_until
+	if threat is HumanNPC and is_instance_valid(threat) and state in [State.CHASE, State.ATTACK]:
+		# Hunting a person: distances and fire are measured at them, not at the player.
+		d = threat.global_position.distance_to(global_position)
+		near_fire = _fire_near(threat.global_position)
+		if (threat as HumanNPC).is_dead():
+			hungry = false
+			calm_until = _uptime + 90.0
+			_set_state(State.IDLE)
+			return
 	match state:
 		State.PATROL, State.IDLE:
 			var prey := _find_prey()
+			var person := _find_person() if may_engage else null
 			if hungry and prey:
 				threat = prey
 				_set_state(State.HUNT_PREY)
+			elif person:
+				threat = person
+				_set_state(State.CHASE)
 			elif may_engage and awareness > 0.4:
 				_set_state(State.SUSPICIOUS)
 			elif state == State.PATROL and (global_position.distance_to(_goal) < 2.0 or state_time > 40.0):
@@ -398,7 +418,7 @@ func _think_predator(_dt: float, p: Node3D, stim: float) -> void:
 		State.CHASE:
 			if threat == null or not is_instance_valid(threat):
 				_set_state(State.PATROL)
-			elif state_time > float(def.give_up) or d > 45.0 or (p and p.get("dead") == true):
+			elif state_time > float(def.give_up) or d > 45.0 or (threat == p and p and p.get("dead") == true):
 				calm_until = _uptime + 60.0
 				_set_state(State.PATROL)
 			elif near_fire and d < float(def.fire_fear):
@@ -444,6 +464,11 @@ func _wants_to_attack(p: Node3D) -> bool:
 
 func _think_defensive(_dt: float, p: Node3D, stim: float) -> void:
 	var d := p.global_position.distance_to(global_position) if p else INF
+	if threat is HumanNPC and is_instance_valid(threat) and state in [State.CHASE, State.ATTACK]:
+		d = threat.global_position.distance_to(global_position)
+		if (threat as HumanNPC).is_dead():
+			_set_state(State.RECOVER)
+			return
 	var charge := float(def.get("charge_range", 8.0))
 	var may_engage := _uptime >= calm_until
 	match state:
@@ -469,7 +494,7 @@ func _think_defensive(_dt: float, p: Node3D, stim: float) -> void:
 			elif state_time > float(def.get("give_up", 10.0)) or d > charge * 3.0:
 				calm_until = _uptime + 45.0
 				_set_state(State.RECOVER)
-			elif _fire_near(p.global_position if p else global_position) and d < float(def.get("fire_fear", 6.0)):
+			elif _fire_near(threat.global_position if threat and is_instance_valid(threat) else global_position) and d < float(def.get("fire_fear", 6.0)):
 				calm_until = _uptime + 30.0
 				_set_state(State.FLEE)
 			elif d <= float(def.attack_range) and _attack_cd <= 0.0:
@@ -511,6 +536,40 @@ func _find_prey() -> Animal:
 	return best
 
 
+## A tribesperson walking up close (prey animals don't let hunters stroll in).
+func _person_close(radius: float) -> HumanNPC:
+	for n: HumanNPC in get_tree().get_nodes_in_group("npc"):
+		if not n.is_dead() and n.global_position.distance_to(global_position) < radius:
+			return n
+	return null
+
+
+## A person worth attacking: wolves and cats on a hungry day or at night go for someone alone and away from
+## the fire. Bears (territorial, not hunters) only answer people who come too close.
+func _find_person() -> HumanNPC:
+	var night: bool = world.day_night.is_night() if world else false
+	var hunts := bool(def.get("hunts", true))
+	var best: HumanNPC = null
+	var best_d := float(def.sight) * (0.6 if night else 0.45)
+	for n: HumanNPC in get_tree().get_nodes_in_group("npc"):
+		if n.is_dead():
+			continue
+		var d := n.global_position.distance_to(global_position)
+		var intruder := d < float(def.get("territory", 0.0))
+		if d >= best_d or not (intruder or (hunts and (hungry or night))) or _fire_near(n.global_position):
+			continue
+		var company := 0
+		for m: HumanNPC in get_tree().get_nodes_in_group("npc"):
+			if m != n and not m.is_dead() and m.armed and m.global_position.distance_to(n.global_position) < 8.0:
+				company += 1
+		if company >= 2 and max_health < 200.0 and not intruder:
+			continue  # a wolf won't take on an armed group
+		if _line_of_sight(n.global_position + Vector3.UP):
+			best = n
+			best_d = d
+	return best
+
+
 func _alarm_herd(source: Node3D) -> void:
 	for a: Animal in herd:
 		if is_instance_valid(a) and not a.is_dead() and a.state != State.FLEE \
@@ -539,6 +598,11 @@ func _update_attack(delta: float) -> void:
 				var dir := (p.global_position - global_position).normalized()
 				if (-global_transform.basis.z).dot(dir) > 0.4 and p.has_method("take_hit"):
 					p.take_hit(float(def.damage), species, float(def.get("bleed_chance", 0.0)), global_position, self)
+			elif threat is HumanNPC and is_instance_valid(threat) and not (threat as HumanNPC).is_dead() \
+					and threat.global_position.distance_to(global_position) <= float(def.attack_range) + 0.5:
+				var to_n := (threat.global_position - global_position).normalized()
+				if (-global_transform.basis.z).dot(to_n) > 0.4:
+					(threat as HumanNPC).take_damage(float(def.damage), self, threat.global_position + Vector3.UP * 1.0)
 
 
 # ---------------------------------------------------------------- locomotion
