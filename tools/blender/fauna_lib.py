@@ -96,6 +96,100 @@ class Sculpt:
         return F, lo
 
 
+def carve_mouth(sc, sp):
+    """Cuts the lip line (a thin slit across the muzzle) so the jaw bone can open a real mouth instead of
+    stretching a closed muzzle. sp["mouth"] = ((y_back, z_back), (y_front, z_front), half_width, gap)."""
+    m = sp.get("mouth")
+    if not m:
+        return sc
+    (y0, z0), (y1, z1), hw, gap = m
+    ang = math.degrees(math.atan2(z1 - z0, y1 - y0))
+    n = 7
+    seg = math.hypot(y1 - y0, z1 - z0) / n
+    for i in range(n):
+        t = (i + 0.5) / n
+        taper = 0.55 + 0.45 * min(1.0, t * 3.0)          # the corner of the mouth closes up
+        sc.ell((0, y0 + (y1 - y0) * t, z0 + (z1 - z0) * t), (hw, seg * 0.75, gap * 0.5 * taper), (ang, 0, 0),
+               k=0.003, sub=True)
+    return sc
+
+
+def mouth_mask(P, sp):
+    """1 for points on the slit walls (gums / lips), else 0."""
+    m = sp.get("mouth")
+    if not m:
+        return np.zeros(len(P))
+    (y0, z0), (y1, z1), hw, gap = m
+    a = np.array((y0, z0)); b = np.array((y1, z1)); ab = b - a
+    q = P[:, 1:3]
+    t = np.clip(((q - a) @ ab) / (ab @ ab), 0, 1.04)
+    d = np.linalg.norm(q - (a + np.outer(t, ab)), axis=1)
+    return ((d < gap * 1.7) & (np.abs(P[:, 0]) < hw) & (t > 0.0)).astype(float)
+
+
+def mouth_parts(sp):
+    """Inside of the mouth, so an open jaw shows a dark mouth and a tongue instead of the sky behind the head.
+    A thin dark membrane sits in the lip slit: its upper edge is skinned to the head, its lower edge to the jaw,
+    so it stretches to exactly fill the opening. A small tongue rides inside the lower jaw.
+    Returns [(object, bone)]; bone None = the object brings its own head / jaw vertex groups."""
+    m = sp.get("mouth")
+    if not m:
+        return []
+    (y0, z0), (y1, z1), hw, gap = m
+    depth = sp.get("mouth_depth", 0.035)
+    L = math.hypot(y1 - y0, z1 - z0)
+    uy, uz = (y1 - y0) / L, (z1 - z0) / L
+    ny, nz = -uz, uy                                   # across the lip line, pointing up
+    w = sp.get("mouth_width", min(hw * 0.25, 0.5 * depth))
+    pal = simple_mat(f"M_{sp['name']}_Palate", (0.07, 0.025, 0.025), 0.5)
+    ton = simple_mat(f"M_{sp['name']}_Tongue", (0.42, 0.14, 0.14), 0.45)
+    out = []
+    # membrane: stations along the lip line, a box section 2w wide and `gap` tall
+    bm = bmesh.new()
+    rows = []
+    n = 9
+    for i in range(n):
+        t = -0.03 + sp.get("mouth_reach", 0.7) * i / (n - 1)
+        cy, cz = y0 + (y1 - y0) * t, z0 + (z1 - z0) * t
+        ring = []
+        for (sx, sz) in ((-1, -1), (1, -1), (1, 1), (-1, 1)):
+            h = gap * 0.45
+            ring.append(bm.verts.new((sx * w, cy + ny * h * sz, cz + nz * h * sz)))
+        rows.append(ring)
+    for i in range(n - 1):
+        a_, b_ = rows[i], rows[i + 1]
+        for k in range(4):
+            bm.faces.new((a_[k], a_[(k + 1) % 4], b_[(k + 1) % 4], b_[k]))
+    bm.faces.new(rows[0][::-1])
+    bm.faces.new(rows[-1])
+    me = bpy.data.meshes.new("MouthMembrane")
+    bm.to_mesh(me)
+    bm.free()
+    o = bpy.data.objects.new("MouthMembrane", me)
+    bpy.context.scene.collection.objects.link(o)
+    gh = o.vertex_groups.new(name="head")
+    gj = o.vertex_groups.new(name="jaw")
+    for v in me.vertices:
+        top = (v.co.y - y0) * ny + (v.co.z - z0) * nz > 0
+        (gh if top else gj).add([v.index], 1.0, "REPLACE")
+    me.materials.append(pal)
+    out.append((o, None))
+    # tongue: inside the lower jaw, just under the lip line
+    bpy.ops.mesh.primitive_uv_sphere_add(segments=20, ring_count=10, radius=1.0)
+    o = bpy.context.object
+    o.name = "MouthTongue"
+    o.scale = (w * 0.9, L * 0.3, gap * 0.55)
+    o.rotation_euler = (math.atan2(uz, uy), 0, 0)
+    t = 0.45
+    o.location = (0, y0 + (y1 - y0) * t - ny * gap * 0.55, z0 + (z1 - z0) * t - nz * gap * 0.55)
+    bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+    for poly in o.data.polygons:
+        poly.use_smooth = True
+    o.data.materials.append(ton)
+    out.append((o, "jaw"))
+    return out
+
+
 def sd_cone(P, a, b, r1, r2):
     """Inigo Quilez's exact round cone (tapered capsule)."""
     ba = b - a
@@ -334,18 +428,69 @@ def lin(c):
 
 # ============================================================== skeleton
 
-def bone_table(sp):
-    """[(bone, head_joint, tail_joint, parent)] — standard quadruped + species extras."""
-    B = [("hips", "tail", "hips", None), ("spine", "hips", "spine", "hips"), ("chest", "spine", "chest", "spine"),
+def bone_table(sp, legacy=False):
+    """[(bone, head_joint, tail_joint, parent)].
+
+    Rig v2 (33 bones + species extras): hips, spine, spine2, chest; neck, neck2, head, snout, jaw; ears; a four-bone
+    tail; per front leg scapula, upperarm, forearm, hoof_f (cannon / metacarpus), hoof_f_toe (paw or hoof);
+    per hind leg thigh, shin, hoof_h (metatarsus), hoof_h_toe. legacy=True gives the old 23-bone table, used for
+    coat and fur zoning so the species colour functions keep seeing the names they were written for."""
+    if legacy:
+        B = [("hips", "tail", "hips", None), ("spine", "hips", "spine", "hips"), ("chest", "spine", "chest", "spine"),
+             ("neck", "chest", "neck", "chest"), ("neck2", "neck", "neck2", "neck"), ("head", "neck2", "head", "neck2"),
+             ("snout", "head", "nose", "head"), ("tail", "tail", "tail2", "hips"), ("tail_tip", "tail2", "tail3", "tail"),
+             ("ear.L", "ear.L", "ear_t.L", "head"), ("ear.R", "ear.R", "ear_t.R", "head")]
+        for s in ("L", "R"):
+            B += [(f"upperarm.{s}", f"sh.{s}", f"el.{s}", "chest"), (f"forearm.{s}", f"el.{s}", f"ca.{s}", f"upperarm.{s}"),
+                  (f"hoof_f.{s}", f"ca.{s}", f"fh.{s}", f"forearm.{s}"),
+                  (f"thigh.{s}", f"hp.{s}", f"st.{s}", "hips"), (f"shin.{s}", f"st.{s}", f"ho.{s}", f"thigh.{s}"),
+                  (f"hoof_h.{s}", f"ho.{s}", f"hh.{s}", f"shin.{s}")]
+        return B + sp.get("extra_bones", [])
+    B = [("hips", "tail", "hips", None), ("spine", "hips", "spine", "hips"), ("spine2", "spine", "spine2", "spine"),
+         ("chest", "spine2", "chest", "spine2"),
          ("neck", "chest", "neck", "chest"), ("neck2", "neck", "neck2", "neck"), ("head", "neck2", "head", "neck2"),
-         ("snout", "head", "nose", "head"), ("tail", "tail", "tail2", "hips"), ("tail_tip", "tail2", "tail3", "tail"),
+         ("snout", "head", "nose", "head"), ("jaw", "jaw", "jaw_t", "head"),
+         ("tail", "tail", "tq1", "hips"), ("tail2", "tq1", "tail2", "tail"), ("tail3", "tail2", "tq3", "tail2"),
+         ("tail_tip", "tq3", "tail3", "tail3"),
          ("ear.L", "ear.L", "ear_t.L", "head"), ("ear.R", "ear.R", "ear_t.R", "head")]
     for s in ("L", "R"):
-        B += [(f"upperarm.{s}", f"sh.{s}", f"el.{s}", "chest"), (f"forearm.{s}", f"el.{s}", f"ca.{s}", f"upperarm.{s}"),
-              (f"hoof_f.{s}", f"ca.{s}", f"fh.{s}", f"forearm.{s}"),
+        B += [(f"scapula.{s}", f"scap.{s}", f"sh.{s}", "chest"),
+              (f"upperarm.{s}", f"sh.{s}", f"el.{s}", f"scapula.{s}"), (f"forearm.{s}", f"el.{s}", f"ca.{s}", f"upperarm.{s}"),
+              (f"hoof_f.{s}", f"ca.{s}", f"fh.{s}", f"forearm.{s}"), (f"hoof_f_toe.{s}", f"fh.{s}", f"toe_f.{s}", f"hoof_f.{s}"),
               (f"thigh.{s}", f"hp.{s}", f"st.{s}", "hips"), (f"shin.{s}", f"st.{s}", f"ho.{s}", f"thigh.{s}"),
-              (f"hoof_h.{s}", f"ho.{s}", f"hh.{s}", f"shin.{s}")]
+              (f"hoof_h.{s}", f"ho.{s}", f"hh.{s}", f"shin.{s}"), (f"hoof_h_toe.{s}", f"hh.{s}", f"toe_h.{s}", f"hoof_h.{s}")]
     return B + sp.get("extra_bones", [])
+
+
+def complete_joints(J):
+    """Adds the rig-v2 joints a species table does not give: spine2, scapula tops, toe tips, jaw, tail midpoints.
+    Placed from the existing joints; a species can set any of them explicitly to override."""
+    J = {k: np.array(v, dtype=float) for k, v in J.items()}
+    out = dict(J)
+    legL = float(J["hp.L"][2])
+    if "spine2" not in J:
+        out["spine2"] = (J["spine"] + J["chest"]) * 0.5 + np.array((0, 0, 0.01 * legL))
+    if "tq1" not in J:
+        out["tq1"] = (J["tail"] + J["tail2"]) * 0.5
+    if "tq3" not in J:
+        out["tq3"] = (J["tail2"] + J["tail3"]) * 0.5
+    head, nose = J["head"], J["nose"]
+    d = float(np.linalg.norm(nose - head))
+    u = (nose - head) / max(d, 1e-6)
+    down = np.array((0, 0, -1.0))
+    if "jaw" not in J:
+        out["jaw"] = head - u * 0.08 * d + down * 0.25 * d
+    if "jaw_t" not in J:
+        out["jaw_t"] = nose - u * 0.2 * d + down * 0.1 * d
+    for s, sx in (("L", 1), ("R", -1)):
+        sh, fh, hh = J[f"sh.{s}"], J[f"fh.{s}"], J[f"hh.{s}"]
+        if f"scap.{s}" not in J:
+            out[f"scap.{s}"] = np.array((sh[0] * 0.75, sh[1] - 0.12 * legL, sh[2] + 0.33 * legL))
+        if f"toe_f.{s}" not in J:
+            out[f"toe_f.{s}"] = np.array((fh[0], fh[1] + 0.09 * legL, fh[2]))
+        if f"toe_h.{s}" not in J:
+            out[f"toe_h.{s}"] = np.array((hh[0], hh[1] + 0.09 * legL, hh[2]))
+    return {k: tuple(float(x) for x in v) for k, v in out.items()}
 
 
 def mirror_joints(J):
@@ -360,7 +505,7 @@ def mirror_joints(J):
 
 
 def build_rig(sp):
-    J = {k: Vector(v) for k, v in sp["J"].items()}
+    J = {k: Vector(v) for k, v in complete_joints(sp["J"]).items()}
     arm = bpy.data.armatures.new(sp["name"] + "Rig")
     rig = bpy.data.objects.new(sp["name"] + "Rig", arm)
     bpy.context.scene.collection.objects.link(rig)
@@ -377,13 +522,14 @@ def build_rig(sp):
         if parent:
             arm.edit_bones[name].parent = arm.edit_bones[parent]
     bpy.ops.object.mode_set(mode="OBJECT")
+    rig["mouth"] = bool(sp.get("mouth"))
     return rig
 
 
 def nearest_bone(sp, P):
     """Per point: index into bone_table of the nearest bone segment, and that table."""
     J = {k: np.array(v) for k, v in sp["J"].items()}
-    table = bone_table(sp)
+    table = bone_table(sp, legacy=True)
     best = np.full(len(P), 1e9)
     which = np.zeros(len(P), dtype=int)
     for i, (name, h, t, _) in enumerate(table):
@@ -400,6 +546,53 @@ def nearest_bone(sp, P):
 
 
 # ============================================================== coat attributes & bake
+
+def isolate_chains(body, rig, chains):
+    """Auto weights bleed between parts that touch at rest (a bushy tail against the thighs). For each chain
+    (a tuple of bone names) a vertex gets a share a = how much nearer it is to the chain than to any other bone
+    (smooth, so there is no seam); its chain weights are scaled to a and the rest to 1 - a."""
+    bones = [(b.name, np.array((rig.matrix_world @ b.head_local)[:]), np.array((rig.matrix_world @ b.tail_local)[:]))
+             for b in rig.data.bones]
+    P = np.array([(body.matrix_world @ v.co)[:] for v in body.data.vertices])
+
+    def dist(a, b):
+        ab = b - a
+        tt = np.clip(((P - a) @ ab) / max(ab @ ab, 1e-12), 0, 1)
+        return np.linalg.norm(P - (a + np.outer(tt, ab)), axis=1)
+
+    D = {name: dist(h, t) for name, h, t in bones}
+    groups = {g.index: g.name for g in body.vertex_groups}
+    by_name = {g.name: g for g in body.vertex_groups}
+    for chain in chains:
+        chain = [c for c in chain if c in D]
+        dc = np.min([D[c] for c in chain], axis=0)
+        nc = np.array(chain)[np.argmin([D[c] for c in chain], axis=0)]
+        do = np.min([D[n] for n in D if n not in chain], axis=0)
+        r = do / np.maximum(dc + do, 1e-9)
+        share = np.clip((r - 0.4) / 0.25, 0, 1)
+        share = share * share * (3 - 2 * share)
+        for i, v in enumerate(body.data.vertices):
+            ws = {groups[g.group]: g.weight for g in v.groups}
+            cw = {n: w for n, w in ws.items() if n in chain}
+            ow = {n: w for n, w in ws.items() if n not in chain}
+            if sum(cw.values()) < 1e-4:
+                cw = {str(nc[i]): 1.0}
+            if sum(ow.values()) < 1e-4:
+                ow = {}
+            a = float(share[i]) if ow else 1.0
+            sc, so = sum(cw.values()), max(sum(ow.values()), 1e-9)
+            new = {n: a * w / sc for n, w in cw.items()}
+            new.update({n: (1 - a) * w / so for n, w in ow.items()})
+            for n, w in new.items():
+                if n not in by_name:
+                    by_name[n] = body.vertex_groups.new(name=n)
+                    groups[by_name[n].index] = n
+                if w < 1e-4:
+                    if n in ws:
+                        by_name[n].remove([i])
+                else:
+                    by_name[n].add([i], w, "REPLACE")
+
 
 def mesh_arrays(obj):
     me = obj.data
@@ -426,6 +619,13 @@ def write_attributes(obj, sp):
         col[i, 3] = 1
         fur[i], rough[i] = f, r
         legw[i] = 1.0 if bone.split(".")[0] in ("upperarm", "forearm", "hoof_f", "thigh", "shin", "hoof_h") else 0.0
+    mouth = mouth_mask(P, sp)
+    if sp.get("mouth"):
+        print("MOUTH verts", int(mouth.sum()), "of", len(P))
+    gum = np.array(lin(sp.get("gum_color", (0.16, 0.06, 0.05))))
+    for i in np.nonzero(mouth)[0]:
+        col[i, :3] = gum
+        fur[i], rough[i] = 0.0, 0.45
     me = obj.data
     ca = me.color_attributes.new("Coat", "FLOAT_COLOR", "POINT")
     ca.data.foreach_set("color", col.astype(np.float32).ravel())
@@ -791,8 +991,22 @@ def key(rig, frame, rots, loc=None):
         pb.keyframe_insert("location", frame=frame)
 
 
+JAW_REST = 5.0   # degrees: the jaw sits a little shut so the carved lip line closes at rest
+
+
 def zero_pose(rig):
-    return {b.name: (0, 0, 0) for b in rig.pose.bones}
+    r = {b.name: (0, 0, 0) for b in rig.pose.bones}
+    if "jaw" in r:
+        r["jaw"] = (jaw_open(rig, 0.0), 0, 0)
+    return r
+
+
+def jaw_open(rig, deg):
+    """Jaw rotation for an opening of `deg` degrees (negative = open). Species with a carved mouth rest a little
+    shut and open fully; species with a closed muzzle only move it slightly (it would stretch, not open)."""
+    if rig.get("mouth", False):
+        return JAW_REST + deg
+    return 0.25 * deg
 
 
 def smooth01(x):
@@ -807,6 +1021,13 @@ def leg_cycle(u, duty, amp, lift):
         return amp * (1 - 2 * s), 0.0
     s = (u - duty) / (1 - duty)  # swing: lift and bring forward
     return amp * (-1 + 2 * smooth01(s)), math.sin(math.pi * s) * lift
+
+
+def tail_wave(r, w, amp, lift=0.0):
+    """Four-bone tail: a sideways wave travelling to the tip (phase lag per bone), plus an optional raise."""
+    for i, b in enumerate(("tail", "tail2", "tail3", "tail_tip")):
+        k = 0.55 + 0.25 * i
+        r[b] = (lift * (1.0 if i == 0 else 0.25) + 0.4 * amp * k * math.sin(2 * w - 0.5 * i), 0, amp * k * math.sin(w - 0.7 * i))
 
 
 def gait(rig, sp, g):
@@ -833,8 +1054,7 @@ def gait(rig, sp, g):
         r["chest"] = (-g.get("spine", 0) * 0.6 * math.sin(w), 0, -g.get("yaw", 0) * math.sin(w))
         r["neck"] = (g.get("head", 0) * math.sin(2 * w + 0.6), 0, 0)
         r["head"] = (-g.get("head", 0) * 0.6 * math.sin(2 * w + 0.6), 0, 0)
-        r["tail"] = (g.get("tail", 4) * math.sin(2 * w), 0, g.get("tail", 4) * math.sin(w))
-        r["tail_tip"] = (0, 0, g.get("tail", 4) * 1.4 * math.sin(w - 0.8))
+        tail_wave(r, w, g.get("tail", 4))
         sp.get("gait_extra", lambda r, t, g: None)(r, t, g)
         bob = g["bob"] * (0.5 + 0.5 * math.cos(w * g.get("bob_freq", 2)))
         key(rig, f + 1, r, (0, 0, -bob))
@@ -853,11 +1073,15 @@ def _rot(p, pivot, deg):
 
 
 def gait_ik(rig, sp, g):
-    """Quadruped gait with planted hooves: each leg's cannon/foot is placed on an explicit path (stance =
+    """Quadruped gait with planted feet: each leg's cannon/foot is placed on an explicit path (stance =
     on the ground sliding back at body speed, swing = lifted and folded), the upper two segments are solved
     with 2-bone IK (elbow points back, stifle points forward). The cycle length matches the species' game
-    speed so the animation never skates at speed_scale 1."""
-    J = sp["J"]
+    speed so the animation never skates at speed_scale 1.
+
+    Rig v2: the scapula swings with the front leg (the shoulder joint slides forward on reach), the toe stays flat
+    on the ground through stance and rolls at push-off, the spine flex is shared by spine / spine2 / chest, and
+    the four-bone tail waves."""
+    J = complete_joints(sp["J"])
     v = sp["speeds"][g.get("kind", "walk")]
     run = g.get("kind") == "run"
     duty = g.get("ik_duty", max(0.22, g["duty"] * 0.75) if run else g["duty"])
@@ -869,42 +1093,42 @@ def gait_ik(rig, sp, g):
     lift = g.get("ik_lift", 0.28 if run else 0.13) * legL
     fold_f = g.get("fold_f", 85 if run else 55)
     fold_h = g.get("fold_h", 22 if run else 18)
+    scap_amp = g.get("scap", 14 if run else 9)          # scapula swing, degrees at full reach
+    toe_curl = g.get("toe_curl", 35 if run else 25)     # toe flex in swing
     exc = min(stride * duty, 0.8 * legL)      # stance sweep a leg can really make; faster gaits skate slightly
     legs = {}
     for s in ("L", "R"):
-        for leg, (a, b, c, d) in (("f", ("sh", "el", "ca", "fh")), ("h", ("hp", "st", "ho", "hh"))):
-            P = [J[f"{k}.{s}"] for k in (a, b, c, d)]
+        for leg, (a, b, c, d, e) in (("f", ("sh", "el", "ca", "fh", "toe_f")), ("h", ("hp", "st", "ho", "hh", "toe_h"))):
+            P = [J[f"{k}.{s}"] for k in (a, b, c, d, e)]
             legs[leg + s] = {"P": P, "L1": math.dist(P[0][1:], P[1][1:]), "L2": math.dist(P[1][1:], P[2][1:]),
                             "L3": math.dist(P[2][1:], P[3][1:]), "a1": _yz(np.subtract(P[1], P[0])),
                             "a2": _yz(np.subtract(P[2], P[1])), "a3": _yz(np.subtract(P[3], P[2])),
-                            "back": leg == "f",
-                            "bones": (f"upperarm.{s}", f"forearm.{s}", f"hoof_f.{s}") if leg == "f" else
-                                     (f"thigh.{s}", f"shin.{s}", f"hoof_h.{s}")}
+                            "a4": _yz(np.subtract(P[4], P[3])), "back": leg == "f",
+                            "scap": J[f"scap.{s}"] if leg == "f" else None, "side": s,
+                            "bones": (f"upperarm.{s}", f"forearm.{s}", f"hoof_f.{s}", f"hoof_f_toe.{s}") if leg == "f" else
+                                     (f"thigh.{s}", f"shin.{s}", f"hoof_h.{s}", f"hoof_h_toe.{s}")}
     for f in range(n + 1):
         t = f / n
         w = t * math.tau
         r = zero_pose(rig)
         bob = g["bob"] * (0.5 + 0.5 * math.cos(w * g.get("bob_freq", 2))) + g.get("crouch", 0.0) * legL
         loc = (0, 0, -bob)
-        a_sp = g.get("spine", 0) * math.sin(w)
+        flex = g.get("spine", 0) * math.sin(w)
+        a_sp = 0.6 * flex
+        a_s2 = 0.4 * flex
         a_ch = -g.get("spine", 0) * 0.6 * math.sin(w)
-        r["spine"] = (a_sp, 0, g.get("yaw", 0) * math.sin(w))
-        r["chest"] = (a_ch, 0, -g.get("yaw", 0) * math.sin(w))
+        yaw = g.get("yaw", 0) * math.sin(w)
+        r["spine"] = (a_sp, 0, 0.6 * yaw)
+        r["spine2"] = (a_s2, 0, 0.4 * yaw)
+        r["chest"] = (a_ch, 0, -yaw)
         r["neck"] = (g.get("head", 0) * math.sin(2 * w + 0.6), 0, 0)
         r["head"] = (-g.get("head", 0) * 0.6 * math.sin(2 * w + 0.6), 0, 0)
-        r["tail"] = (g.get("tail", 4) * math.sin(2 * w), 0, g.get("tail", 4) * math.sin(w))
-        r["tail_tip"] = (0, 0, g.get("tail", 4) * 1.4 * math.sin(w - 0.8))
+        tail_wave(r, w, g.get("tail", 4))
+        if run and sp.get("pant", False):
+            r["jaw"] = (jaw_open(rig, -7 - 4 * math.sin(2 * w)), 0, 0)
         for name, Lg in legs.items():
             front = Lg["back"]
             P = Lg["P"]
-            # hip / shoulder joint after spine flex + bob (nested rotations about rest pivots)
-            if front:
-                top = _rot(_rot(P[0], J["spine"], a_ch), J["hips"], a_sp)
-                parent = a_sp + a_ch
-            else:
-                top = P[0]
-                parent = 0.0
-            top = (top[0], top[1] + loc[1], top[2] + loc[2])
             u = (t + g["phases"][name]) % 1.0
             hoof0 = P[3]
             back = 0.0 if front else -0.12 * legL   # hind feet land a little behind the hip (no over-gathering)
@@ -912,13 +1136,30 @@ def gait_ik(rig, sp, g):
                 st = u / duty
                 hy = hoof0[1] + back + exc * (0.5 - st)
                 hz = hoof0[2]
-                c_ang = Lg["a3"] + (8 if front else -6) * smooth01((st - 0.6) / 0.4)   # fetlock/heel roll at push-off
+                roll = smooth01((st - 0.6) / 0.4)
+                c_ang = Lg["a3"] + (8 if front else -6) * roll   # fetlock / heel roll at push-off
+                toe_w = Lg["a4"]                                  # toe flat on the ground
             else:
                 sw = (u - duty) / (1 - duty)
                 hy = hoof0[1] + back - exc / 2 + exc * smooth01(sw ** 0.9)
                 hz = hoof0[2] + lift * math.sin(math.pi * sw) ** 1.1
                 fold = math.sin(math.pi * min(sw / 0.8, 1.0))
                 c_ang = Lg["a3"] - fold_f * fold if front else Lg["a3"] - fold_h * fold
+                toe_w = Lg["a4"] - toe_curl * fold
+            # hip / shoulder joint after spine flex + bob (nested rotations about rest pivots)
+            if front:
+                def body(p):
+                    return _rot(_rot(_rot(p, J["spine2"], a_ch), J["spine"], a_s2), J["hips"], a_sp)
+                reach = max(-1.0, min(1.0, (hy - hoof0[1]) / max(exc * 0.5, 1e-3)))
+                sc_ang = scap_amp * reach
+                top_s = body(Lg["scap"])
+                top = _rot(body(P[0]), top_s, sc_ang)
+                parent = a_sp + a_s2 + a_ch + sc_ang
+                r[f"scapula.{Lg['side']}"] = (sc_ang, 0, 0)
+            else:
+                top = P[0]
+                parent = 0.0
+            top = (top[0], top[1] + loc[1], top[2] + loc[2])
             cr = math.radians(c_ang)
             wy, wz = hy - Lg["L3"] * math.cos(cr), hz - Lg["L3"] * math.sin(cr)      # wrist / hock target
             dy, dz = wy - top[1], wz - top[2]
@@ -932,8 +1173,9 @@ def gait_ik(rig, sp, g):
             r1 = a1 - Lg["a1"] - parent
             r2 = a2 - Lg["a2"] - (r1 + parent)
             r3 = c_ang - Lg["a3"] - (r1 + r2 + parent)
-            b1, b2, b3 = Lg["bones"]
-            r[b1] = (r1, 0, 0); r[b2] = (r2, 0, 0); r[b3] = (r3, 0, 0)
+            r4 = toe_w - Lg["a4"] - (r1 + r2 + r3 + parent)
+            b1, b2, b3, b4 = Lg["bones"]
+            r[b1] = (r1, 0, 0); r[b2] = (r2, 0, 0); r[b3] = (r3, 0, 0); r[b4] = (r4, 0, 0)
         sp.get("gait_extra", lambda r, t, g: None)(r, t, g)
         key(rig, f + 1, r, loc)
     return n
@@ -981,8 +1223,12 @@ def std_clips(rig, sp, walk, run, extra=None):
             r["head"] = (2 * math.sin(w * 2), 0, 8 * math.sin(w + 0.5))
             r["ear.L"] = (0, 0, 12 * max(0, math.sin(w * 3)) ** 4)
             r["ear.R"] = (0, 0, -10 * max(0, math.sin(w * 2 + 2)) ** 4)
-            r["tail"] = (0, 0, 6 * math.sin(w * 2))
-            r["tail_tip"] = (0, 0, 8 * math.sin(w * 2 - 0.7))
+            tail_wave(r, w * 2, 5)
+            r["spine2"] = (0.8 * math.sin(w * 2), 0, 0)                  # breathing
+            if sp.get("pant", False):
+                r["jaw"] = (jaw_open(rig, -6 - 3 * math.sin(w * 8)), 0, 0)               # predators pant with the mouth open
+            else:
+                r["jaw"] = (jaw_open(rig, -2.5 * max(0, math.sin(w * 4)) ** 2), 0, 0)    # chewing the cud
             sp.get("idle_extra", lambda r, t: None)(r, t)
         return loop_clip(rig, 4.0, 2, f)
 
@@ -995,8 +1241,10 @@ def std_clips(rig, sp, walk, run, extra=None):
             r["neck2"] = (g["neck2"] + 5 * math.sin(w * 3), 0, 0)
             r["head"] = (g["head"], 0, 6 * math.sin(w * 2))
             for s in ("L", "R"):
-                r[f"upperarm.{s}"] = (g.get("arm", 6), 0, 0)
-            r["tail"] = (0, 0, 6 * math.sin(w * 2))
+                r[f"scapula.{s}"] = (g.get("arm", 6) * 0.5, 0, 0)
+                r[f"upperarm.{s}"] = (g.get("arm", 6) * 0.5, 0, 0)
+            r["jaw"] = (jaw_open(rig, -5 * max(0, math.sin(w * 6))), 0, 0)              # cropping
+            tail_wave(r, w * 2, 5)
             sp.get("graze_extra", lambda r, t: None)(r, t)
             return (0, 0, -g.get("drop", 0.02))
         return loop_clip(rig, 3.0, 2, f)
@@ -1009,6 +1257,9 @@ def std_clips(rig, sp, walk, run, extra=None):
             r["ear.L"] = (18, 0, -12)
             r["ear.R"] = (18, 0, 12)
             r["tail"] = (sp.get("alert_tail", 20), 0, 0)
+            r["tail2"] = (sp.get("alert_tail", 20) * 0.3, 0, 0)
+            r["tail3"] = (0, 0, 3 * math.sin(w))
+            r["spine2"] = (1.0, 0, 0)
             return (0, 0, 0.015)
         return loop_clip(rig, 2.0, 2, f)
 
@@ -1024,11 +1275,16 @@ def std_clips(rig, sp, walk, run, extra=None):
             r["hips"] = (0, 86 * e, 0)
             r["neck"] = (-20 * e, 0, 0)
             r["head"] = (-15 * e, 0, 0)
+            r["jaw"] = (jaw_open(rig, -12 * e), 0, 0)
+            r["spine2"] = (-4 * e, 0, 0)
             for s in ("L", "R"):
                 r[f"upperarm.{s}"] = (20 * e, 0, 0)
                 r[f"thigh.{s}"] = (-18 * e, 0, 0)
                 r[f"forearm.{s}"] = (-25 * e, 0, 0)
+                r[f"hoof_f_toe.{s}"] = (-20 * e, 0, 0)
+                r[f"hoof_h_toe.{s}"] = (-20 * e, 0, 0)
             r["tail"] = (-20 * e, 0, 0)
+            r["tail2"] = (-8 * e, 0, 0)
             key(rig, f + 1, r, (0, 0, -height * 0.70 * e))
         return n
 
@@ -1048,12 +1304,16 @@ def bite_attack(rig, sp, lunge_m=0.25):
         r["chest"] = (-8 * k, 0, 0)
         r["neck"] = (-10 * k, 0, 0)
         r["head"] = (16 * k, 0, 0)
-        r["snout"] = (-12 * k, 0, 0)
+        r["snout"] = (-6 * k, 0, 0)
+        jaw = math.sin(min(t / 0.3, 1.0) * math.pi) if t < 0.3 else 0.0     # opens on the lunge, snaps shut at the bite
+        r["jaw"] = (jaw_open(rig, -24 * jaw), 0, 0)
         r["ear.L"] = (-25 * k, 0, 0)
         r["ear.R"] = (-25 * k, 0, 0)
         for s in ("L", "R"):
-            r[f"upperarm.{s}"] = (-28 * k, 0, 0)
+            r[f"scapula.{s}"] = (-8 * k, 0, 0)
+            r[f"upperarm.{s}"] = (-20 * k, 0, 0)
             r[f"thigh.{s}"] = (22 * k, 0, 0)
+        tail_wave(r, t * math.tau, 3, lift=12 * k)
         key(rig, f + 1, r, (0, lunge_m * k, 0.06 * k))
     return n
 

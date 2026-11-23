@@ -9,7 +9,7 @@ const SEVER_BONE := {&"head": "head", &"arm_l": "lowerarm_l", &"arm_r": "lowerar
 
 static func region_of_bone(bone: String) -> StringName:
 	var b := bone.to_lower()
-	if b.begins_with("head") or b.begins_with("neck") or b.begins_with("snout") or b.begins_with("ear") or b.begins_with("hair_"):
+	if b.begins_with("head") or b.begins_with("neck") or b.begins_with("snout") or b.begins_with("jaw") or b.begins_with("ear") or b.begins_with("hair_"):
 		return &"head"
 	var side := "l" if (b.ends_with("_l") or b.ends_with(".l")) else ("r" if (b.ends_with("_r") or b.ends_with(".r")) else "")
 	for k in ["upperarm", "lowerarm", "hand", "index", "middle", "pinky", "ring", "thumb", "forearm", "hoof_f"]:

@@ -566,7 +566,7 @@ def lion_clips(rig):
 
 
 LION = {
-    "name": "Lion", "J": LION_J, "sculpt": lion_sculpt, "voxel": 0.010, "tris": 16000,
+    "name": "Lion", "J": LION_J, "sculpt": lion_sculpt, "voxel": 0.010, "tris": 16000, "pant": True,
     "coat": lion_coat, "hair": lion_hair, "card_density": 1800,
     "hair_palette": [(0.66, 0.50, 0.32), (0.62, 0.47, 0.30), (0.82, 0.74, 0.60), (0.12, 0.10, 0.08)],
     "fur_scale": 240.0, "fur_stretch": 8.0, "bump": 0.45,

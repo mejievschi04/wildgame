@@ -43,6 +43,7 @@ WOLF_J = mirror_joints({
     "ear.L": (0.055, 0.655, 0.87), "ear_t.L": (0.07, 0.645, 0.945),
     "sh.L": (0.085, 0.33, 0.56), "el.L": (0.085, 0.22, 0.40), "ca.L": (0.07, 0.255, 0.11), "fh.L": (0.068, 0.30, 0.025),
     "hp.L": (0.085, -0.38, 0.60), "st.L": (0.095, -0.22, 0.43), "ho.L": (0.075, -0.46, 0.21), "hh.L": (0.07, -0.40, 0.025),
+    "jaw": (0, 0.69, 0.722), "jaw_t": (0, 0.905, 0.706),
 })
 
 
@@ -155,7 +156,8 @@ WOLF_RUN = {"period": 0.46, "duty": 0.36, "amp_f": 36, "amp_h": 32, "lift": 75,
             "bob": 0.05, "bob_freq": 1, "spine": 9, "yaw": 1, "head": 3, "tail": 6}
 
 WOLF = {
-    "name": "Wolf", "J": WOLF_J, "sculpt": wolf_sculpt, "voxel": 0.0075, "tris": 14000,
+    "name": "Wolf", "J": WOLF_J, "sculpt": wolf_sculpt, "voxel": 0.0075, "tris": 14000, "pant": True,
+    "mouth": ((0.77, 0.745), (0.948, 0.722), 0.06, 0.01),
     "coat": wolf_coat, "hair": wolf_hair, "card_density": 5200,
     "hair_palette": [(0.42, 0.40, 0.37), (0.25, 0.24, 0.22), (0.72, 0.69, 0.62), (0.48, 0.40, 0.31)],
     "fur_scale": 260.0, "fur_stretch": 9.0, "bump": 0.6,
@@ -221,7 +223,8 @@ def fox_hair(p, n, bone):
 
 
 FOX = {
-    "name": "Fox", "J": FOX_J, "sculpt": fox_sculpt, "voxel": 0.0045, "tris": 11000,
+    "name": "Fox", "J": FOX_J, "sculpt": fox_sculpt, "voxel": 0.0045, "tris": 11000, "pant": True,
+    "mouth": ((0.77 * FOX_F, 0.745 * FOX_F), (0.948 * FOX_F, 0.722 * FOX_F), 0.06 * FOX_F, 0.0075), "mouth_depth": 0.035 * FOX_F,
     "coat": fox_coat, "hair": fox_hair, "card_density": 9000,
     "hair_palette": [(0.72, 0.38, 0.16), (0.60, 0.31, 0.13), (0.90, 0.88, 0.82), (0.14, 0.10, 0.08)],
     "fur_scale": 420.0, "fur_stretch": 9.0, "bump": 0.5,
@@ -255,7 +258,7 @@ def build(sp):
     bpy.ops.wm.read_factory_settings(use_empty=True)
     bpy.context.scene.render.fps = fl.FPS
     J = sp["J"]
-    body = fl.sculpt_to_mesh(sp["sculpt"](J), sp["name"], sp["voxel"], sp["tris"])
+    body = fl.sculpt_to_mesh(fl.carve_mouth(sp["sculpt"](J), sp), sp["name"], sp["voxel"], sp["tris"])
     which, names = fl.write_attributes(body, sp)
     fl.bake_maps(body, sp, OUT, sp.get("tex", 2048))
     cards, roots = (None, None)
@@ -274,8 +277,9 @@ def build(sp):
             e = fl.eye("Eye", (c[0] * s, c[1], c[2]), r, eye_m)
             fl.rigid_to_bone(e, "head")
             rigid.append(e)
-    for obj, bone in sp.get("parts", lambda: [])():
-        fl.rigid_to_bone(obj, bone)
+    for obj, bone in sp.get("parts", lambda: [])() + fl.mouth_parts(sp):
+        if bone:
+            fl.rigid_to_bone(obj, bone)
         rigid.append(obj)
     if rigid:
         fl.join_into(body, rigid)
