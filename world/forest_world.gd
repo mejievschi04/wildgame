@@ -158,6 +158,11 @@ func _ready() -> void:
 	far_forest.name = "FarForest"
 	add_child(far_forest)
 	far_forest.build(self, forest_mask)
+	var birds := Birds.new()
+	birds.name = "Birds"
+	birds.world = self
+	birds.add_to_group("far_scenery")
+	add_child(birds)
 	var fx := AtmosphereFX.new()
 	fx.add_to_group("far_scenery")  # follows the camera
 	fx.name = "AtmosphereFX"

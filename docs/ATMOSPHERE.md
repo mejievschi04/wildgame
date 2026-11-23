@@ -168,6 +168,18 @@ FPS (calitate medie): start ~54, Meyra ~45, râu ~46, Tavren ~29.
   întunecată în zona stropilor; lumină reflectată de râu pe pereții din umbră.
 - Captură: `--shot-scenario=waterfall` (`SHOT_DIST`, `SHOT_SLANT`, `SHOT_PITCH`).
 
+## Pasul 9: păsări și mâna la persoana întâi (2026-11-23)
+
+- **Păsări** (`world/birds.gd`, `bird.gdshader`): 4 stoluri a câte 9 păsări (de mărimea unei ciori), care se plimbă
+  în grupuri lejere peste teren pe o rază de ~420 m în jurul jucătorului, bat din aripi în reprize și planează între ele;
+  plus 3 răpitori (de mărimea unui vultur) care planează în cercuri mari la 90–160 m, înclinați în viraje. Un singur
+  MultiMesh de siluete de 8 triunghiuri, bătaia aripilor e în shader. Doar ziua, nu pe ploaie. `--shot-scenario=birds`.
+- **Mâna jucătorului** (`tools/blender/gen_fp_hand.py` → `assets/models/humans/SM_FP_Hand_R.gltf`): antebrațul și mâna
+  dreaptă tăiate din modelul Homo sapiens, cu degetele strânse în jurul unui mâner, brățările de piele și un manșon de
+  blană, puse în convenția obiectelor (mânerul pe +Y prin pumn). `HandModels.build` atașează mâna la orice unealtă sau
+  armă (în afară de arc și piatră) și o rotește automat în jurul mânerului, ca antebrațul să vină din dreapta-jos,
+  dinspre cameră. Poziția de bază a armei în mână e ceva mai sus (`Player.HAND_REST`), ca pumnul să se vadă.
+
 ## Următorii pași propuși
 
 1. **Pădurea de aproape**: copacii reali sunt așezați uniform; grupați în pâlcuri, cu tufișuri și bușteni căzuți.

@@ -320,6 +320,21 @@ func _ready() -> void:
 		p.look_at(Vector3(ahead.x, p.global_position.y, ahead.y))
 		p.rotation = Vector3(0, p.rotation.y, 0)
 		p.head.rotation.x = -0.12
+	if scenario == "birds":  # look up at the sky after the flocks have gathered nearby
+		var b: Birds = session.world.get_node("Birds")
+		var fwd := -p.global_transform.basis.z
+		fwd.y = 0.0
+		fwd = fwd.normalized()
+		var right := fwd.cross(Vector3.UP)
+		for i in b._flocks.size():
+			var f: Dictionary = b._flocks[i]
+			f.placed = true
+			f.center = p.global_position + fwd * (22.0 + 18.0 * i) + right * (i - 1.5) * 14.0 + Vector3.UP * 14.0
+			f.target = f.center + right * 300.0
+		for r: Dictionary in b._raptors:
+			r.placed = true
+			r.center = p.global_position + fwd * 90.0
+		p.head.rotation.x = 0.35
 	if scenario == "waterfall":  # the falls from across the river, a little downstream
 		session.world.wildlife.enabled = false
 		var wf: Waterfall = session.world.waterfall

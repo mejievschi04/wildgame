@@ -29,6 +29,8 @@ var head: Node3D
 var camera: Camera3D
 var ray: RayCast3D
 var hand_root: Node3D
+## Rest position of the held item / hand in camera space: low on the right, the fist in view.
+const HAND_REST := Vector3(0.33, -0.33, -0.6)
 var placement: PlacementController
 var build: BuildController
 
@@ -100,7 +102,7 @@ func _ready() -> void:
 	ray.add_exception(self)
 	camera.add_child(ray)
 	hand_root = Node3D.new()
-	hand_root.position = Vector3(0.36, -0.42, -0.62)
+	hand_root.position = HAND_REST
 	hand_root.rotation_degrees = Vector3(-8, -12, 0)
 	hand_root.scale = Vector3.ONE * 0.75
 	camera.add_child(hand_root)
@@ -321,7 +323,7 @@ func _set_blocking(on: bool) -> void:
 	if on:
 		_block_started = Time.get_ticks_msec() / 1000.0
 	var tw := create_tween()
-	tw.tween_property(hand_root, "position", Vector3(0.08, -0.28, -0.5) if on else Vector3(0.36, -0.42, -0.62), 0.12)
+	tw.tween_property(hand_root, "position", Vector3(0.08, -0.28, -0.5) if on else HAND_REST, 0.12)
 	tw.parallel().tween_property(hand_root, "rotation_degrees", Vector3(-8, -12, 70) if on else Vector3(-8, -12, 0), 0.12)
 
 
@@ -334,7 +336,7 @@ func gesture() -> void:
 	var tw := create_tween()
 	tw.tween_property(hand_root, "position:y", -0.9, 0.2)
 	tw.tween_interval(1.6)
-	tw.tween_property(hand_root, "position:y", -0.42, 0.3)
+	tw.tween_property(hand_root, "position:y", HAND_REST.y, 0.3)
 
 
 func is_gesturing() -> bool:
