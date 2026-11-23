@@ -32,3 +32,14 @@ La această verificare au trecut **4 din 5 teste pentru copaci**. A eșuat aser�
 - Repetă ciclul complet în prima persoană pe aninul din test, apoi pe un pin. Include lovituri din două părți, cădere pe teren drept și pe pantă și secționare până la cioată.
 - Verifică salvarea și reîncărcarea unei crestături parțiale și a unui trunchi cu bușteni rămași. Rulează suita `trees` și urmărește atât aserțiunile, cât și mesajele `SCRIPT ERROR`. [Runnerul de teste](../tests/run_tests.sh)
 - Pentru cadre comparabile, folosește scenariile AutoShot `notch`, `chop` și `felled`. [Scenariile AutoShot](../game/auto_shot.gd)
+
+## Corecturi (2026-11-23)
+
+Probă vizuală nouă: `--shot-scenario=fell` (`SHOT_TREE=alder|spruce|jungle`, `SHOT_DIST`, `SHOT_PITCH`) taie copacul dintr-o
+parte, apoi filmează din lateral căderea, curățarea crengilor și secționarea.
+
+| Defect observat | Corectură |
+| --- | --- |
+| La aterizare coroana dispărea instant, iar din copac rămânea un buștean scurt | Coroana rămâne pe copacul culcat. **Curățarea crengilor** e un pas nou (`LIMB_HITS` = 2 lovituri, „Обрубить ветви”): frunzele zboară, coroana se lasă și se scufundă în ~1 s (`_crown_collapse`), crengile cad ca bețe, apoi trunchiul gol se secționează. Salvat ca `limb`; salvările vechi încep cu crengile curățate. |
+| Bușteanul tăiat sărea câțiva metri în aer | Bușteanul nou se suprapunea cu coliziunea trunchiului încă nescurtată. Acum are o excepție de coliziune cu copacul timp de 1,5 s și doar o mică rostogolire laterală. Testul verifică dacă bușteanul stă pe sol lângă trunchi. |
+| Crengile molidului umpleau ecranul la tăiere | Frunzișul se rărește în fața camerei (`foliage.gdshader`, alfa × smoothstep(0,5–1,9 m)): trunchiul și crestătura se văd. |

@@ -42,6 +42,10 @@ var _stump_top: MeshInstance3D
 var _size := 1.0
 var _tree_path := ""
 var _debris: Node3D  # wood chips left on the ground by chopping (visual only)
+## Felled trees keep their crown until it is cut off (LIMB_HITS blows on the lying tree): then the branches drop
+## as sticks and the bare trunk can be bucked into logs.
+const LIMB_HITS := 2
+var limb := 0
 
 ## Trunk cross-sections per tree asset: [[y, cx, cz, r], ...] (unscaled model space, sorted by y).
 static var _trunk_profiles: Dictionary = {}
@@ -264,7 +268,8 @@ func _refresh() -> void:
 			_log_shape.disabled = stage != Stage.FALLEN
 			if stage == Stage.FALLEN:
 				_pivot.basis = Basis(_axis(), final_angle)
-				_make_bare_trunk()
+				if limbed():
+					_make_bare_trunk()
 
 
 ## Felling notch: a lens-shaped V wedge on the bark, on the chopper's side. The sloped upper cut faces down-out,
@@ -752,15 +757,22 @@ func _buck_log() -> void:
 	var log := LogPiece.new()
 	log.name = "Log_%s_%d" % [node_id, remaining]
 	log.setup_log(ItemStack.new(&"wood", 1), lm.commit(), t.z, y1 - y0)
+	# The new log overlaps the trunk it was cut from until the trunk's collider is shortened: without an
+	# exception the physics pushes them apart violently (the log used to shoot metres into the air).
+	log.add_collision_exception_with(self)
 	world.pickups_root.add_child(log)
 	var xf := _pivot.global_transform * Transform3D(Basis(), Vector3(0, -cut_h, 0)) * Transform3D(Basis(), c)
 	var o := xf.origin
-	o.y = maxf(o.y, world.height_at(o.x, o.z) + t.z + 0.12)  # never inside the ground (it would fall through)
+	o.y = maxf(o.y, world.height_at(o.x, o.z) + t.z + 0.05)  # never inside the ground (it would fall through)
 	log.global_transform = Transform3D(xf.basis.orthonormalized(), o)
-	# Rolls off sideways, as a freshly cut log does.
+	# Rolls off sideways a little, as a freshly cut log does, then settles.
 	var side := _axis() * (1.0 if randf() < 0.5 else -1.0)
-	log.apply_central_impulse((side * 0.6 + Vector3.UP * 0.5) * log.mass)
-	log.apply_torque_impulse(global_basis * (_trunk_dir() * 1.0))
+	log.linear_velocity = side * 0.8 + Vector3.UP * 0.3
+	log.angular_velocity = Vector3.ZERO
+	var me := self
+	get_tree().create_timer(1.5).timeout.connect(func() -> void:
+		if is_instance_valid(log) and is_instance_valid(me):
+			log.remove_collision_exception_with(me))
 
 
 ## Direction of the felled trunk (butt to top), node space.
@@ -798,6 +810,8 @@ func get_status_text() -> String:
 		Stage.STANDING:
 			return Loc.t("STATUS_CHOPPED", {"n": chop, "m": fell_hits}) if chop > 0 else ""
 		Stage.FALLEN:
+			if not limbed():
+				return Loc.t("STATUS_LIMB", {"n": limb, "m": LIMB_HITS})
 			return Loc.t("STATUS_LOGS_LEFT", {"n": remaining})
 	return ""
 
@@ -807,7 +821,8 @@ func get_interactions(player: Node) -> Array:
 		return []
 	var hand: ItemStack = player.inventory.hand
 	var ok := hand != null and hand.get_data().has_tag(&"tool_axe")
-	var text := Loc.t("ACT_FELL" if stage == Stage.STANDING else "ACT_BUCK") if ok else Loc.t("NEED_TOOL_AXE")
+	var act := "ACT_FELL" if stage == Stage.STANDING else ("ACT_LIMB" if not limbed() else "ACT_BUCK")
+	var text := Loc.t(act) if ok else Loc.t("NEED_TOOL_AXE")
 	return [{"action": &"primary_action", "text": text, "hold": 0.0, "enabled": ok, "swing": true}]
 
 
@@ -848,6 +863,18 @@ func on_hit(player: Node, item: ItemData) -> bool:
 			_start_fall()
 		_refresh()
 		return true
+	# FALLEN, crown still on: lop the branches off first (leaves fly, sticks drop beside the trunk).
+	if not limbed():
+		limb += 1
+		var crown := _crown_point()
+		_dust(crown, true)
+		Sfx.play(&"rustle", crown, 2.0)
+		Sfx.play(&"axe_chop", crown, -4.0)
+		if limbed():
+			_crown_collapse()
+			_drop_branches()
+			_refresh()
+		return true
 	# FALLEN: buck into logs -- chips come off the log's surface where the axe bit.
 	var bite := _log_surface_point(point)
 	_chips(bite[0], bite[1], true)
@@ -859,6 +886,31 @@ func on_hit(player: Node, item: ItemData) -> bool:
 		_clear()
 	_refresh()
 	return true
+
+
+## The lopped crown doesn't blink out: a copy of it sags into the ground and fades while the leaves fly.
+func _crown_collapse() -> void:
+	if _holder == null or not is_inside_tree():
+		return
+	var ghost := _holder.duplicate() as Node3D
+	get_parent().add_child(ghost)
+	ghost.global_transform = _holder.global_transform
+	_dust(_crown_point(), true)
+	var tw := ghost.create_tween()
+	tw.set_parallel(true)
+	tw.tween_property(ghost, "global_position", ghost.global_position + Vector3.DOWN * 1.2, 1.1).set_ease(Tween.EASE_IN)
+	tw.tween_property(ghost, "scale", ghost.scale * Vector3(0.9, 0.7, 0.9), 1.1)
+	tw.chain().tween_callback(ghost.queue_free)
+
+
+func limbed() -> bool:
+	return limb >= LIMB_HITS
+
+
+## The middle of the crown of the felled tree (world).
+func _crown_point() -> Vector3:
+	var b := Basis(_axis(), final_angle)
+	return to_global(_log_base() + b * Vector3(0, (height - cut_h) * 0.7, 0))
 
 
 func _impact_point(player: Node) -> Vector3:
@@ -972,8 +1024,7 @@ func complete_fall() -> void:
 	fall_angle = final_angle
 	fall_vel = 0.0
 	remaining = capacity
-	if was_falling:
-		_drop_branches()
+	limb = 0
 	_refresh()
 
 
@@ -1261,7 +1312,7 @@ func is_modified() -> bool:
 
 func save_state() -> Dictionary:
 	return {"stage": int(stage), "chop": chop, "dir": [fall_dir.x, fall_dir.z], "r": remaining,
-		"g": regrow_left, "angle": final_angle, "cut": cut_h}
+		"g": regrow_left, "angle": final_angle, "cut": cut_h, "limb": limb}
 
 
 func load_state(d: Dictionary) -> void:
@@ -1273,6 +1324,8 @@ func load_state(d: Dictionary) -> void:
 	cut_h = float(d.get("cut", DEFAULT_CUT))
 	_apply_cut_height()
 	remaining = int(d.get("r", capacity))
+	# older saves had no crown on felled trunks
+	limb = int(d.get("limb", LIMB_HITS if st == Stage.FALLEN else 0))
 	regrow_left = float(d.get("g", 0.0))
 	stage = Stage.FALLEN if st == Stage.FALLING else st as Stage
 	_refresh()

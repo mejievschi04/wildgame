@@ -52,7 +52,13 @@ func test_fall_is_physical_and_lands() -> void:
 	check(frames > 90 and frames < 480, "fall takes a realistic 1.5–8 s (%d frames)" % frames)
 	near(t.fall_angle, t.final_angle, 0.01, "rests at the landing angle")
 	check(t.final_angle > deg_to_rad(50.0), "lands near horizontal (%.0f°)" % rad_to_deg(t.final_angle))
-	check(tree.get_nodes_in_group("pickup").size() >= 2, "branches dropped as sticks")
+	check(not t.limbed() and t._bark_mi.mesh.get_surface_count() > 1, "the crown stays on the felled tree")
+	var before := tree.get_nodes_in_group("pickup").size()
+	for i in TreeNode.LIMB_HITS:
+		t.on_hit(p, axe)
+	check(t.limbed(), "limbing takes %d blows" % TreeNode.LIMB_HITS)
+	check(tree.get_nodes_in_group("pickup").size() >= before + 2, "the branches drop as sticks")
+	check(t._bark_mi.mesh.get_surface_count() == 1, "leaving a bare trunk")
 	await _teardown(s)
 
 
@@ -85,8 +91,10 @@ func test_buck_clear_regrow_and_save() -> void:
 	for i in t.fell_hits:
 		t.on_hit(p, axe)
 	t.complete_fall()
+	for i in TreeNode.LIMB_HITS:
+		t.on_hit(p, axe)
 	var full := t._bark_mi.mesh.get_aabb().size.y
-	check(t._bark_mi.mesh.get_surface_count() == 1, "felled: the crown is gone, a bare trunk lies there")
+	check(t._bark_mi.mesh.get_surface_count() == 1, "limbed: the crown is gone, a bare trunk lies there")
 	t.on_hit(p, axe)
 	check(t._bark_mi.mesh.get_aabb().size.y < full, "bucking shortens the trunk")
 	var data: Dictionary = JSON.parse_string(JSON.stringify(s.build_save()))
@@ -96,7 +104,11 @@ func test_buck_clear_regrow_and_save() -> void:
 	eq(t.stage, TreeNode.Stage.CLEARED, "trunk fully bucked → stump")
 	var logs := tree.get_nodes_in_group("pickup").filter(func(n: Node) -> bool: return n is LogPiece)
 	eq(logs.size(), t.capacity, "one physical log per bucking hit")
-	await _run_frames(30)
+	await _run_frames(90)
+	for l: LogPiece in logs:
+		var g := s.world.height_at(l.global_position.x, l.global_position.z)
+		check(l.global_position.y - g < 1.2, "the log rests on the ground, not thrown up (%.1f m)" % (l.global_position.y - g))
+		check(l.global_position.distance_to(t.global_position) < t.height + 4.0, "and stays by the trunk")
 	for l: LogPiece in logs:
 		l.perform_interaction(p, &"interact")
 	eq(p.inventory.count_of(&"wood"), t.capacity, "picking the logs up gives the wood")

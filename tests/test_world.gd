@@ -158,6 +158,8 @@ func test_core_loop_gather_craft_fire_cook() -> void:
 		check(tree_node.on_hit(p, axe), "chop with axe")
 	eq(tree_node.stage, TreeNode.Stage.FALLING, "tree starts falling after enough hits")
 	tree_node.complete_fall()
+	for i in TreeNode.LIMB_HITS:
+		check(tree_node.on_hit(p, axe), "lop off the crown")
 	check(tree_node.on_hit(p, axe), "buck the fallen trunk")
 	for l: Node in tree.get_nodes_in_group("pickup"):
 		if l is LogPiece:

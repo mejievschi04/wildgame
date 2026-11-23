@@ -302,6 +302,34 @@ func _ready() -> void:
 		p.look_at(Vector3(stump.x - 4.0, p.global_position.y, stump.z))
 		p.rotation = Vector3(0, p.rotation.y, 0)
 		p.head.rotation.x = -0.35
+	if scenario == "fell":  # chop a tree from one side, then watch the fall and the bucking from 16 m to the side
+		session.world.wildlife.enabled = false
+		var kind := _env("tree")  # e.g. SHOT_TREE=spruce / alder / jungle
+		var best: TreeNode = null
+		for n in session.get_tree().get_nodes_in_group("resource_node"):
+			if n is TreeNode and (kind == "" or String((n as TreeNode).species) == kind) \
+					and (best == null or n.global_position.distance_to(p.global_position) < best.global_position.distance_to(p.global_position)):
+				best = n
+		_chop_tree = best
+		var side := Vector3(1, 0, 0)
+		var axe := ItemDB.get_item(&"stone_axe")
+		p.global_position = best.global_position - side * 1.3 + Vector3.UP * 0.3
+		for i in best.fell_hits:
+			best.on_hit(p, axe)
+		var vd := float(_env("dist")) if _env("dist") != "" else 16.0
+		var view := best.global_position + Vector3(0, 0, vd) + side * vd * 0.3
+		p.global_position = session.world.ground_point(view.x, view.z) + Vector3.UP * 0.3
+		p.look_at(Vector3(best.global_position.x + vd * 0.3, p.global_position.y, best.global_position.z))
+		p.rotation = Vector3(0, p.rotation.y, 0)
+		p.head.rotation.x = 0.15
+		print("FELL ", best.node_id, " ", best.species, " h=", best.height, " cut=", best.cut_h)
+		var buck := func() -> void:
+			if best.stage == TreeNode.Stage.FALLEN:
+				var at := p.global_position
+				best.on_hit(p, axe)
+				print("FELL hit limb=", best.limb, " remaining=", best.remaining)
+		for t in [6.0, 7.0, 9.0, 10.0, 11.0, 12.0, 13.0]:
+			get_tree().create_timer(t).timeout.connect(buck)
 	if scenario == "chop":
 		var best: TreeNode = null
 		for n in session.get_tree().get_nodes_in_group("resource_node"):

@@ -58,6 +58,10 @@ void fragment() {
 	AO_LIGHT_AFFECT = 0.55;
 	ALPHA = c.a;
 	ALPHA_SCISSOR_THRESHOLD = alpha_cut;
+	// Leaves right in front of the eye thin out (standing at a trunk you'd push the branches aside): the
+	// screen no longer fills with dark needles while chopping.
+	float eye = length(VERTEX);
+	ALPHA *= smoothstep(0.5, 1.9, eye);
 	if (use_normal) {
 		NORMAL_MAP = texture(normal_tex, UV).rgb;
 	}
