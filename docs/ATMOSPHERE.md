@@ -105,6 +105,22 @@ FPS: start ~46, râu ~47, Meyra ~51, Tavren ~32 (înainte: 51 / 55 / 49 / 30).
 
 FPS: neschimbat (start ~45, sud ~43, noaptea 60).
 
+## Pasul 5: munți realiști cu eroziune (2026-11-23)
+
+- **`tools/gen_backdrop.py`** (rulează cu Python-ul din Blender, ~13 s): relieful granițelor e copt offline. Forme
+  din zgomot „ridged multifractal” cu domeniu deformat; apoi **2,5 milioane de picături de apă simulate** sapă ravene,
+  ascut crestele și depun sediment în conuri și pe fundul văilor; o trecere termică rotunjește acele prea ascuțite.
+  Ieșiri: `assets/textures/backdrop/T_Backdrop_HM.png` (înălțime 16 biți, curgerea apei, sediment) și `T_Backdrop_N.png`
+  (normale și ocluzie ambientală), 1024² pe 22 km (~21 m/texel).
+- **Shader nou** (`backdrop.gdshader`):
+  - normale per texel, deci fiecare ravenă și creastă prinde lumina;
+  - **umbre reale de relief**: fiecare pixel caută spre soare pe harta de înălțimi, iar crestele umbresc văile;
+    la apus vârfurile se aprind rozaliu, iar văile rămân în umbră;
+  - pădure de conifere care urcă mai sus pe ravene, pajiște alpină, granit stratificat cu stâncă scanată de aproape,
+    pereți abrupți mai întunecați, conuri de grohotiș și zăpadă pe terase și în culoare (spulberată de pe pereții abrupți);
+  - pe vulcani lava curge pe ravenele de sub crater; ceața se adună în văi dimineața.
+- `backdrop.gd` citește relieful copt, îl așază pe înălțimile marginii hărții și pune fumul pe craterul real.
+
 ## Următorii pași propuși
 
 1. **Pădurea de aproape**: copacii reali sunt așezați uniform; grupați în pâlcuri, cu tufișuri și bușteni căzuți.
