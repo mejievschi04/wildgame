@@ -85,3 +85,29 @@ Species files: `species_mega.py` (rhino, bison, horse, lion, boar, hare), `speci
 Director: `Wildlife.MAX_TOTAL = 24` live animals; species flagged `"common"` (deer, roe) are topped up first, the rest
 in seeded-random order. Wolves skip prey above `max_prey_health` (160). With all 14 species in view: ~43 FPS (same as
 an empty scene on the M4 at 1600×900).
+
+
+## Animal AI v2 and climate (2026-11-23)
+
+**Climate.** `ambient_temperature_at` adds the climate bands: tundra −10 °C, taiga −3 °C, jungle +8 °C. Species carry
+`"jungle"`/`"tundra"` flags (`data/animals.json`): in the jungle only boar, cave lion, red/roe deer, hare, fox and
+giant deer spawn; on the tundra only reindeer, mammoth, woolly rhino, bison, wolf, bear, fox and hare. Elsewhere the
+region lists apply as before.
+
+**Herds** (prey and defensive): a stable leader (lowest id); followers drift back when more than 12 m away and pick
+wander spots near it. Grazing animals have their heads down — sight ×0.55 — and look up every 4–9 s for 1.6 s
+(sight ×1.15, `alert` clip): time your approach. At night the herd beds down (REST: sight ×0.45, hearing ×0.7, slow
+idle) and gets up at dawn. Every 4–8 min the leader takes the herd to the nearest waterline (DRINK). Alarm: the whole
+herd bolts in one shared direction (away from the threat as seen from the herd's centre) with spacing between
+runners; prey tire after ~5–14 s of sprint (to 68 % speed; wounded ones sooner). Prey now see predators: a hunting
+one from far, a stalking one only within ~15 m, any within 9 m.
+
+**Predators.** Wolves hunt as a pack: the finder STALKs (slow, pack mates fanned out to the sides), all sprint when
+close (lion: 10 m pounce) or when the prey notices, bite repeatedly (1.5× damage — the prey bleeds and flees), then
+FEED at the kill for 1–2 min. Someone approaching the kill gets a warning (THREAT: growl, bluff steps) and is charged
+if they come within ~5 m or stay; fire drives them off. Hungry predators smell carcasses (yours too) and come to
+eat. Fighting the player, a pack circles between bites so they take turns. Bears and cats warn an intruder before
+charging when they're not hungry; defensive animals (mammoth, bison, rhino, boar) always warn first (THREAT,
+2.2 s) unless hurt, and herd mates turn to face the threat.
+
+Tests: `tests/test_animal_ai.gd` (6). Screenshot/log: `--shot-scenario=hunt` (a pack hunting a deer herd, states printed).

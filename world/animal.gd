@@ -6,12 +6,23 @@ extends CharacterBody3D
 ## Predator:  PATROL → SUSPICIOUS → INVESTIGATE → CHASE → ATTACK (wind-up) → gives up / RETREAT when hurt
 ##            also HUNT_PREY (deer/roe, if the species hunts), afraid of fire/torches. Territorial ones (bear)
 ##            engage a player who comes too close. No teleporting, no permanent aggro.
-## Defensive: grazes like prey, but charges (CHASE → ATTACK) a player who comes within `charge_range` or
-##            hurts it (mammoth); calms down after `give_up` seconds and wanders off.
+## Defensive: grazes like prey, but warns (THREAT: faces you, stamps) and then charges (CHASE → ATTACK) a player
+##            who keeps coming within `charge_range`, or charges at once when hurt; calms down after `give_up` s.
+## Herds: followers keep near a leader, graze with their heads down (seeing less) and look up now and then; the
+##        herd walks to water to DRINK, beds down to REST at night, and flees together in one direction.
+## Predators: packs hunt together; they STALK (slow, low) before the sprint, bite prey repeatedly, then FEED at the
+##        kill and guard it; they also come to carcasses left lying around. Wolves circle the player and take turns.
 
 signal died(animal: Animal)
 
-enum State { IDLE, WANDER, GRAZE, ALERT, FLEE, RECOVER, PATROL, SUSPICIOUS, INVESTIGATE, CHASE, ATTACK, HUNT_PREY, DEAD }
+enum State { IDLE, WANDER, GRAZE, ALERT, FLEE, RECOVER, PATROL, SUSPICIOUS, INVESTIGATE, CHASE, ATTACK, HUNT_PREY, DEAD,
+	REST, DRINK, FEED, THREAT, STALK }
+const HERD_RADIUS := 12.0       # followers drift back toward the leader beyond this
+const LOOKUP_EVERY := Vector2(4.0, 9.0)  # grazing animals raise their heads every few seconds…
+const LOOKUP_TIME := 1.6        # …and scan around for this long
+const THIRST := Vector2(240.0, 480.0)   # seconds between trips to water
+const FEED_TIME := Vector2(70.0, 130.0)
+const THREAT_TIME := 2.2        # warning display before a charge
 const THINK_INTERVAL := 0.1
 const LAYER_CREATURE := 16
 
@@ -49,6 +60,14 @@ var _gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity", 
 var rng := RandomNumberGenerator.new()
 var _bleed_t := 0.0
 var _drip_accum := 0.0
+var _lookup_t := 0.0     # >0 while a grazing animal has its head up, scanning
+var _next_lookup := 0.0
+var _thirst_t := 0.0     # uptime of the next trip to water
+var _flee_dir := Vector3.ZERO  # shared by the herd: everyone runs the same way
+var _orbit := 1.0        # pack members circle the player clockwise or anticlockwise
+var _feed_until := 0.0
+var _carcass: Animal = null
+var _bite_anim_t := 0.0
 
 
 func setup(p_species: StringName, p_world: ForestWorld, pos: Vector3, seed: int, p_id: String = "") -> void:
@@ -63,6 +82,9 @@ func setup(p_species: StringName, p_world: ForestWorld, pos: Vector3, seed: int,
 	position = pos
 	_goal = pos
 	hungry = rng.randf() < 0.5
+	_thirst_t = rng.randf_range(THIRST.x * 0.3, THIRST.y)
+	_next_lookup = rng.randf_range(LOOKUP_EVERY.x, LOOKUP_EVERY.y)
+	_orbit = -1.0 if rng.randf() < 0.5 else 1.0
 
 
 func is_predator() -> bool:
@@ -154,7 +176,7 @@ func perceive_player(p: Node3D) -> float:
 	var d := to_p.length()
 	var s := 0.0
 	var vis: float = p.visibility_factor() if p.has_method("visibility_factor") else 1.0
-	var sight := float(def.sight) * vis
+	var sight := float(def.sight) * vis * _sight_factor()
 	if d < sight:
 		var fwd := -global_transform.basis.z
 		var flat := Vector3(to_p.x, 0, to_p.z).normalized()
@@ -162,12 +184,22 @@ func perceive_player(p: Node3D) -> float:
 		if angle <= float(def.fov) * 0.5 and _line_of_sight(p.global_position + Vector3.UP * 1.2):
 			s = maxf(s, 1.0 - d / sight)
 	var noise: float = p.noise_level() if p.has_method("noise_level") else 0.3
-	var hear := float(def.hearing) * noise
+	var hear := float(def.hearing) * noise * (0.7 if state == State.REST else 1.0)
 	if d < hear:
 		s = maxf(s, 0.85 * (1.0 - d / hear))
 	if smells(p.global_position):
 		s = maxf(s, 0.6 * (1.0 - d / float(def.smell)))
 	return s
+
+
+## Grazing with the head down or bedded down at night, an animal sees much less (sneak up then); while it has its
+## head up scanning, it sees a little better than usual.
+func _sight_factor() -> float:
+	if state == State.REST:
+		return 0.45
+	if state in [State.GRAZE, State.DRINK, State.FEED]:
+		return 1.15 if _lookup_t > 0.0 else 0.55
+	return 1.0
 
 
 ## Smell works only downwind: the wind must carry the scent from source to animal.
@@ -295,9 +327,19 @@ func _set_state(s: State) -> void:
 	state_time = 0.0
 	match s:
 		State.WANDER, State.PATROL:
-			var radius := 60.0 if is_predator() else 22.0
-			var a := rng.randf() * TAU
-			_goal = home + Vector3(cos(a), 0, sin(a)) * rng.randf_range(radius * 0.3, radius)
+			var lead := leader()
+			if lead != self and lead and not is_predator():
+				# followers wander to a spot near the leader (the herd moves as one)
+				var a := rng.randf() * TAU
+				_goal = lead.global_position + Vector3(cos(a), 0, sin(a)) * rng.randf_range(3.0, 8.0)
+			else:
+				var radius := 60.0 if is_predator() else 22.0
+				var a := rng.randf() * TAU
+				_goal = home + Vector3(cos(a), 0, sin(a)) * rng.randf_range(radius * 0.3, radius)
+		State.DRINK:
+			_goal = _water_near()
+		State.FEED:
+			_feed_until = _uptime + rng.randf_range(FEED_TIME.x, FEED_TIME.y)
 
 
 func _physics_process(delta: float) -> void:
@@ -311,6 +353,13 @@ func _physics_process(delta: float) -> void:
 		return
 	state_time += delta
 	_attack_cd = maxf(_attack_cd - delta, 0.0)
+	_lookup_t = maxf(_lookup_t - delta, 0.0)
+	_bite_anim_t = maxf(_bite_anim_t - delta, 0.0)
+	if state in [State.GRAZE, State.DRINK, State.FEED]:
+		_next_lookup -= delta
+		if _next_lookup <= 0.0:
+			_lookup_t = LOOKUP_TIME
+			_next_lookup = rng.randf_range(LOOKUP_EVERY.x, LOOKUP_EVERY.y)
 	_think_t -= delta
 	if _think_t <= 0.0:
 		_think(THINK_INTERVAL)
@@ -340,20 +389,23 @@ func _think(dt: float) -> void:
 func _think_prey(_dt: float, p: Node3D, stim: float) -> void:
 	var d := p.global_position.distance_to(global_position) if p else INF
 	match state:
-		State.IDLE, State.GRAZE, State.WANDER:
+		State.IDLE, State.GRAZE, State.WANDER, State.REST, State.DRINK:
 			var person := _person_close(10.0)
-			if awareness > 0.35:
+			var hunter := _predator_near()
+			if hunter:
+				_alarm_herd(hunter)
+				threat = hunter
+				_set_state(State.FLEE)
+			elif awareness > (0.5 if state == State.REST else 0.35):
 				threat = p
 				_set_state(State.ALERT)
+				_herd_alert(p)
 			elif person:
 				threat = person
 				_set_state(State.ALERT)
-			elif state == State.GRAZE and state_time > rng.randf_range(6.0, 14.0):
-				_set_state(State.WANDER)
-			elif state == State.IDLE and state_time > 5.0:
-				_set_state(State.GRAZE)
-			elif state == State.WANDER and (global_position.distance_to(_goal) < 1.5 or state_time > 25.0):
-				_set_state(State.IDLE if rng.randf() < 0.4 else State.GRAZE)
+				_herd_alert(person)
+			else:
+				_herd_routine()
 		State.ALERT:
 			if threat is HumanNPC and is_instance_valid(threat) and threat.global_position.distance_to(global_position) < 8.0:
 				_alarm_herd(threat)
@@ -364,15 +416,158 @@ func _think_prey(_dt: float, p: Node3D, stim: float) -> void:
 			elif awareness < 0.15 and state_time > 4.0:
 				_set_state(State.GRAZE)
 		State.FLEE:
+			var hunter := _predator_near()
+			if hunter and hunter != threat and (threat == null or not is_instance_valid(threat)
+					or hunter.global_position.distance_to(global_position) < threat.global_position.distance_to(global_position)):
+				threat = hunter  # run from whatever is closest on our heels
 			var far := threat == null or threat.global_position.distance_to(global_position) > 60.0
 			if (far and state_time > 6.0) or state_time > 22.0:
 				_set_state(State.RECOVER)
 		State.RECOVER:
-			if awareness > 0.6:
+			_flee_dir = Vector3.ZERO
+			var hunter := _predator_near()
+			if hunter:
+				_alarm_herd(hunter)
+				threat = hunter
+				_set_state(State.FLEE)
+			elif awareness > 0.6:
 				_set_state(State.FLEE)
 			elif state_time > 12.0:
 				home = global_position
 				_set_state(State.GRAZE)
+
+
+## A predator that is hunting (or simply close) and that this animal notices: a stalking one only from close up,
+## one in full sprint from much further; any predator walking right up to it.
+func _predator_near() -> Animal:
+	var best: Animal = null
+	var best_d := INF
+	for a: Animal in get_tree().get_nodes_in_group("animal"):
+		if a == self or a.is_dead() or not a.is_predator():
+			continue
+		var d := a.global_position.distance_to(global_position)
+		var notice := 9.0
+		if a.state in [State.HUNT_PREY, State.CHASE, State.ATTACK]:
+			notice = float(def.sight) * 0.8 * _sight_factor()
+		elif a.state == State.STALK:
+			notice = 15.0 * _sight_factor()
+		if d < notice and d < best_d and (d < 10.0 or _line_of_sight(a.global_position + Vector3.UP * 0.6) or smells(a.global_position)):
+			best = a
+			best_d = d
+	return best
+
+
+# ---------------------------------------------------------------- herd life
+
+func _herd_members() -> Array:
+	return herd.filter(func(a: Variant) -> bool: return is_instance_valid(a) and not (a as Animal).is_dead())
+
+
+## The herd's leader: the living member with the lowest id (stable, no negotiation needed).
+func leader() -> Animal:
+	var best: Animal = self
+	for a: Animal in _herd_members():
+		if a.animal_id < best.animal_id:
+			best = a
+	return best
+
+
+func _is_night() -> bool:
+	return world != null and world.day_night != null and world.day_night.is_night()
+
+
+## Calm-time behaviour shared by prey and defensive herds: graze near the leader, look up now and then, go to
+## water when thirsty (the leader decides, the herd follows), bed down at night and get up at dawn.
+func _herd_routine() -> void:
+	var lead := leader()
+	var near_lead := lead == self or global_position.distance_to(lead.global_position) < HERD_RADIUS
+	if _is_night():
+		if state != State.REST and near_lead:
+			_set_state(State.REST)
+		elif not near_lead and state != State.WANDER:
+			_set_state(State.WANDER)
+		return
+	if state == State.REST:
+		_set_state(State.GRAZE)
+		return
+	if lead == self and state != State.DRINK and _uptime > _thirst_t:
+		var w := _water_near()
+		_thirst_t = _uptime + rng.randf_range(THIRST.x, THIRST.y)
+		if w != Vector3.INF:
+			_drink_at(w)
+			for m: Animal in _herd_members():
+				if m != self and m.state in [State.IDLE, State.GRAZE, State.WANDER]:
+					m._drink_at(w + Vector3(rng.randf_range(-6, 6), 0, rng.randf_range(-6, 6)))
+			return
+	match state:
+		State.DRINK:
+			if state_time > 60.0 or (_arrived(2.5) and state_time > 14.0 + rng.randf() * 6.0):
+				_thirst_t = _uptime + rng.randf_range(THIRST.x, THIRST.y)
+				_set_state(State.GRAZE)
+		State.GRAZE:
+			if not near_lead:
+				_set_state(State.WANDER)
+			elif state_time > rng.randf_range(6.0, 14.0):
+				_set_state(State.WANDER)
+		State.IDLE:
+			if state_time > 5.0:
+				_set_state(State.GRAZE)
+		State.WANDER:
+			if _arrived(1.5) or state_time > 25.0:
+				_set_state(State.IDLE if rng.randf() < 0.4 else State.GRAZE)
+
+
+func _drink_at(w: Vector3) -> void:
+	_set_state(State.DRINK)
+	_goal = w
+
+
+func _arrived(r: float) -> bool:
+	return Vector2(global_position.x - _goal.x, global_position.z - _goal.z).length() < r
+
+
+## The nearest spot on dry ground right at the waterline within ~180 m, or Vector3.INF.
+func _water_near() -> Vector3:
+	if world == null:
+		return Vector3.INF
+	var p := global_position
+	var r := 10.0
+	while r <= 180.0:
+		for k in 16:
+			var a := TAU * k / 16.0 + r * 0.01
+			var x := p.x + cos(a) * r
+			var z := p.z + sin(a) * r
+			var h := world.height_at(x, z)
+			if h > ForestWorld.WATER_LEVEL + 0.05 and h < ForestWorld.WATER_LEVEL + 0.6:
+				return world.ground_point(x, z)
+		r += 10.0
+	return Vector3.INF
+
+
+## Herd mates look up at a threat one of them noticed (defensive herds turn to face it, prey get ready to run).
+func _herd_alert(source: Node3D) -> void:
+	for a: Animal in _herd_members():
+		if a != self and a.state in [State.IDLE, State.GRAZE, State.WANDER, State.REST, State.DRINK] \
+				and a.global_position.distance_to(global_position) < 35.0:
+			a.threat = source
+			a.last_known = source.global_position if source else a.last_known
+			a.awareness = maxf(a.awareness, 0.5)
+			a._set_state(State.ALERT)
+
+
+## Keeps a little space from herd mates (running herds don't pile into one another).
+func _separation() -> Vector3:
+	var push := Vector3.ZERO
+	for a: Animal in _herd_members():
+		if a == self:
+			continue
+		var off := global_position - a.global_position
+		off.y = 0.0
+		var d := off.length()
+		var r := float(def.get("radius", 0.4)) * 4.0 + 1.0
+		if d > 0.01 and d < r:
+			push += off / d * (1.0 - d / r)
+	return push
 
 
 func _think_predator(_dt: float, p: Node3D, stim: float) -> void:
@@ -392,14 +587,22 @@ func _think_predator(_dt: float, p: Node3D, stim: float) -> void:
 		State.PATROL, State.IDLE:
 			var prey := _find_prey()
 			var person := _find_person() if may_engage else null
+			var carcass := _find_carcass() if hungry else null
+			var lead := leader()
 			if hungry and prey:
-				threat = prey
-				_set_state(State.HUNT_PREY)
+				_start_hunt(prey)
+			elif carcass:
+				_carcass = carcass
+				_set_state(State.FEED)
 			elif person:
 				threat = person
 				_set_state(State.CHASE)
 			elif may_engage and awareness > 0.4:
 				_set_state(State.SUSPICIOUS)
+			elif lead != self and global_position.distance_to(lead.global_position) > 25.0 and state == State.IDLE:
+				_goal = lead.global_position + Vector3(rng.randf_range(-6, 6), 0, rng.randf_range(-6, 6))
+				state = State.PATROL  # keep the goal: walk back to the pack
+				state_time = 0.0
 			elif state == State.PATROL and (global_position.distance_to(_goal) < 2.0 or state_time > 40.0):
 				_set_state(State.IDLE)
 			elif state == State.IDLE and state_time > rng.randf_range(4.0, 9.0):
@@ -410,11 +613,35 @@ func _think_predator(_dt: float, p: Node3D, stim: float) -> void:
 			elif awareness < 0.2 and state_time > 5.0:
 				_set_state(State.PATROL)
 		State.INVESTIGATE:
-			if stim > 0.35 and d < 20.0 and _wants_to_attack(p) and not near_fire:
+			if stim > 0.35 and d < 22.0 and _wants_to_attack(p) and not near_fire:
 				threat = p
-				_set_state(State.CHASE)
+				_pack_call(p)
+				var only_territory := not hungry and not _is_night() and health >= max_health
+				if only_territory and d > 6.0:
+					_set_state(State.THREAT)   # a bear or a cat warns an intruder before it charges
+				else:
+					_set_state(State.STALK if d > 14.0 else State.CHASE)
 			elif global_position.distance_to(last_known) < 2.5 or state_time > 18.0:
 				_set_state(State.PATROL)
+		State.STALK:
+			if threat == null or not is_instance_valid(threat) or (threat is Animal and (threat as Animal).is_dead()):
+				_set_state(State.PATROL)
+				return
+			var dt := threat.global_position.distance_to(global_position)
+			var sprint := float(def.get("pounce", 14.0))
+			if threat is Animal:
+				if dt < sprint or (threat as Animal).state in [State.ALERT, State.FLEE]:
+					_set_state(State.HUNT_PREY)
+				elif dt > 70.0 or state_time > 45.0:
+					_set_state(State.PATROL)
+			else:
+				if _fire_near(threat.global_position):
+					calm_until = _uptime + 30.0
+					_set_state(State.PATROL)
+				elif dt < sprint * 0.85 or awareness > 0.95 and dt < sprint * 1.5:
+					_set_state(State.CHASE)
+				elif dt > 50.0 or state_time > 40.0:
+					_set_state(State.PATROL)
 		State.CHASE:
 			if threat == null or not is_instance_valid(threat):
 				_set_state(State.PATROL)
@@ -430,18 +657,35 @@ func _think_predator(_dt: float, p: Node3D, stim: float) -> void:
 			if _windup < 0.0 and state_time > 0.9:
 				_set_state(State.CHASE if threat else State.PATROL)
 		State.HUNT_PREY:
-			if threat == null or not is_instance_valid(threat) or state_time > 30.0:
+			if threat == null or not is_instance_valid(threat) or state_time > 35.0:
 				_set_state(State.PATROL)
 			elif threat is Animal and (threat as Animal).is_dead():
-				hungry = false
-				_set_state(State.IDLE)
-			elif threat.global_position.distance_to(global_position) < 1.8:
-				(threat as Animal).die(species)
-				hungry = false
-				_set_state(State.IDLE)
-			elif awareness > 0.7 and may_engage and _wants_to_attack(p):
-				threat = p
+				_carcass = threat
+				_set_state(State.FEED)
+			elif threat.global_position.distance_to(global_position) < float(def.attack_range) + 0.8:
+				if _attack_cd <= 0.0:
+					_bite(threat as Animal)
+			elif awareness > 0.7 and may_engage and d < 15.0 and _wants_to_attack(p):
+				threat = p  # someone right next to the chase draws the attack
 				_set_state(State.CHASE)
+		State.FEED:
+			if _carcass == null or not is_instance_valid(_carcass) or _carcass.butchered:
+				hungry = false
+				_set_state(State.PATROL)
+			elif _uptime > _feed_until:
+				hungry = false
+				calm_until = _uptime + 60.0
+				_set_state(State.PATROL)
+			elif p and stim > 0.15 and d < 12.0:
+				# someone comes for the kill: fire drives it off, otherwise it guards the carcass
+				if near_fire:
+					calm_until = _uptime + 30.0
+					_set_state(State.FLEE)
+				else:
+					threat = p
+					_set_state(State.CHASE if d < 5.0 else State.THREAT)
+		State.THREAT:
+			_think_threat(p, d, 5.5, 16.0, State.FEED if _carcass and is_instance_valid(_carcass) else State.PATROL)
 		State.FLEE:
 			if state_time > 14.0:
 				_set_state(State.RECOVER)
@@ -449,6 +693,70 @@ func _think_predator(_dt: float, p: Node3D, stim: float) -> void:
 			if state_time > 10.0:
 				home = global_position
 				_set_state(State.PATROL)
+
+
+## Warning display (a growl, a stamp, the head low): charge if the intruder comes closer or stays, calm down
+## and go back to `back_to` if it backs off.
+func _think_threat(p: Node3D, d: float, close: float, leave: float, back_to: State) -> void:
+	if p == null or p.get("dead") == true:
+		_set_state(back_to)
+	elif _fire_near(p.global_position) and d < float(def.get("fire_fear", 6.0)):
+		calm_until = _uptime + 30.0
+		_set_state(State.FLEE)
+	elif d < close and state_time > 0.5:
+		threat = p
+		calm_until = 0.0
+		_set_state(State.CHASE)
+	elif d > leave and state_time > 1.0:
+		_set_state(back_to)
+	elif state_time > THREAT_TIME and d < close * 1.6:
+		threat = p
+		_set_state(State.CHASE)
+	elif state_time > THREAT_TIME * 2.5:
+		_set_state(back_to)
+
+
+func _start_hunt(prey: Animal) -> void:
+	threat = prey
+	_set_state(State.STALK)
+	_pack_call(prey)
+
+
+## Pack mates nearby join the hunt (or the fight).
+func _pack_call(target: Node3D) -> void:
+	for m: Animal in _herd_members():
+		if m == self or m.global_position.distance_to(global_position) > 80.0:
+			continue
+		if m.state in [State.PATROL, State.IDLE, State.SUSPICIOUS, State.INVESTIGATE]:
+			m.threat = target
+			m.hungry = m.hungry or target is Animal
+			m.last_known = target.global_position
+			m._set_state(State.STALK)
+
+
+## A bite on prey: real damage (it bleeds and runs), not an instant kill. A kill is the predator's.
+func _bite(prey: Animal) -> void:
+	_attack_cd = float(def.attack_cooldown) * 0.8
+	_bite_anim_t = 0.45
+	var at := prey.global_position + Vector3.UP * float(prey.def.get("height", 1.0)) * 0.6
+	prey.take_damage(float(def.damage) * 1.5, self, at)
+	if prey.is_dead() and prey.killed_by != &"player":
+		prey.killed_by = species
+
+
+## A carcass worth eating within smelling distance (not another predator, not yet butchered).
+func _find_carcass() -> Animal:
+	var best: Animal = null
+	var best_d := float(def.get("smell", 60.0))
+	for a: Node in get_tree().get_nodes_in_group("carcass"):
+		var c := a as Animal
+		if c == null or c == self or c.butchered or not c.is_dead() or not c.is_prey() and not c.is_defensive():
+			continue
+		var d := c.global_position.distance_to(global_position)
+		if d < best_d and (smells(c.global_position) or d < 25.0):
+			best = c
+			best_d = d
+	return best
 
 
 ## Predators commit to the player only with a reason: hungry, night, a weak player, provoked, or (territorial
@@ -472,22 +780,21 @@ func _think_defensive(_dt: float, p: Node3D, stim: float) -> void:
 	var charge := float(def.get("charge_range", 8.0))
 	var may_engage := _uptime >= calm_until
 	match state:
-		State.IDLE, State.GRAZE, State.WANDER:
-			if awareness > 0.35:
+		State.IDLE, State.GRAZE, State.WANDER, State.REST, State.DRINK:
+			if awareness > (0.5 if state == State.REST else 0.35):
 				threat = p
 				_set_state(State.ALERT)
-			elif state == State.GRAZE and state_time > rng.randf_range(8.0, 18.0):
-				_set_state(State.WANDER)
-			elif state == State.IDLE and state_time > 6.0:
-				_set_state(State.GRAZE)
-			elif state == State.WANDER and (global_position.distance_to(_goal) < 2.0 or state_time > 30.0):
-				_set_state(State.IDLE if rng.randf() < 0.4 else State.GRAZE)
+				_herd_alert(p)
+			else:
+				_herd_routine()
 		State.ALERT:
-			if may_engage and d < charge and stim > 0.1 and not _fire_near(p.global_position if p else global_position):
+			if may_engage and d < charge * 1.6 and stim > 0.1 and not _fire_near(p.global_position if p else global_position):
 				threat = p
-				_set_state(State.CHASE)
+				_set_state(State.THREAT)
 			elif awareness < 0.15 and state_time > 5.0:
 				_set_state(State.GRAZE)
+		State.THREAT:
+			_think_threat(p, d, charge, charge * 2.2, State.ALERT)
 		State.CHASE:
 			if threat == null or not is_instance_valid(threat) or (p and p.get("dead") == true):
 				_set_state(State.GRAZE)
@@ -570,10 +877,23 @@ func _find_person() -> HumanNPC:
 	return best
 
 
+## The whole herd bolts the same way: away from the threat, as seen from the herd's centre.
 func _alarm_herd(source: Node3D) -> void:
-	for a: Animal in herd:
-		if is_instance_valid(a) and not a.is_dead() and a.state != State.FLEE \
-				and a.global_position.distance_to(global_position) < 35.0:
+	var members := _herd_members()
+	if not members.has(self):
+		members.append(self)
+	var centre := Vector3.ZERO
+	for a: Animal in members:
+		centre += a.global_position
+	centre /= float(members.size())
+	var from := source.global_position if source else global_position - global_transform.basis.z
+	var away := centre - from
+	away.y = 0.0
+	away = away.normalized() if away.length() > 0.01 else Vector3(1, 0, 0)
+	away = away.rotated(Vector3.UP, rng.randf_range(-0.35, 0.35))
+	for a: Animal in members:
+		a._flee_dir = away
+		if a != self and a.state != State.FLEE and a.global_position.distance_to(global_position) < 35.0:
 			a.threat = source
 			a.awareness = 1.0
 			a._set_state(State.FLEE)
@@ -618,23 +938,62 @@ func _desired() -> Dictionary:
 			speed = walk
 		State.FLEE:
 			var from := threat.global_position if threat and is_instance_valid(threat) else last_known
-			dir = global_position - from
-			speed = run
+			var away := global_position - from
+			away.y = 0.0
+			away = away.normalized() if away.length() > 0.01 else -global_transform.basis.z
+			dir = away if _flee_dir == Vector3.ZERO else _flee_dir * 0.6 + away * 0.4
+			dir += _separation() * 0.8
+			# prey can't sprint for long: after a few seconds it slows down (wolves, built for endurance, close
+			# in); a wounded animal tires even faster
+			var tire := smoothstep(5.0, 14.0, state_time * (1.6 if health < max_health * 0.6 else 1.0))
+			speed = run * (lerpf(1.0, 0.68, tire) if is_prey() else 1.0)
 		State.RECOVER:
 			dir = -global_transform.basis.z
 			speed = walk * 0.8
 		State.INVESTIGATE:
 			dir = last_known - global_position
 			speed = walk * 1.3
+		State.DRINK:
+			if not _arrived(2.0):
+				dir = _goal - global_position
+				speed = walk
+		State.REST:
+			var lead := leader()
+			if lead != self and global_position.distance_to(lead.global_position) > HERD_RADIUS * 0.8:
+				dir = lead.global_position - global_position
+				speed = walk
+		State.FEED:
+			if _carcass and is_instance_valid(_carcass):
+				dir = _carcass.global_position - global_position
+				var dc := dir.length()
+				speed = 0.0 if dc < float(def.get("length", 1.2)) * 0.6 + 1.0 else (walk * 2.0 if dc > 20.0 else walk)
+		State.STALK:
+			if threat and is_instance_valid(threat):
+				dir = threat.global_position - global_position
+				# pack mates spread out to come at it from the sides
+				var lead := leader()
+				if lead != self:
+					dir = dir.rotated(Vector3.UP, 0.5 * _orbit)
+				speed = walk * 0.8
+		State.THREAT:
+			if threat and is_instance_valid(threat):
+				dir = threat.global_position - global_position
+				# bluff: a short step forward every second or so
+				speed = walk * 0.9 if fmod(state_time, 1.3) < 0.35 else 0.0
 		State.CHASE:
 			if threat and is_instance_valid(threat):
 				dir = threat.global_position - global_position
 				var d := dir.length()
 				speed = run if d > float(def.attack_range) else 0.0
+				# a pack doesn't all bite at once: between bites wolves circle round their target
+				if _herd_members().size() > 1 and _attack_cd > 0.25 and d < 9.0:
+					var flat := Vector3(dir.x, 0.0, dir.z).normalized()
+					dir = flat.cross(Vector3.UP) * _orbit + flat * clampf((d - 5.5) * 0.4, -0.6, 0.6)
+					speed = walk * 2.4
 		State.HUNT_PREY:
 			if threat and is_instance_valid(threat):
 				dir = threat.global_position - global_position
-				speed = run
+				speed = run if dir.length() > float(def.attack_range) * 0.8 else walk
 		State.ALERT, State.SUSPICIOUS, State.ATTACK:
 			var look := last_known if state != State.ATTACK or threat == null else threat.global_position
 			dir = look - global_position
@@ -702,22 +1061,36 @@ func _clear(dir: Vector3) -> bool:
 func _animate() -> void:
 	if _anim == null:
 		return
+	if _bite_anim_t > 0.0:
+		_play("attack", false)
+		return
 	match state:
 		State.ATTACK:
 			return
 		State.GRAZE:
-			_play("graze")
-		State.ALERT, State.SUSPICIOUS:
-			_play("alert")
-		_:
-			if _speed > float(def.walk) * 1.6:
-				_play("run")
-				_anim.speed_scale = clampf(_speed / float(def.run), 0.6, 1.4)
-			elif _speed > 0.3:
-				_play("walk")
-				_anim.speed_scale = clampf(_speed / float(def.walk), 0.6, 1.8)
-			else:
+			_play("alert" if _lookup_t > 0.0 else "graze")
+			return
+		State.DRINK, State.FEED:
+			if _speed < 0.3:
+				_play("alert" if _lookup_t > 0.0 else "graze")
+				return
+		State.ALERT, State.SUSPICIOUS, State.THREAT:
+			if _speed < 0.3:
+				_play("alert")
+				return
+		State.REST:
+			if _speed < 0.3:
 				_play("idle")
+				_anim.speed_scale = 0.35  # slow, sleepy breathing
+				return
+	if _speed > float(def.walk) * 1.6:
+		_play("run")
+		_anim.speed_scale = clampf(_speed / float(def.run), 0.6, 1.4)
+	elif _speed > 0.3:
+		_play("walk")
+		_anim.speed_scale = clampf(_speed / float(def.walk), 0.5, 1.8)
+	else:
+		_play("idle")
 
 
 func _play(name: String, blend: bool = true) -> void:

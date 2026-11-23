@@ -196,7 +196,10 @@ func test_mammoth_defends_itself() -> void:
 	m.awareness = 1.0
 	m._set_state(Animal.State.ALERT)
 	m._think_defensive(0.1, s.player, 1.0)
-	check(m.state == Animal.State.CHASE, "a mammoth charges a player who comes too close")
+	check(m.state == Animal.State.THREAT, "a mammoth first warns a player who comes too close")
+	m.state_time = Animal.THREAT_TIME + 0.1
+	m._think_defensive(0.1, s.player, 1.0)
+	check(m.state == Animal.State.CHASE, "and charges if the player stays")
 	m.state_time = float(m.def.give_up) + 1.0
 	m._think_defensive(0.1, s.player, 1.0)
 	check(m.state == Animal.State.RECOVER and m.calm_until > m._uptime, "then calms down (no permanent aggro)")

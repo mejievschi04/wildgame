@@ -121,6 +121,36 @@ func _ready() -> void:
 		session.world.weather.set_state(StringName(scenario), true)
 	if _env("weather") != "":  # SHOT_WEATHER=cloudy etc. with any scenario
 		session.world.weather.set_state(StringName(_env("weather")), true)
+	if scenario == "hunt":  # a wolf pack hunting a deer herd, live, seen from a rise
+		var wl := session.world.wildlife
+		wl.enabled = false
+		var fwd := -p.global_transform.basis.z
+		fwd.y = 0.0
+		fwd = fwd.normalized()
+		var right := fwd.cross(Vector3.UP)
+		var hc := p.global_position + fwd * 40.0
+		var deer: Array[Animal] = []
+		for i in 5:
+			var q := hc + right * (i - 2) * 3.0 + fwd * randf_range(-2, 2)
+			deer.append(wl.spawn(&"deer", session.world.ground_point(q.x, q.z) + Vector3.UP * 0.2))
+		for a in deer:
+			a.herd = deer.duplicate()
+			a._set_state(Animal.State.GRAZE)
+		var pack: Array[Animal] = []
+		for i in 3:
+			var q := hc - right * 32.0 + fwd * (i * 3.0)
+			pack.append(wl.spawn(&"wolf", session.world.ground_point(q.x, q.z) + Vector3.UP * 0.2))
+		for w in pack:
+			w.herd = pack.duplicate()
+			w.hungry = true
+		pack[0]._start_hunt(deer[0])
+		p.head.rotation.x = -0.12
+		var log_state := func() -> void:
+			print("HUNT deer=", deer.map(func(a: Animal) -> String: return "%s/%.0f" % [Animal.State.keys()[a.state], a.health]),
+				" wolves=", pack.map(func(a: Animal) -> String: return "%s@%.0fm" % [Animal.State.keys()[a.state],
+				a.global_position.distance_to(deer[0].global_position)]))
+		for t in [1.0, 4.0, 8.0, 12.0, 16.0, 20.0, 26.0]:
+			get_tree().create_timer(t).timeout.connect(log_state)
 	if scenario == "wildlife":
 		var wl := session.world.wildlife
 		wl.enabled = false

@@ -938,6 +938,8 @@ func spawn_position() -> Vector3:
 
 func ambient_temperature_at(pos: Vector3) -> float:
 	var t := day_night.ambient_temperature()
+	# climate bands: the tundra is ~10 °C colder (taiga a little), the southern jungle ~8 °C warmer
+	t += 8.0 * jungle_at(pos.x, pos.z) - 10.0 * tundra_at(pos.x, pos.z) - 3.0 * (1.0 - smoothstep(-1200.0, -800.0, pos.z))
 	if weather:
 		t += weather.temp_offset + weather.wind_chill_at(pos)
 	if pos.y < WATER_LEVEL - 0.3:
