@@ -113,6 +113,7 @@ func _ready() -> void:
 		_occupy(c.x, c.y, maxf(16.0, _camp_clearings[i].x + 4.0))
 	_scatter()
 	_build_forest_mask()
+	_terrain_mat.set_shader_parameter("grove_tex", ImageTexture.create_from_image(FarForest.grove_image()))
 	tracks = Tracks.new()
 	tracks.name = "Tracks"
 	add_child(tracks)

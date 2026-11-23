@@ -17,7 +17,8 @@ uniform float map_size = 4200.0;
 uniform float radius = 24.0;
 uniform vec2 wind_dir = vec2(0.8, 0.6);
 uniform float wind_strength = 0.35;
-uniform vec4 bare[12];  // xz centre, radius (fires, buildings)
+uniform vec4 bare[12];
+uniform bool forest_floor = false;  // T_ForestCards_D: fern, sedge, bilberry, sapling under the trees  // xz centre, radius (fires, buildings)
 
 varying vec3 v_up;
 varying float v_col;   // atlas column 0..3
@@ -67,9 +68,18 @@ void vertex() {
 	float bloom = smoothstep(0.6, 0.75, texture(macro_noise, wrapped * 0.03 + vec2(0.31, 0.77)).r) * (1.0 - dryness);
 	// which clump: flowers in their patches, tall grass in its swathes, dry clumps where the meadow is dry
 	float col = 0.0;
-	if (r2 < dryness * 0.75) col = 2.0;
-	if (r2 > 1.0 - tall * 0.8) col = 1.0;
-	if (hash(inst.xz + 41.0) < bloom * 0.55) col = 3.0;
+	float hmul = 1.0;
+	if (forest_floor) {
+		// ferns in drifts, sedge, bilberry carpets, spruce saplings here and there
+		float fern = smoothstep(0.45, 0.65, texture(macro_noise, wrapped * 0.02 + vec2(0.2, 0.9)).r);
+		col = r2 < fern * 0.25 ? 0.0 : (r2 < 0.6 ? 2.0 : 1.0);
+		if (hash(inst.xz + 41.0) < 0.015) col = 3.0;
+		hmul = col == 0.0 ? 1.05 : (col == 3.0 ? 2.4 : (col == 2.0 ? 0.85 : 1.15));
+	} else {
+		if (r2 < dryness * 0.75) col = 2.0;
+		if (r2 > 1.0 - tall * 0.8) col = 1.0;
+		if (hash(inst.xz + 41.0) < bloom * 0.55) col = 3.0;
+	}
 	v_col = col;
 	v_dry = dryness;
 	v_tint = 0.85 + 0.3 * hash(inst.xz + 5.0);
@@ -84,7 +94,7 @@ void vertex() {
 	// LOD: far clusters keep one of their three cards (COLOR.g = card id)
 	float lod = step(COLOR.g, 1.0 - 0.66 * smoothstep(radius * 0.35, radius * 0.6, dist));
 	vec3 local = VERTEX - inst;
-	float hscale = (col == 1.0 ? 1.5 : 1.0) * mix(0.75, 1.25, hash(inst.xz + 9.0));
+	float hscale = (forest_floor ? hmul : (col == 1.0 ? 1.5 : 1.0)) * mix(0.75, 1.25, hash(inst.xz + 9.0));
 	float s = keep * lod * fade;
 	local.y *= s * hscale;
 	local.xz *= s;  // hidden clumps collapse to a point (a flattened card would lie on the ground as a pale patch)
@@ -103,7 +113,7 @@ void fragment() {
 	ALPHA_SCISSOR_THRESHOLD = 0.45;
 	NORMAL = v_up;
 	float top = 1.0 - UV.y;
-	vec3 albedo = c.rgb * v_tint * mix(vec3(0.86, 1.0, 1.05), vec3(1.05, 1.0, 0.85), v_dry * 0.6);
+	vec3 albedo = c.rgb * v_tint * (forest_floor ? vec3(0.8) : mix(vec3(0.86, 1.0, 1.05), vec3(1.05, 1.0, 0.85), v_dry * 0.6));
 	albedo = mix(albedo, vec3(dot(albedo, vec3(0.3, 0.59, 0.11))), 0.18);  // natural, not neon
 	ALBEDO = albedo * mix(0.45, 1.0, smoothstep(0.0, 0.45, top));  // self-shadowed base of the clump
 	ROUGHNESS = 0.78;

@@ -8,6 +8,7 @@ uniform sampler2DArray albedo_tex : source_color, filter_linear_mipmap_anisotrop
 uniform sampler2DArray normal_tex : hint_normal, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2DArray arm_tex : hint_default_white, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D forest_mask : hint_default_black, filter_linear;
+uniform sampler2D grove_tex : hint_default_black, filter_linear;  // FarForest.grove_at: stands of trees
 uniform sampler2D biome_tint : source_color, filter_linear;
 uniform sampler2D macro_noise : hint_default_white, filter_linear_mipmap, repeat_enable;
 uniform float map_size = 260.0;
@@ -26,7 +27,8 @@ void vertex() {
 void fragment() {
 	float n1 = texture(macro_noise, wpos.xz * 0.013).r;
 	float n2 = texture(macro_noise, wpos.xz * 0.07 + vec2(0.37, 0.11)).r;
-	float forest = texture(forest_mask, wpos.xz / map_size + 0.5).r;
+	float forest = max(texture(forest_mask, wpos.xz / map_size + 0.5).r,
+		smoothstep(0.35, 0.8, texture(grove_tex, wpos.xz / map_size + 0.5).r));
 	float h = wpos.y - water_level;
 	float slope = 1.0 - wnrm.y;
 
@@ -100,8 +102,15 @@ void fragment() {
 	float grassy = (1.0 - smoothstep(0.42, 0.62, slope)) * (1.0 - w[2] - w[4] - w[5]) * (1.0 - smoothstep(0.62, 0.9, forest));
 	float sward = clamp(grassy, 0.0, 1.0) * (1.0 - smoothstep(20.0, 34.0, cam_d)) * (1.0 - wet);
 	alb = mix(alb, vec3(0.04, 0.055, 0.02) * (0.8 + 0.4 * n2), sward);
+	// under the trees: dark, damp humus between the forest-floor plants
+	float humus = smoothstep(0.35, 0.75, forest) * (1.0 - smoothstep(0.45, 0.65, slope)) * (1.0 - w[2] - w[4] - w[5])
+		* (1.0 - smoothstep(18.0, 30.0, cam_d)) * (1.0 - wet);
+	alb = mix(alb, vec3(0.055, 0.045, 0.03) * (0.75 + 0.5 * n2), clamp(humus, 0.0, 1.0) * 0.8);
 	alb = mix(alb, alb * vec3(0.82, 0.95, 0.72), far * w[1] * (1.0 - wet));
-	alb *= mix(1.0, 0.62, far * smoothstep(0.25, 0.8, forest));
+	// beyond the impostors: the ground under a canopy is in its shade and reads as a dark green mass of crowns
+	float canopy = smoothstep(0.25, 0.8, forest);
+	alb = mix(alb, vec3(0.05, 0.075, 0.035) * (0.8 + 0.4 * n1), canopy * smoothstep(400.0, 1500.0, cam_d) * 0.85);
+	alb *= mix(1.0, 0.62, far * canopy);
 	ALBEDO = alb;
 	NORMAL_MAP = nrm;
 	NORMAL_MAP_DEPTH = 1.0;

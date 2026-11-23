@@ -3,12 +3,18 @@ extends Node3D
 ## Streamed harvestable trees and gather piles, with batched grass, ferns and shrubs.
 
 const CHUNK := 48.0
-const LOAD_RADIUS := 3
+const LOAD_RADIUS := 2  # real (fellable) trees within ~100–170 m; FarForest impostors take over beyond
 const GRASS_DENSITY := 0.9  # candidates per m²
 const GRASS_RANGE := 42.0
 const FERN_DENSITY := 0.16
 const FERN_RANGE := 75.0
 const ROCK_RANGE := 160.0
+const TREE_SCALE := 1.2  # wilderness trees grow a little taller than the starter valley's…
+
+
+## …except in regions that are already dense (Tavren's tall spruce): bigger crowns there cost a lot of fill-rate.
+static func tree_scale(density: float) -> float:
+	return lerpf(TREE_SCALE, 1.0, smoothstep(0.006, 0.01, density))
 
 var world: ForestWorld
 var _rng := RandomNumberGenerator.new()
@@ -20,6 +26,7 @@ var _log_mesh: Mesh
 var _log_box := AABB()
 var _active: Dictionary = {}
 var _last_center := Vector2i(2147483647, 2147483647)
+var _queue: Array = []  # Vector2i chunk keys waiting to be built (nearest first)
 
 
 func build(w: ForestWorld, forest_mask: Image) -> void:
@@ -38,10 +45,17 @@ func build(w: ForestWorld, forest_mask: Image) -> void:
 func _process(_delta: float) -> void:
 	if not is_instance_valid(world) or not is_instance_valid(world.player):
 		return
-	_stream_near(Vector2(world.player.global_position.x, world.player.global_position.z))
+	_stream_near(Vector2(world.player.global_position.x, world.player.global_position.z), false)
+	# Build queued chunks one per frame, nearest first: walking into new ground never builds a whole ring of
+	# chunks (hundreds of trees) in one frame.
+	if not _queue.is_empty():
+		var key: Vector2i = _queue.pop_front()
+		if not _active.has(key):
+			_add_chunk(key, Vector2(key.x * CHUNK, key.y * CHUNK))
 
 
-func _stream_near(pos: Vector2) -> void:
+## immediate = build every missing chunk now (start-up, teleports, tests); otherwise queue them for _process.
+func _stream_near(pos: Vector2, immediate := true) -> void:
 	var center := Vector2i(floori(pos.x / CHUNK), floori(pos.y / CHUNK))
 	if center == _last_center:
 		return
@@ -56,7 +70,13 @@ func _stream_near(pos: Vector2) -> void:
 				continue
 			wanted[key] = true
 			if not _active.has(key):
-				_add_chunk(key, origin)
+				if immediate:
+					_add_chunk(key, origin)
+				elif not _queue.has(key):
+					_queue.append(key)
+	_queue = _queue.filter(func(k: Vector2i) -> bool: return wanted.has(k))
+	_queue.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
+		return (a - center).length_squared() < (b - center).length_squared())
 	for key: Vector2i in _active.keys():
 		if not wanted.has(key):
 			var root: Node3D = _active[key]
@@ -133,7 +153,7 @@ func _chunk(key: Vector2i, origin: Vector2, grass: Array[Mesh], ferns: Array[Mes
 		occupied.append(Vector2(x, z))
 		var id := "region_%d_%d_tree_%d" % [key.x, key.y, i]
 		var kind := &"tree_birch" if species == &"alder" else &"tree_pine"
-		world.spawn_region_resource(root, id, kind, Vector2(x, z), _rng.randf_range(0.78, 1.22), _rng.randf() * TAU, species)
+		world.spawn_region_resource(root, id, kind, Vector2(x, z), _rng.randf_range(0.78, 1.22) * tree_scale(tree_density), _rng.randf() * TAU, species)
 	for kind: StringName in [&"sticks", &"stones"]:
 		for i in 2:
 			var at := origin + Vector2(_rng.randf_range(2.0, CHUNK - 2.0), _rng.randf_range(2.0, CHUNK - 2.0))
@@ -207,7 +227,8 @@ func _place_groves(key: Vector2i, origin: Vector2, region: StringName, species: 
 		root: Node3D, occupied: Array[Vector2]) -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = int(hash(Vector3i(key.x, key.y, ForestWorld.SEED + 2727)))
-	var tries := int(CHUNK * CHUNK * clampf(density * 1.1, 0.0025, 0.006))
+	# top dense regions up to ~0.012 trees/m² inside a grove; regions already that dense (Tavren) get none
+	var tries := int(CHUNK * CHUNK * clampf(0.0125 - density, 0.0, 0.009))
 	var logs: Array = []
 	for i in tries:
 		var x := origin.x + rng.randf() * CHUNK
@@ -229,7 +250,7 @@ func _place_groves(key: Vector2i, origin: Vector2, region: StringName, species: 
 		if species != &"spruce" and rng.randf() < 0.35:
 			sp = &"spruce"
 		var kind := &"tree_birch" if sp == &"alder" else &"tree_pine"
-		var sc := rng.randf_range(0.7, 1.3) * lerpf(0.75, 1.0, g)  # younger, smaller trees at the grove's edge
+		var sc := rng.randf_range(0.7, 1.3) * lerpf(0.75, 1.0, g) * tree_scale(density)  # younger, smaller at the edge
 		world.spawn_region_resource(root, "region_%d_%d_grove_%d" % [key.x, key.y, i], kind, Vector2(x, z), sc,
 			rng.randf() * TAU, sp)
 		if g > 0.7 and rng.randf() < 0.06:

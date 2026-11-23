@@ -11,7 +11,9 @@ const BARE_SLOTS := 12
 
 var world: ForestWorld
 var _grass: MultiMeshInstance3D
+var _floor: MultiMeshInstance3D
 var _material: ShaderMaterial
+var _floor_material: ShaderMaterial
 var _bare_t := 0.0
 var _quality := -1
 
@@ -30,6 +32,11 @@ func build(w: ForestWorld, heights: PackedFloat32Array, forest_mask: Image, macr
 	_material.set_shader_parameter("cell", ForestWorld.CELL_SIZE)
 	_material.set_shader_parameter("grid", ForestWorld.GRID)
 	_material.set_shader_parameter("map_size", ForestWorld.SIZE)
+	# Forest floor: same field, its own atlas, where the trees stand (forest mask or a grove).
+	_floor_material = _material.duplicate() as ShaderMaterial
+	_floor_material.set_shader_parameter("atlas", preload("res://assets/textures/vegetation/T_ForestCards_D.png"))
+	_floor_material.set_shader_parameter("grass_mask", ImageTexture.create_from_image(_grass_mask(heights, forest_mask, 1.0, true)))
+	_floor_material.set_shader_parameter("forest_floor", true)
 	_rebuild()
 	Settings.changed.connect(func(_s: String, _k: String) -> void: _rebuild())
 
@@ -50,7 +57,10 @@ static func _grass_mask(heights: PackedFloat32Array, forest: Image, thin: float,
 				var fx := clampi(int(float(ix) / row * forest.get_width()), 0, forest.get_width() - 1)
 				var fz := clampi(int(float(iz) / row * forest.get_height()), 0, forest.get_height() - 1)
 				f = forest.get_pixel(fx, fz).r
-			var cover := smoothstep(0.2, 0.65, f) if under_trees else clampf(1.0 - f * thin, 0.0, 1.0)
+			var gx := -ForestWorld.HALF + ix * cell
+			var gz := -ForestWorld.HALF + iz * cell
+			var trees := maxf(smoothstep(0.2, 0.65, f), smoothstep(0.35, 0.8, FarForest.grove_at(gx, gz)))
+			var cover := trees if under_trees else clampf(1.0 - maxf(f * thin, trees * 0.9), 0.0, 1.0)
 			var v := cover * clampf((h - ForestWorld.WATER_LEVEL - 0.3) * 2.0, 0.0, 1.0) \
 				* (1.0 - smoothstep(0.55, 0.8, slope))
 			img.set_pixel(ix, iz, Color(v, v, v))
@@ -62,16 +72,19 @@ func _rebuild() -> void:
 	if q == _quality:
 		return
 	_quality = q
-	if is_instance_valid(_grass):
-		_grass.queue_free()
+	for n in [_grass, _floor]:
+		if is_instance_valid(n):
+			n.queue_free()
 	var radius: float = RADIUS[q]
 	_material.set_shader_parameter("radius", radius)
-	_grass = _field(_cluster_mesh(), float(SPACING[q]), radius)
+	_floor_material.set_shader_parameter("radius", radius)
+	_grass = _field(_cluster_mesh(), float(SPACING[q]), radius, _material)
+	_floor = _field(_cluster_mesh(), float(SPACING[q]) * 1.25, radius, _floor_material)
 
 
-func _field(mesh: Mesh, spacing: float, radius: float) -> MultiMeshInstance3D:
+func _field(mesh: Mesh, spacing: float, radius: float, material: ShaderMaterial) -> MultiMeshInstance3D:
 	var rng := RandomNumberGenerator.new()
-	rng.seed = ForestWorld.SEED + 409
+	rng.seed = ForestWorld.SEED + 409 + int(spacing * 1000.0)
 	var n := int(ceil(radius * 2.0 / spacing))
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
@@ -83,7 +96,7 @@ func _field(mesh: Mesh, spacing: float, radius: float) -> MultiMeshInstance3D:
 			mm.set_instance_transform(iz * n + ix, Transform3D(Basis(Vector3.UP, rng.randf() * TAU), p))
 	var mmi := MultiMeshInstance3D.new()
 	mmi.multimesh = mm
-	mmi.material_override = _material
+	mmi.material_override = material
 	mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	# Positions are made in the shader around the camera: never frustum-cull the field as a whole.
 	mmi.custom_aabb = AABB(Vector3(-ForestWorld.HALF, -200.0, -ForestWorld.HALF), Vector3(ForestWorld.SIZE, 600.0, ForestWorld.SIZE))
@@ -137,8 +150,10 @@ func _process(delta: float) -> void:
 		var p: Vector3 = spots[i][0]
 		arr[i] = Vector4(p.x, p.z, spots[i][1], 0.0)
 	_material.set_shader_parameter("bare", arr)
+	_floor_material.set_shader_parameter("bare", arr)
 	if world.weather:
 		var wd: Vector2 = world.weather.wind_dir
 		var strength := 0.25 + 0.5 * world.weather.wind
-		_material.set_shader_parameter("wind_dir", wd.normalized())
-		_material.set_shader_parameter("wind_strength", strength)
+		for m: ShaderMaterial in [_material, _floor_material]:
+			m.set_shader_parameter("wind_dir", wd.normalized())
+			m.set_shader_parameter("wind_strength", strength)

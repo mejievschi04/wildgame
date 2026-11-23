@@ -2,6 +2,7 @@
 #   blender -b --python tools/blender/gen_grass_atlas.py
 # 0 lush meadow clump · 1 tall grass with seed heads · 2 dry, yellowed clump · 3 flowering clump (purple, white,
 # yellow heads among the grass). Output: assets/textures/vegetation/T_GrassCards_D.png
+# Forest floor atlas (same layout): 0 fern · 1 sedge · 2 bilberry · 3 spruce sapling → T_ForestCards_D.png
 import bpy, os, math
 import numpy as np
 
@@ -119,19 +120,92 @@ for _ in range(14):
     else:
         flower(3, tip[0], tip[1], c, rng.uniform(12, 18))
 
-# fill transparent texels with the column's mean colour (no dark fringes on mips)
-for c in range(4):
-    reg = img[:, c * CW:(c + 1) * CW]
-    m = reg[..., 3] > 0.3
-    mean = reg[m][:, :3].mean(0) if m.any() else np.array([0.2, 0.3, 0.1])
-    reg[..., :3] = np.where(reg[..., 3:4] > 0.02, reg[..., :3], mean)
+def save(name):
+    # fill transparent texels with the column's mean colour (no dark fringes on mips)
+    for c in range(4):
+        reg = img[:, c * CW:(c + 1) * CW]
+        m = reg[..., 3] > 0.3
+        mean = reg[m][:, :3].mean(0) if m.any() else np.array([0.2, 0.3, 0.1])
+        reg[..., :3] = np.where(reg[..., 3:4] > 0.02, reg[..., :3], mean)
+    os.makedirs(OUT, exist_ok=True)
+    im = bpy.data.images.new(name, W, H, alpha=True)
+    im.colorspace_settings.name = "sRGB"
+    im.pixels[:] = np.flipud(img).ravel()
+    path = os.path.join(OUT, name + ".png")
+    im.filepath_raw = path
+    im.file_format = "PNG"
+    im.save()
+    print("ATLAS", path)
 
-os.makedirs(OUT, exist_ok=True)
-im = bpy.data.images.new("T_GrassCards_D", W, H, alpha=True)
-im.colorspace_settings.name = "sRGB"
-im.pixels[:] = np.flipud(img).ravel()
-path = os.path.join(OUT, "T_GrassCards_D.png")
-im.filepath_raw = path
-im.file_format = "PNG"
-im.save()
-print("ATLAS", path)
+
+save("T_GrassCards_D")
+
+# ------------------------------------------------------------------ forest floor
+img[:] = 0.0
+FERN = [srgb(c) for c in [(0.16, 0.30, 0.07), (0.20, 0.34, 0.08), (0.13, 0.26, 0.06)]]
+DARK = [srgb(c) for c in [(0.13, 0.22, 0.07), (0.17, 0.26, 0.09), (0.11, 0.18, 0.06)]]
+
+
+def frond(col, x0, height, side, c):
+    """A fern frond: an arching rachis with paired leaflets shrinking toward the tip."""
+    pts = []
+    n = 24
+    for i in range(n + 1):
+        t = i / n
+        pts.append((x0 + side * height * 0.2 * math.sin(t * 1.3) ** 1.4, H - 2 - height * math.sin(t * 1.45) * 0.95))
+    stroke(pts, 3.0, 1.2, c * 0.6, c * 0.9, col)
+    for i in range(3, n):
+        t = i / n
+        ax, ay = pts[i]
+        bx, by = pts[i - 1]
+        dx, dy = ax - bx, ay - by
+        ln = math.hypot(dx, dy) or 1.0
+        nx, ny = -dy / ln, dx / ln
+        leaf = height * 0.085 * math.sin(math.pi * min(t * 1.15, 1.0)) + 3
+        for sgn in (1, -1):
+            e = (ax + nx * leaf * sgn + dx / ln * leaf * 0.35, ay + ny * leaf * sgn + dy / ln * leaf * 0.35)
+            stroke([(ax, ay), e], 4.0 * (1 - t * 0.5), 1.2, c * 0.85, np.clip(c * 1.2, 0, 1), col)
+
+
+cx = CW * 0.5
+for k in range(11):
+    side = 1 if k % 2 else -1
+    frond(0, cx + rng.normal(0, 10), rng.uniform(0.5, 0.95) * H, side * rng.uniform(0.2, 1.0), FERN[rng.integers(0, 3)] * rng.uniform(0.85, 1.15))
+clump(1, 230, 0.35, 0.85, DARK, spread=0.5, lean_max=0.8)
+# bilberry: woody stems with small oval leaves and a few dark berries
+for k in range(26):
+    bx = CW * 2.5 + rng.normal(0, CW * 0.16)
+    hgt = rng.uniform(0.35, 0.8) * H
+    lean = rng.normal(0, 0.25)
+    pts = [(bx + lean * hgt * (i / 10) ** 1.5, H - 2 - hgt * i / 10) for i in range(11)]
+    stroke(pts, 2.5, 1.2, srgb((0.2, 0.25, 0.1)), srgb((0.26, 0.36, 0.12)), 2)
+    for i in range(2, 11):
+        x, y = pts[i]
+        for sgn in (1, -1):
+            if rng.random() < 0.75:
+                a = rng.uniform(0.3, 1.1) * sgn
+                e = (x + math.sin(a) * 16, y - math.cos(a) * 9)
+                stroke([(x, y), e], 7.0, 3.0, srgb((0.17, 0.32, 0.08)) * rng.uniform(0.8, 1.2), srgb((0.24, 0.42, 0.1)), 2)
+        if rng.random() < 0.12:
+            stroke([(x - 1, y + 4), (x + 1, y + 4)], 5, 5, srgb((0.08, 0.08, 0.2)), srgb((0.12, 0.12, 0.3)), 2)
+# spruce sapling: a thin trunk with drooping tiers of needled branches
+tx = CW * 3.5
+top = H * 0.08
+stroke([(tx, H - 2), (tx, top)], 7, 2, srgb((0.25, 0.17, 0.1)), srgb((0.3, 0.22, 0.12)), 3)
+tiers = 22
+for i in range(tiers):
+    t = i / (tiers - 1)
+    y = H - 60 - t * (H - 60 - top)
+    span = (1 - t) * CW * 0.42 + 10
+    for sgn in (1, -1):
+        ex = tx + sgn * span
+        ey = y + span * 0.25
+        stroke([(tx, y), (tx + sgn * span * 0.5, y + span * 0.08), (ex, ey)], 4, 1.5, srgb((0.08, 0.16, 0.06)), srgb((0.12, 0.22, 0.08)), 3)
+        for j in range(int(span / 3)):
+            u = j / max(span / 3, 1)
+            px, py = tx + sgn * span * u, y + span * 0.25 * u * u
+            for d in (-1, 1):
+                ln = 14 * (1 - u * 0.5)
+                stroke([(px, py), (px + sgn * ln * 0.5, py + d * ln)], 3.0, 1.2, srgb((0.06, 0.13, 0.05)),
+                       srgb((0.12, 0.24, 0.08)) * rng.uniform(0.8, 1.2), 3)
+save("T_ForestCards_D")

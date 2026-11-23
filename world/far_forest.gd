@@ -8,8 +8,9 @@ extends Node3D
 
 const CHUNK := 640.0  # big chunks: each (chunk, tree model) is one draw call
 const STEP := 6.0
-const BEGIN := 165.0
-const END := {0: 650.0, 1: 950.0, 2: 1400.0}
+const BEGIN := 95.0  # = Vegetation.LOAD_RADIUS × CHUNK: real trees are always loaded at least this far
+const END := {0: 900.0, 1: 1500.0, 2: 2200.0}
+const IMPOSTOR_PX := 512
 const SPAWN_CLEAR := 135.0
 ## region -> [species, trees per m²] (as Vegetation._chunk)
 const REGION_TREES := {
@@ -44,7 +45,7 @@ func _impostor(path: String) -> Mesh:
 	var h := box.end.y
 	var r := maxf(maxf(absf(box.position.x), box.end.x), maxf(absf(box.position.z), box.end.z))
 	var vp := SubViewport.new()
-	vp.size = Vector2i(256, int(256.0 * h / (2.0 * r)))
+	vp.size = Vector2i(IMPOSTOR_PX, int(IMPOSTOR_PX * h / (2.0 * r)))
 	vp.transparent_bg = true
 	vp.own_world_3d = true
 	vp.debug_draw = Viewport.DEBUG_DRAW_UNSHADED
@@ -101,7 +102,8 @@ func _compute(mask: Image) -> void:
 			var forest := _mask(mask, px, pz)
 			# ~40 % of the near density, drawn a little larger: in the haze the canopy reads just as closed
 			var g := grove_at(px, pz)
-			var p := float(row[1]) * STEP * STEP * (0.3 + forest) * (0.1 + 3.2 * g * g)
+			# groves close into a canopy (crowns overlap), with a few lone trees in the meadows between them
+			var p := float(row[1]) * STEP * STEP * (0.3 + forest) * (0.12 + 7.0 * g * g)
 			if rng.randf() > p:
 				continue
 			if Vector2(px, pz).distance_to(ForestWorld.SPAWN) < SPAWN_CLEAR or world.river_distance(px, pz) < 20.0:
@@ -111,7 +113,7 @@ func _compute(mask: Image) -> void:
 				continue
 			var sp: StringName = row[0]
 			var i := rng.randi() % (_meshes[sp] as Array).size()
-			var s := rng.randf_range(1.05, 1.6)
+			var s := rng.randf_range(1.0, 1.55) * Vegetation.TREE_SCALE
 			var xf := Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3.ONE * s), Vector3(px, h - 0.3, pz))
 			var key := Vector2i(floori(px / CHUNK), floori(pz / CHUNK))
 			if not chunks.has(key):
@@ -128,6 +130,19 @@ func _compute(mask: Image) -> void:
 static var _groves: FastNoiseLite
 
 
+## The grove field over the whole map as an image (for the terrain shader: forest floor under groves, and the
+## canopy's shade on the ground beyond the impostors).
+static func grove_image(size := 256) -> Image:
+	var img := Image.create_empty(size, size, false, Image.FORMAT_L8)
+	for iz in size:
+		for ix in size:
+			var x := (ix + 0.5) / size * ForestWorld.SIZE - ForestWorld.HALF
+			var z := (iz + 0.5) / size * ForestWorld.SIZE - ForestWorld.HALF
+			var g := grove_at(x, z)
+			img.set_pixel(ix, iz, Color(g, g, g))
+	return img
+
+
 ## 0 open meadow … 1 inside a grove. Real forests grow in stands with clearings between them; FarForest and the
 ## near, fellable grove trees (Vegetation) share this field so the two meet seamlessly.
 static func grove_at(x: float, z: float) -> float:
@@ -136,7 +151,9 @@ static func grove_at(x: float, z: float) -> float:
 		_groves.seed = ForestWorld.SEED + 77
 		_groves.frequency = 0.006
 		_groves.fractal_octaves = 3
-	return smoothstep(-0.05, 0.35, _groves.get_noise_2d(x, z))
+	# none in the start valley (no trees grow within SPAWN_CLEAR of the spawn)
+	var open_valley := smoothstep(SPAWN_CLEAR, SPAWN_CLEAR + 45.0, Vector2(x, z).distance_to(ForestWorld.SPAWN))
+	return smoothstep(-0.05, 0.35, _groves.get_noise_2d(x, z)) * open_valley
 
 
 func _mask(mask: Image, x: float, z: float) -> float:

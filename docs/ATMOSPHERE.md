@@ -137,6 +137,23 @@ FPS: neschimbat (start ~45, sud ~43, noaptea 60).
 - FPS (calitate medie): start 46 → 50, Meyra 34 → 45, râu ~53, Tavren ~30.
 - Unealta de capturi: `SHOT_HIDE=Nod1,Nod2` ascunde copii ai lumii; raportul arată `objects`/`prims`/`draw_calls`.
 
+## Pasul 7: pădure compactă, sol de pădure, copaci încărcați pe măsură ce mergi (2026-11-23)
+
+- **Încărcare treptată** (`Vegetation._stream_near(pos, immediate)`): în joc, bucățile noi de pădure intră într-o
+  coadă și se construiesc câte una pe cadru, cea mai apropiată prima, deci nu mai apare o sacadare când intri în zone
+  noi. Copacii reali se încarcă pe o rază de 2 bucăți (~96–170 m, înainte 3); dincolo de 95 m preiau copacii-imagine.
+  `_stream_near(pos)` fără al doilea argument rămâne imediat (pornire, teleportări, teste).
+- **Copaci mai mari și mai deși**: ×1,2 în regiunile rare sau medii (`Vegetation.tree_scale`), neschimbați în pădurile
+  deja dese (Tavren), unde coroanele mai mari costau ~4 FPS. Crângurile completează densitatea până la ~0,012 copaci/m².
+- **Pădure compactă la distanță**: impostori fotografiați la 512 px, mult mai deși în crânguri (coroanele se ating),
+  vizibili până la 1,5 km (calitate medie). Câmpul de crânguri e copiat într-o textură (`FarForest.grove_image`) pentru
+  teren: sub crânguri apare sol de pădure, iar dincolo de impostori solul ia culoarea verde-închisă a coroanelor.
+  Nu există crânguri în valea de start.
+- **Sol de pădure**: al doilea strat de carduri (`T_ForestCards_D`: ferigă, rogoz, afin, puiet de molid) sub copaci și
+  în crânguri, cu humus întunecat între plante; iarba de pajiște nu mai crește în crânguri.
+
+FPS (calitate medie): start ~54, Meyra ~45, râu ~46, Tavren ~29.
+
 ## Următorii pași propuși
 
 1. **Pădurea de aproape**: copacii reali sunt așezați uniform; grupați în pâlcuri, cu tufișuri și bușteni căzuți.
