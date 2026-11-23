@@ -4,7 +4,7 @@ extends Node
 ## Usage: godot --path . -- --autoshot=/abs/out.png [--shot-frames=120] [--shot-hour=21.5] [--shot-scenario=inventory]
 ## Scenarios: none, inventory, journal, pause, camp (lit fire + bed in view), kit (starter items), prompt (aim at sticks),
 ## tribe (Neanderthal clan + two sapiens in a row), tribelife (a camp at work / asleep; SHOT_CAMP=hunters|clan|gatherers),
-## build (hut + lean-to + blueprint + active ghost), buildmenu (radial menu), fauna (all species, live), spear / club / bow (weapon in hand; bow mid-draw), river (main river valley from the bank), house (3/4 view of the build demo), farm (garden beds + wild plants).
+## flow (menu → new game through the loading screen; run on main_menu.tscn), keyart (menu art, SHOT_HERD / SHOT_FIRE), build (hut + lean-to + blueprint + active ghost), buildmenu (radial menu), fauna (all species, live), spear / club / bow (weapon in hand; bow mid-draw), river (main river valley from the bank), house (3/4 view of the build demo), farm (garden beds + wild plants).
 
 var out_path := ""
 var frames := 120
@@ -42,17 +42,23 @@ static func attach_if_requested(parent: Node) -> void:
 	s.bench_off = str(args.get("bench-off", "")).split(",", false)
 	s.process_mode = Node.PROCESS_MODE_ALWAYS
 	parent.set_meta("no_focus_pause", true)  # unfocused automation window must not auto-pause
+	if s.scenario == "flow":  # from the menu: start a new game and keep shooting through the loading screen
+		parent.get_tree().root.add_child.call_deferred(s)
+		return
 	parent.add_child.call_deferred(s)
 
 
 func _ready() -> void:
+	if scenario == "flow":
+		get_tree().create_timer(0.6).timeout.connect(Game.new_game)
+		return
 	var session := get_parent() as GameSession
 	if session == null:
 		return
 	if hour >= 0.0:
 		session.world.day_night.time_hours = hour
 	var p := session.player
-	if scenario in ["inventory", "camp", "kit", "journal", "prompt"]:
+	if scenario in ["inventory", "camp", "kit", "journal", "prompt", "craft"]:
 		for id: StringName in [&"stick", &"stone", &"fiber", &"flint", &"berries", &"meat_raw"]:
 			p.inventory.add_item(id, 6)
 		p.inventory.add_item(&"flint_knife")
@@ -370,6 +376,41 @@ func _ready() -> void:
 		_gore_pending = true
 	if scenario == "kit":
 		session.world.add_journal("JOURNAL_WATER")
+	if scenario == "keyart":  # menu / loading backdrops: no HUD, no hands, a staged herd. SHOT_SPECIES, SHOT_HERD=x:z:yaw;...
+		(session.get_node("UI") as CanvasLayer).visible = false
+		p.hand_root.visible = false
+		var wl := session.world.wildlife
+		wl.enabled = false
+		var cam := p.get_viewport().get_camera_3d()
+		var fwd := -cam.global_transform.basis.z
+		fwd.y = 0.0
+		fwd = fwd.normalized()
+		var right := fwd.cross(Vector3.UP)
+		var species := StringName(_env("species")) if _env("species") != "" else &"mammoth"
+		for e in _env("herd").split(";", false):
+			var v := e.split(":")
+			var pos: Vector3 = p.global_position + fwd * float(v[1]) + right * float(v[0])
+			var sp := StringName(v[3]) if v.size() > 3 else species
+			var a := wl.spawn(sp, session.world.ground_point(pos.x, pos.z) + Vector3.UP * 0.3)
+			a.rotation.y = atan2(fwd.x, fwd.z) + deg_to_rad(float(v[2]) if v.size() > 2 else 90.0)
+			a.calm_until = 1e9
+			a.hungry = false
+		if _env("fire") != "":  # SHOT_FIRE=x:z  a lit campfire relative to the camera
+			var f := _env("fire").split(":")
+			var fp: Vector3 = p.global_position + fwd * float(f[1]) + right * float(f[0])
+			var fire: Campfire = session.world.spawn_structure(&"campfire", Transform3D(Basis(), session.world.ground_point(fp.x, fp.z)))
+			fire.add_fuel(600)
+			fire.ignite()
+			var face := atan2(-fwd.x, -fwd.z)
+			var lp: Vector3 = fp + fwd * 2.6 + right * 1.4
+			var lean: BuildingPiece = session.world.spawn_structure(&"piece", Transform3D(Basis(Vector3.UP, face + 0.4), session.world.ground_point(lp.x, lp.z)), {"piece": "lean_to"})
+			lean.complete()
+			var bp: Vector3 = fp + fwd * 2.0 + right * 1.5
+			var bed: Node3D = session.world.spawn_structure(&"bed", Transform3D(Basis(Vector3.UP, face + 0.4), session.world.ground_point(bp.x, bp.z)))
+			bed.process_mode = Node.PROCESS_MODE_DISABLED
+		if _env("fov") != "":
+			Settings.set_value("video", "fov", float(_env("fov")), false)
+		session.world.weather.set_state(StringName(_env("weather")) if _env("weather") != "" else &"clear", true)
 	if scenario == "river":  # upstream along the main river from its west bank (valley shape, shoreline)
 		session.world.wildlife.enabled = false
 		var w := session.world
@@ -506,6 +547,7 @@ func _process(delta: float) -> void:
 		match scenario:
 			"inventory": session.open_inventory(0)
 			"journal": session.open_inventory(1)
+			"craft": session.open_inventory(2)
 			"pause": session.open_pause()
 			"buildmenu": session.open_build_menu()
 	if _gore_pending and _n == 30:

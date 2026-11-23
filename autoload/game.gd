@@ -7,6 +7,7 @@ const GAME_SCENE := "res://scenes/game.tscn"
 ## Save data the next GameSession applies on _ready (empty = new game).
 var pending_save: Dictionary = {}
 var current_slot := "slot1"
+var _loading: LoadingScreen
 
 
 func new_game() -> void:
@@ -41,6 +42,38 @@ func quit() -> void:
 	get_tree().quit()
 
 
+## Loads the session behind a LoadingScreen. Building the world blocks the main thread for a few seconds, so each
+## stage is shown on the bar before the next blocking step starts.
 func _enter_game() -> void:
 	get_tree().paused = false
-	get_tree().change_scene_to_file(GAME_SCENE)
+	if _loading:
+		return
+	var tree := get_tree()
+	_loading = LoadingScreen.new()
+	tree.root.add_child(_loading)
+	await _loading.opened
+	_loading.set_stage("LOAD_STAGE_SCENE", 0.08)
+	if ResourceLoader.load_threaded_request(GAME_SCENE) != OK:
+		tree.change_scene_to_file(GAME_SCENE)
+	else:
+		var prog := []
+		while ResourceLoader.load_threaded_get_status(GAME_SCENE, prog) == ResourceLoader.THREAD_LOAD_IN_PROGRESS:
+			_loading.set_stage("LOAD_STAGE_SCENE", 0.08 + 0.2 * float(prog[0]))
+			await tree.process_frame
+		var packed := ResourceLoader.load_threaded_get(GAME_SCENE) as PackedScene
+		_loading.set_stage("LOAD_STAGE_WORLD", 0.42)
+		while not _loading.caught_up():
+			await tree.process_frame
+		await tree.process_frame
+		tree.change_scene_to_packed(packed)
+	await tree.process_frame
+	await tree.process_frame
+	_loading.set_stage("LOAD_STAGE_LIFE", 0.9)
+	# Let the first frames stream the nearby region and compile shaders behind the curtain.
+	for i in 40:
+		await tree.process_frame
+	_loading.set_stage("LOAD_STAGE_READY", 1.0)
+	while not _loading.caught_up():
+		await tree.process_frame
+	_loading.finish()
+	_loading = null

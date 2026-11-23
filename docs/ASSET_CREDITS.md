@@ -42,6 +42,39 @@ game-ready versions live in `assets/`.
 ## Motion capture
 - **CMU Graphics Lab Motion Capture Database** — http://mocap.cs.cmu.edu — "The data used in this project was obtained from mocap.cs.cmu.edu. The database was created with funding from NSF EIA-0196217." Free for research and commercial use with this credit. BVH conversion by Bruce Hahne (cgspeed). Files in `art_source/mocap/`: 08_01, 08_02, 16_15 (walk), 09_02, 09_03 (run), 02_07, 02_08 (swordplay → spear thrust), 14_01 (boxing). Retargeted with `tools/blender/mocap_retarget.py`.
 
+## Interface
+- **Oswald** (`assets/fonts/Oswald.ttf`) — The Oswald Project Authors, SIL Open Font License 1.1 (`assets/fonts/Oswald_OFL.txt`). Titles, buttons, tabs. Source: https://github.com/googlefonts/OswaldFont
+- `assets/ui/T_UI_*.png` — made for this game by `tools/ui/gen_ui_textures.py` (procedural brush stroke, hide, stone slab, cells, cave paintings). The cave-painted mammoth is a silhouette of our own `SK_Mammoth` (`tools/ui/render_silhouette.py`).
+- `assets/ui/BG_*.jpg` — stills rendered from the game with the AutoShot `keyart` scenario (menu and loading backdrops).
+- Icons — hand-drawn SVG paths in `ui/primal_icons.gd`.
+
+## Audio
+CC0 needs no credit; public-domain recordings are listed the same way. Runtime files are mono 44.1 kHz cuts of these sources. Originals are in `assets/audio/source/`. The older effect list is in `docs/ASSET_BIBLE.md`.
+
+| Sound | Author | Licence | Source |
+|---|---|---|---|
+| Wolf howls (`wolf_howl_01`–`04`) | U.S. Fish & Wildlife Service | public domain | https://commons.wikimedia.org/wiki/File:Wolf_howls.ogg |
+| Elk bellow, also pitched for reindeer and megaloceros calls | U.S. Fish & Wildlife Service | public domain | https://commons.wikimedia.org/wiki/File:Elkbellow.ogg |
+| Bear growls and the lowered roar | U.S. Fish & Wildlife Service, prepared by AntumDeluge | CC0 1.0 | https://opengameart.org/content/bear-growls |
+| Tree creak | Department64, cleaned by AntumDeluge | CC0 1.0 | https://opengameart.org/content/tree-creaking |
+| Campfire crackle | AntumDeluge | CC0 1.0 | https://opengameart.org/content/fire-crackling |
+| Weapon swishes | artisticdude | CC0 1.0 | https://opengameart.org/content/swishes-sound-pack |
+| Swallows | qubodup | CC0 1.0 | https://opengameart.org/content/liquid-bottle-drink-set |
+| Axe hits, glances, snow steps, medium wood chops | Kenney | CC0 1.0 | https://kenney.nl/assets/impact-sounds |
+| Horse whinny | Jack Powell, Shetland Pony Vox | Sonniss GDC 2017, royalty-free for the game | https://sonniss.com/gameaudiogdc/ |
+| Horse whinny and snorts | G4F SFX, Horses | Sonniss GDC 2017, royalty-free for the game | https://sonniss.com/gameaudiogdc/ |
+| Boar snorts and squeals | Coll Anderson, Pig | Sonniss GDC 2015, royalty-free for the game | https://sonniss.com/gameaudiogdc/ |
+| Boar grunt | Articulated Sounds, Pig Farm Animal Groan | Sonniss GDC 2020, royalty-free for the game | https://sonniss.com/gameaudiogdc/ |
+| Boar grunt | SoundBits, Collected Animals | Sonniss GDC 2020, royalty-free for the game | https://sonniss.com/gameaudiogdc/ |
+| Roe deer barks, also pitched for red deer, reindeer, and megaloceros alarms | Ivo Vicic, Red Deer and Roe Deer | Sonniss GDC 2018, royalty-free for the game | https://sonniss.com/gameaudiogdc/ |
+| Grass rustle | Sonocaine, The Rustle | Sonniss GDC 2016, royalty-free for the game | https://sonniss.com/gameaudiogdc/ |
+| Leaf rustle | Soundrangers, Foley Elements Foliage | Sonniss GDC 2018, royalty-free for the game | https://sonniss.com/gameaudiogdc/ |
+| Fox screams | Ivo Vicic, European mountain forest animals | Sonniss GDC 2020, royalty-free for the game | https://sonniss.com/gameaudiogdc/ |
+| Wolf fight | Ivo Vicic, European mountain forest animals | Sonniss GDC 2020, royalty-free for the game | https://sonniss.com/gameaudiogdc/ |
+| Bear hurt | Gamemaster Audio, Animal Sounds | Sonniss GDC 2018, royalty-free for the game | https://sonniss.com/gameaudiogdc/ |
+
+The Sonniss cuts are short phrases used inside this game. The licence allows that. It does not allow shipping the recordings again as a sound library, sample pack, or asset pack. Originals were not kept in the repo.
+
 ## Sketchfab (CC BY 4.0, attribution required)
 Licensed under Creative Commons Attribution 4.0 — https://creativecommons.org/licenses/by/4.0/.
 Changes: re-oriented and rescaled to the item convention, polygon count reduced (axe 200k → 5.8k triangles,

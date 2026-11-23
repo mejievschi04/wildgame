@@ -10,6 +10,8 @@ const MAX_TOASTS := 5
 const MARKER_MIN_DIST := 18.0
 const MAX_MARKERS := 3
 
+## Set while a full-screen menu (inventory / craft) covers the game.
+var suppressed := false
 var player: Player
 
 var _health: ProgressBar
@@ -506,7 +508,7 @@ func _process(_delta: float) -> void:
 	else:
 		m.set_shader_parameter("tint", UITheme.DANGER)
 		m.set_shader_parameter("strength", low_health * 0.7)
-	visible = not player.dead
+	visible = not player.dead and not suppressed
 
 
 func _update_context(s: SurvivalStats) -> void:

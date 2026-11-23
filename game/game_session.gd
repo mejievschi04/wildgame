@@ -67,6 +67,7 @@ func _build_ui() -> void:
 	layer.add_child(inventory_screen)
 	inventory_screen.bind(player)
 	inventory_screen.closed.connect(_on_ui_closed)
+	inventory_screen.build_requested.connect(open_build_menu)
 	weapon_wheel = WeaponWheel.new()
 	weapon_wheel.player = player
 	layer.add_child(weapon_wheel)
@@ -136,6 +137,7 @@ func open_inventory(tab: int = 0) -> void:
 	player.placement.cancel()
 	player.input_enabled = false
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	hud.suppressed = true
 	inventory_screen.open(tab)
 
 
@@ -168,6 +170,7 @@ func open_pause() -> void:
 func _on_ui_closed() -> void:
 	if player.dead:
 		return
+	hud.suppressed = false
 	player.input_enabled = true
 	player.capture_mouse()
 
