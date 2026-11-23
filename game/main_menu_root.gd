@@ -22,6 +22,7 @@ func _ready() -> void:
 	bed.process_mode = Node.PROCESS_MODE_DISABLED
 	_cam = Camera3D.new()
 	_cam.fov = 62.0
+	_cam.far = 14000.0
 	add_child(_cam)
 	_update_cam()
 	var amb := Ambience.new()

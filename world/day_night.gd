@@ -12,9 +12,9 @@ const LUNAR_DAYS := 8.0
 const LUNAR_START := 0.35
 const MOON_MAX_ELEV := 55.0
 ## Sky objects ride on a dome around the camera (inside its far plane).
-const MOON_DIST := 600.0
+const MOON_DIST := 13000.0  # beyond the border mountains (Backdrop), inside the camera far plane
 const MOON_SIZE_DEG := 3.2
-const STAR_DIST := 650.0
+const STAR_DIST := 13200.0
 const STAR_COUNT := 1800
 
 var time_hours := 12.0
@@ -276,7 +276,7 @@ func update_visuals() -> void:
 	environment.ambient_light_energy = lerpf(0.35, 0.52, day_k) * (1.0 + 0.6 * cloud)
 	# Distance takes the sky's blue (aerial perspective), warmer toward evening.
 	environment.fog_light_color = hor.lerp(day_top, 0.25 * day_k).darkened(0.05)
-	environment.fog_density = lerpf(0.010, 0.0012, day_k) + fog_extra + cloud * 0.0018
+	environment.fog_density = lerpf(0.006, 0.0002, day_k) + fog_extra + cloud * 0.0015  # clear air: see for kilometres
 	environment.volumetric_fog_albedo = Color(1.0, 0.96, 0.9).lerp(hor, 0.4)
 	environment.volumetric_fog_density = lerpf(0.012, 0.0016, day_k) + 0.007 * dusk_k * day_k  # shafts at low sun
 	# Valley mist: thick in the early morning and at dusk, burnt off by midday.

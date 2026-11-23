@@ -85,6 +85,26 @@ măsurători, `SHOT_AT=x,z,yaw` și `SHOT_PITCH` pentru capturi oriunde pe hart�
 
 FPS: start ~46, râu ~47, Meyra ~51, Tavren ~32 (înainte: 51 / 55 / 49 / 30).
 
+## Pasul 4: granițele lumii — munți la nord, vulcani la sud (2026-11-23)
+
+- **`world/backdrop.gd` + `backdrop.gdshader`**: un inel de relief în afara hărții jucabile, până la ±11 km. O singură
+  plasă de înălțimi: celule de 40 m până la 3,8 km, apoi tot mai mari. Se calculează pe un thread la pornire și nu se
+  generează în modul headless (teste).
+  - **Nord**: lanț înalt de 1,5–2,6 km (zgomot „ridged”, deformat), cu păduri de conifere la poale, stâncă de granit
+    peste ~950 m și zăpadă peste ~1 250 m. Zăpada nu rămâne pe pereții abrupți.
+  - **Est/vest**: dealuri împădurite de 250–900 m; spre nord au vârfuri înzăpezite.
+  - **Sud**: câmpie vulcanică joasă și 4 vulcani (1,1–2,7 km), cu cratere, ravene radiale, bazalt negru și cenușă
+    ruginie. Lava lucește în dungi pe ravene și în crater, mai ales noaptea.
+- **Fum** (`volcano_smoke.gdshader`): coloană de cenușă care se lărgește și se înclină după vânt, mai deasă la vulcanul
+  mare și slabă la al doilea. Noaptea e luminată în roșu de jos.
+- **Ceață proprie**: partea razei din interiorul hărții folosește densitatea ceții scenei, deci se potrivește cu
+  terenul la margine; dincolo de margine aerul e mai limpede (≤ 0,00012), iar vârfurile sunt deasupra stratului gros.
+  Ceața de zi a scenei a scăzut la 0,0002, deci se vede la kilometri.
+- Marginea hărții urcă lin (≈60 m), nu mai e un perete de 290 m. Camera vede până la 14 km, iar luna și stelele au fost
+  mutate la 13 km (altfel apăreau în fața munților).
+
+FPS: neschimbat (start ~45, sud ~43, noaptea 60).
+
 ## Următorii pași propuși
 
 1. **Pădurea de aproape**: copacii reali sunt așezați uniform; grupați în pâlcuri, cu tufișuri și bușteni căzuți.

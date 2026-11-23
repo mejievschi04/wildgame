@@ -133,6 +133,10 @@ func _ready() -> void:
 	veg.name = "Vegetation"
 	add_child(veg)
 	veg.build(self, forest_mask)
+	var backdrop := Backdrop.new()
+	backdrop.name = "Backdrop"
+	add_child(backdrop)
+	backdrop.build(self)
 	far_forest = FarForest.new()
 	far_forest.name = "FarForest"
 	add_child(far_forest)
@@ -377,7 +381,8 @@ func _terrain_height(x: float, z: float, legacy_river := false) -> float:
 	h = lerpf(h, -5.0, lake_basin)
 	var e := maxf(absf(x), absf(z))
 	if e > PLAYABLE + 4.0:
-		h += pow((e - PLAYABLE - 4.0) / 30.0, 2.0) * 28.0
+		# Gentle rise into the border mountains (Backdrop continues it); the bounds walls stop the player.
+		h += pow((e - PLAYABLE - 4.0) / 96.0, 1.5) * 60.0
 	return h
 
 

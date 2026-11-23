@@ -90,7 +90,7 @@ func _ready() -> void:
 	add_child(head)
 	camera = Camera3D.new()
 	camera.near = 0.05
-	camera.far = 700.0
+	camera.far = 14000.0  # the border mountains and volcanoes (Backdrop) stand up to ~11 km away
 	camera.current = true
 	head.add_child(camera)
 	ray = RayCast3D.new()
