@@ -154,6 +154,20 @@ FPS: neschimbat (start ~45, sud ~43, noaptea 60).
 
 FPS (calitate medie): start ~54, Meyra ~45, râu ~46, Tavren ~29.
 
+## Pasul 8: cascada (2026-11-23)
+
+- **`world/waterfall.gd`**: pe malul estic al râului principal (z ≈ −520, ~520 m nord de start) o stâncă de ~15 m
+  construită ca relief adăugat peste teren. Terenul, salvările și distribuirea resurselor rămân neschimbate; zona e
+  marcată ocupată, deci nu cresc copaci în ea. Peretele face o nișă în dreptul căderii, are contraforturi și ravene, iar
+  marginile sunt rupte. Are coliziune (trimesh), deci poți urca pe platou.
+- Un pârâu curge pe platou într-un canal săpat (se poate bea și pescui din el), apoi cade ~14 m în râu
+  (`falling_water.gdshader`: dâre care curg în jos, apă albă care se rupe în fâșii, spumă la bază).
+- Ceață de stropi la bază (particule care urcă și se duc în aval) și **ape albe** în râu, sub cădere (`water.gdshader`,
+  parametrul `rapids`).
+- `cliff.gdshader`: stâncă scanată gri, triplanară, cu straturi; mușchi pe suprafețele orizontale; rocă udă și
+  întunecată în zona stropilor; lumină reflectată de râu pe pereții din umbră.
+- Captură: `--shot-scenario=waterfall` (`SHOT_DIST`, `SHOT_SLANT`, `SHOT_PITCH`).
+
 ## Următorii pași propuși
 
 1. **Pădurea de aproape**: copacii reali sunt așezați uniform; grupați în pâlcuri, cu tufișuri și bușteni căzuți.

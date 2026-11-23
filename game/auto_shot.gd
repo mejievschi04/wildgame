@@ -320,6 +320,17 @@ func _ready() -> void:
 		p.look_at(Vector3(ahead.x, p.global_position.y, ahead.y))
 		p.rotation = Vector3(0, p.rotation.y, 0)
 		p.head.rotation.x = -0.12
+	if scenario == "waterfall":  # the falls from across the river, a little downstream
+		session.world.wildlife.enabled = false
+		var wf: Waterfall = session.world.waterfall
+		var back := float(_env("dist")) if _env("dist") != "" else 34.0
+		var slant := float(_env("slant")) if _env("slant") != "" else 0.55
+		var at := Vector2(wf.foot.x, wf.foot.z) + Vector2(-wf.side * back, back * slant)
+		print("WATERFALL lip=", wf.lip, " foot=", wf.foot)
+		p.global_position = session.world.ground_point(at.x, at.y) + Vector3.UP * 0.3
+		p.look_at(Vector3(wf.foot.x, p.global_position.y, wf.foot.z))
+		p.rotation = Vector3(0, p.rotation.y, 0)
+		p.head.rotation.x = float(_env("pitch")) if _env("pitch") != "" else 0.12
 	if scenario in ["spear", "club", "bow"]:
 		session.world.wildlife.enabled = false
 		var weapon := StringName(scenario)

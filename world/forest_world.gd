@@ -44,6 +44,8 @@ var camps: Camps
 var npc_nav: NpcNav
 var meadow_grass: MeadowGrass
 var far_forest: FarForest
+var waterfall: Waterfall
+var _water_mat: ShaderMaterial
 var _camp_sites: Array[Vector2] = []
 var _camp_heights: Array[float] = []
 var _camp_clearings: Array[Vector2] = []
@@ -137,6 +139,11 @@ func _ready() -> void:
 		add_child(camps)
 		camps.build_structures()
 		camps.spawn_people()
+	waterfall = Waterfall.new()
+	waterfall.name = "Waterfall"
+	add_child(waterfall)
+	waterfall.build(self, -520.0, 1.0)
+	_water_mat.set_shader_parameter("rapids", waterfall.rapids())
 	var veg := Vegetation.new()
 	veg.name = "Vegetation"
 	add_child(veg)
@@ -513,6 +520,7 @@ func _build_terrain() -> void:
 
 func _build_water() -> void:
 	var m := ShaderMaterial.new()
+	_water_mat = m
 	m.shader = preload("res://world/shaders/water.gdshader")
 	for key in ["wave_a", "wave_b"]:
 		var nt := NoiseTexture2D.new()
