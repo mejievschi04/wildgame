@@ -233,7 +233,7 @@ func _apply_visuals() -> void:
 	if _rain_audio.stream:
 		if r > 0.05 and not _rain_audio.playing:
 			_rain_audio.play()
-		_rain_audio.volume_db = linear_to_db(maxf(r * 0.24, 0.0001))
+		_rain_audio.volume_db = linear_to_db(maxf(r * 0.34, 0.0001))
 	world.set_ground_wetness(clampf(rain * 1.2, 0.0, 1.0))
 
 

@@ -30,6 +30,6 @@ func _process(_delta: float) -> void:
 		return
 	var day_k := smoothstep(-0.1, 0.25, day_night.sun_elevation())
 	# Keep environmental beds behind gameplay; the Ambience slider controls this bus.
-	_wind.volume_db = linear_to_db(lerpf(0.20, 0.14, day_k))
+	_wind.volume_db = linear_to_db(lerpf(0.28, 0.20, day_k))
 	_birds.volume_db = linear_to_db(maxf(0.13 * day_k, 0.0001))
-	_crickets.volume_db = linear_to_db(maxf(0.10 * (1.0 - day_k), 0.0001))
+	_crickets.volume_db = linear_to_db(maxf(0.16 * (1.0 - day_k), 0.0001))

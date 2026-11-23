@@ -23,4 +23,4 @@ Species: deer, roe, reindeer, megaloceros, horse, boar, hare, fox, wolf, lion, b
 | eat    | predators feeding at a kill                                           | 15 m        |
 
 Without a recording nothing plays, but the loud events still show a subtitle when subtitles are on.
-Licensing: only CC0 / CC-BY (credit in docs/ASSET_CREDITS.md) or bought sounds — the game may be sold.
+Licensing: CC0, public domain, CC-BY (credit in docs/ASSET_CREDITS.md), bought sounds, or a short cut from the Sonniss GDC bundle. Sonniss files stay inside the game and are not shipped again as a sound library.

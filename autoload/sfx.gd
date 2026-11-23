@@ -5,7 +5,7 @@ extends Node
 signal caption(text: String)
 
 const NAMES := [
-	&"step_grass", &"step_wood", &"step_water", &"rustle", &"chop", &"stone_knock", &"whoosh", &"pop",
+	&"step_grass", &"step_wood", &"step_water", &"step_snow", &"rustle", &"chop", &"stone_knock", &"whoosh", &"pop",
 	&"craft", &"place", &"build", &"dismantle", &"collapse", &"door", &"eat", &"drink", &"fire_ignite",
 	&"tree_creak", &"tool_break", &"hurt", &"ui_click", &"axe_chop", &"axe_glance", &"fire_loop", &"wind_loop", &"birds_loop", &"crickets_loop", &"rain_loop",
 ]
@@ -29,6 +29,13 @@ const FILES := {
 		"res://assets/audio/SFX_Step_Water_002.wav",
 		"res://assets/audio/SFX_Step_Water_003.wav",
 	],
+	&"step_snow": [
+		"res://assets/audio/SFX_Step_Snow_000.wav",
+		"res://assets/audio/SFX_Step_Snow_001.wav",
+		"res://assets/audio/SFX_Step_Snow_002.wav",
+		"res://assets/audio/SFX_Step_Snow_003.wav",
+		"res://assets/audio/SFX_Step_Snow_004.wav",
+	],
 	&"rustle": [
 		"res://assets/audio/SFX_Rustle_001.wav",
 		"res://assets/audio/SFX_Rustle_002.wav",
@@ -48,6 +55,8 @@ const FILES := {
 	&"whoosh": [
 		"res://assets/audio/SFX_Whoosh_001.wav",
 		"res://assets/audio/SFX_Whoosh_002.wav",
+		"res://assets/audio/SFX_Whoosh_003.wav",
+		"res://assets/audio/SFX_Whoosh_004.wav",
 	],
 	&"pop": [
 		"res://assets/audio/SFX_Pop_001.wav",
@@ -89,7 +98,11 @@ const FILES := {
 		"res://assets/audio/SFX_Door_005.wav",
 	],
 	&"eat": ["res://assets/audio/SFX_Eat_001.wav"],
-	&"drink": ["res://assets/audio/SFX_Drink_001.wav"],
+	&"drink": [
+		"res://assets/audio/SFX_Drink_001.wav",
+		"res://assets/audio/SFX_Drink_002.wav",
+		"res://assets/audio/SFX_Drink_003.wav",
+	],
 	&"fire_ignite": ["res://assets/audio/SFX_Fire_Ignite.wav"],
 	&"tool_break": [
 		"res://assets/audio/SFX_Tool_Break_001.wav",
@@ -111,8 +124,18 @@ const FILES := {
 		"res://assets/audio/SFX_UI_Click_004.wav",
 		"res://assets/audio/SFX_UI_Click_005.wav",
 	],
-	&"axe_chop": ["res://assets/audio/SFX_Axe_Chop_09.wav"],
-	&"axe_glance": ["res://assets/audio/SFX_Axe_Chop_05.wav"],
+	&"axe_chop": [
+		"res://assets/audio/SFX_Axe_Chop_000.wav",
+		"res://assets/audio/SFX_Axe_Chop_001.wav",
+		"res://assets/audio/SFX_Axe_Chop_002.wav",
+		"res://assets/audio/SFX_Axe_Chop_003.wav",
+		"res://assets/audio/SFX_Axe_Chop_004.wav",
+	],
+	&"axe_glance": [
+		"res://assets/audio/SFX_Axe_Glance_000.wav",
+		"res://assets/audio/SFX_Axe_Glance_001.wav",
+		"res://assets/audio/SFX_Axe_Glance_002.wav",
+	],
 	&"fire_loop": ["res://assets/audio/AMB_Campfire_Crackle.wav"],
 	&"wind_loop": ["res://assets/audio/AMB_Wind_Loop.wav"],
 	&"birds_loop": ["res://assets/audio/AMB_Birds_Loop.wav"],
@@ -199,7 +222,7 @@ func play(name: StringName, pos: Variant = null, volume_db: float = 0.0, pitch_v
 			variant = (variant + 1) % choices.size()
 		_last_variant[name] = variant
 		s = choices[variant]
-	if name == &"step_grass":
+	if name == &"step_grass" or name == &"step_snow" or name == &"step_water":
 		volume_db += 8.0
 	elif name == &"hurt":
 		volume_db -= 6.0

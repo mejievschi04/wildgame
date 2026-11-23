@@ -566,10 +566,15 @@ func _footstep(sprinting: bool) -> void:
 	if global_position.y < ForestWorld.WATER_LEVEL - 0.1:
 		surface = &"step_water"
 	else:
+		var on_wood := false
 		for i in get_slide_collision_count():
 			if get_slide_collision(i).get_collider() is BuildingPiece:
-				surface = &"step_wood"
+				on_wood = true
 				break
+		if on_wood:
+			surface = &"step_wood"
+		elif ForestWorld.tundra_at(global_position.x, global_position.z) > 0.55:
+			surface = &"step_snow"
 	var vol := -8.0 if sprinting else (-16.0 if _crouching else -12.0)
 	Sfx.play(surface, global_position, vol, 0.12)
 

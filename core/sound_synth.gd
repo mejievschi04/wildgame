@@ -118,6 +118,8 @@ static func build(name: StringName) -> PackedFloat32Array:
 			for i in b.size():
 				b[i] *= 0.6 + 0.4 * sin(i * 0.011)
 			return normalize(b, 0.5)
+		&"step_snow":
+			return normalize(noise(0.16, 900, 80, 0.008, 0.06, 0.7, 9), 0.4)
 		&"rustle":
 			var b := noise(0.45, 4200, 500, 0.03, 0.15, 1.0, 11)
 			var rng := RandomNumberGenerator.new()
