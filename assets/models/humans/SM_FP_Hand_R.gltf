@@ -218,11 +218,11 @@
 			"count":2027,
 			"max":[
 				0.06442046165466309,
-				0.04670464247465134,
+				0.051880739629268646,
 				0.34352946281433105
 			],
 			"min":[
-				-0.05008864402770996,
+				-0.04335641860961914,
 				-0.10303638130426407,
 				-0.022289901971817017
 			],
@@ -249,35 +249,35 @@
 		{
 			"bufferView":4,
 			"componentType":5126,
-			"count":192,
+			"count":187,
 			"max":[
 				0.0576246976852417,
-				0.020768247544765472,
+				0.03663370758295059,
 				0.19524484872817993
 			],
 			"min":[
 				-0.005486249923706055,
 				-0.07517344504594803,
-				0.0942969024181366
+				0.06956613063812256
 			],
 			"type":"VEC3"
 		},
 		{
 			"bufferView":5,
 			"componentType":5126,
-			"count":192,
+			"count":187,
 			"type":"VEC3"
 		},
 		{
 			"bufferView":6,
 			"componentType":5126,
-			"count":192,
+			"count":187,
 			"type":"VEC2"
 		},
 		{
 			"bufferView":7,
 			"componentType":5123,
-			"count":1152,
+			"count":1089,
 			"type":"SCALAR"
 		},
 		{
@@ -342,50 +342,50 @@
 		},
 		{
 			"buffer":0,
-			"byteLength":2304,
+			"byteLength":2244,
 			"byteOffset":86200,
 			"target":34962
 		},
 		{
 			"buffer":0,
-			"byteLength":2304,
-			"byteOffset":88504,
+			"byteLength":2244,
+			"byteOffset":88444,
 			"target":34962
 		},
 		{
 			"buffer":0,
-			"byteLength":1536,
-			"byteOffset":90808,
+			"byteLength":1496,
+			"byteOffset":90688,
 			"target":34962
 		},
 		{
 			"buffer":0,
-			"byteLength":2304,
-			"byteOffset":92344,
+			"byteLength":2178,
+			"byteOffset":92184,
 			"target":34963
 		},
 		{
 			"buffer":0,
 			"byteLength":1500,
-			"byteOffset":94648,
+			"byteOffset":94364,
 			"target":34962
 		},
 		{
 			"buffer":0,
 			"byteLength":1500,
-			"byteOffset":96148,
+			"byteOffset":95864,
 			"target":34962
 		},
 		{
 			"buffer":0,
 			"byteLength":1000,
-			"byteOffset":97648,
+			"byteOffset":97364,
 			"target":34962
 		},
 		{
 			"buffer":0,
 			"byteLength":1152,
-			"byteOffset":98648,
+			"byteOffset":98364,
 			"target":34963
 		}
 	],
@@ -397,7 +397,7 @@
 	],
 	"buffers":[
 		{
-			"byteLength":99800,
+			"byteLength":99516,
 			"uri":"SM_FP_Hand_R.bin"
 		}
 	]

@@ -8,9 +8,13 @@ extends Node3D
 
 const CHUNK := 640.0  # big chunks: each (chunk, tree model) is one draw call
 const STEP := 6.0
+const BANDS := 16
 const BEGIN := 95.0  # = Vegetation.LOAD_RADIUS × CHUNK: real trees are always loaded at least this far
 const END := {0: 900.0, 1: 1500.0, 2: 2200.0}
 const IMPOSTOR_PX := 512
+const CACHE_DIR := "res://assets/textures/impostors"
+const PLACEMENT_CACHE := "res://assets/textures/impostors/far_forest_placement.bin"
+const VERSION := 1  # bump when the placement rules change
 const SPAWN_CLEAR := 135.0
 ## region -> [species, trees per m²] (as Vegetation._chunk)
 const REGION_TREES := {
@@ -22,20 +26,38 @@ var world: ForestWorld
 var instances := 0
 var _meshes: Dictionary = {}  # species -> Array[Mesh] (far materials)
 var _task := -1
+var _pending: Dictionary = {}
+var _bands: Array = []  # per-band placement results
+var _band_done_ms := 0
+var _fingerprint := 0  # placement that finished before the impostors were ready
 var _abort := false  # set when the world goes away mid-computation (tests boot and free worlds quickly)
+
+
+var _t0 := 0
 
 
 func build(w: ForestWorld, mask: Image) -> void:
 	world = w
+	_t0 = Time.get_ticks_msec()
 	if DisplayServer.get_name() == "headless":
-		return  # nothing to capture impostors with (and nothing to see)
+		return  # nothing to see (and no renderer to capture impostors with)
+	# placement: from the cache when the terrain is unchanged, else computed on all cores (and cached)
+	_fingerprint = _terrain_fingerprint()
+	var cached := _load_placement()
+	if cached.is_empty():
+		grove_at(0.0, 0.0)  # create the shared noise before the threads read it
+		_bands.resize(BANDS)
+		_task = WorkerThreadPool.add_group_task(_compute_band.bind(mask), BANDS, -1, false, "FarForest")
 	for sp: StringName in [&"spruce", &"pine", &"alder"]:
 		var list: Array[Mesh] = []
 		for path: String in AssetLib.TREES[sp]:
 			list.append(await _impostor(path))
 		_meshes[sp] = list
-	if is_inside_tree():
-		_task = WorkerThreadPool.add_task(_compute.bind(mask), false, "FarForest")
+	print_verbose("FarForest impostors ready in %d ms" % (Time.get_ticks_msec() - _t0))
+	if not cached.is_empty():
+		_finish(cached)
+	elif not _pending.is_empty():
+		_finish(_pending)
 
 
 ## Photographs a tree model once (unlit, transparent background) and returns two crossed cards wearing it.
@@ -44,6 +66,12 @@ func _impostor(path: String) -> Mesh:
 	var box := AssetLib.aabb(tree)
 	var h := box.end.y
 	var r := maxf(maxf(absf(box.position.x), box.end.x), maxf(absf(box.position.z), box.end.z))
+	# Photographed once, then kept with the project (instant on every later start, and in exported builds).
+	var cache := "%s/T_Impostor_%s_%d.res" % [CACHE_DIR, path.get_file().get_basename(), IMPOSTOR_PX]
+	var tex: Texture2D = load(cache) if ResourceLoader.exists(cache) else null
+	if tex:
+		tree.free()
+		return _cards(tex, h, r)
 	var vp := SubViewport.new()
 	vp.size = Vector2i(IMPOSTOR_PX, int(IMPOSTOR_PX * h / (2.0 * r)))
 	vp.transparent_bg = true
@@ -62,10 +90,17 @@ func _impostor(path: String) -> Mesh:
 	await RenderingServer.frame_post_draw
 	var img := vp.get_texture().get_image()
 	vp.queue_free()
-	var tex: Texture2D = null
 	if img and not img.is_empty():
 		img.generate_mipmaps()
 		tex = ImageTexture.create_from_image(img)
+		if OS.has_feature("editor"):
+			DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(CACHE_DIR))
+			ResourceSaver.save(tex, cache, ResourceSaver.FLAG_COMPRESS)
+	return _cards(tex, h, r)
+
+
+## Two crossed cards wearing an impostor texture.
+func _cards(tex: Texture2D, h: float, r: float) -> Mesh:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	for axis: Vector3 in [Vector3(1, 0, 0), Vector3(0, 0, 1)]:
@@ -86,13 +121,19 @@ func _impostor(path: String) -> Mesh:
 	return mesh
 
 
-func _compute(mask: Image) -> void:
+## One band of rows (BANDS bands share the map), run in parallel on the worker pool; each band has its own RNG.
+func _compute_band(band: int, mask: Image) -> void:
 	var rng := RandomNumberGenerator.new()
-	rng.seed = ForestWorld.SEED + 4242
+	rng.seed = ForestWorld.SEED + 4242 + band
 	var chunks := {}  # Vector2i -> {"sp:i": Array[Transform3D]}
 	var lim := ForestWorld.PLAYABLE - 10.0
-	var z := -lim
-	while z < lim and not _abort:
+	var rows := int(ceil(2.0 * lim / STEP))
+	var r0 := rows * band / BANDS
+	var r1 := rows * (band + 1) / BANDS
+	for r in range(r0, r1):
+		if _abort:
+			return
+		var z := -lim + r * STEP
 		var x := -lim
 		while x < lim:
 			var px := x + rng.randf() * STEP
@@ -100,7 +141,6 @@ func _compute(mask: Image) -> void:
 			x += STEP
 			var row: Array = REGION_TREES.get(world.region_at(px, pz), [&"pine", 0.0012])
 			var forest := _mask(mask, px, pz)
-			# ~40 % of the near density, drawn a little larger: in the haze the canopy reads just as closed
 			var g := grove_at(px, pz)
 			# groves close into a canopy (crowns overlap), with a few lone trees in the meadows between them
 			var p := float(row[1]) * STEP * STEP * (0.3 + forest) * (0.12 + 7.0 * g * g)
@@ -112,7 +152,7 @@ func _compute(mask: Image) -> void:
 			if h < 1.5 or h > 135.0 or world.normal_at(px, pz).y < 0.72:
 				continue
 			var sp: StringName = row[0]
-			var i := rng.randi() % (_meshes[sp] as Array).size()
+			var i := rng.randi() % (AssetLib.TREES[sp] as Array).size()
 			var s := rng.randf_range(1.0, 1.55) * Vegetation.TREE_SCALE
 			var xf := Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3.ONE * s), Vector3(px, h - 0.3, pz))
 			var key := Vector2i(floori(px / CHUNK), floori(pz / CHUNK))
@@ -122,9 +162,84 @@ func _compute(mask: Image) -> void:
 			if not chunks[key].has(k):
 				chunks[key][k] = []
 			chunks[key][k].append(xf)
-		z += STEP
-	if not _abort:
-		_finish.call_deferred(chunks)
+	_bands[band] = chunks
+	_band_done_ms = maxi(_band_done_ms, Time.get_ticks_msec() - _t0)
+
+
+## A cheap hash of everything the placement depends on (terrain heights, rivers, regions, groves, constants):
+## the cached placement is only used while it still matches.
+func _terrain_fingerprint() -> int:
+	var parts: Array = [VERSION, STEP, ForestWorld.SEED, Vegetation.TREE_SCALE, SPAWN_CLEAR, str(REGION_TREES)]
+	for i in 64:
+		var x := -1900.0 + (i % 8) * 540.0
+		var z := -1900.0 + (i / 8) * 540.0
+		parts.append(snappedf(world.height_at(x, z), 0.01))
+		parts.append(snappedf(world.river_distance(x, z), 0.1))
+		parts.append(snappedf(grove_at(x, z), 0.001))
+	return hash(parts)
+
+
+func _load_placement() -> Dictionary:
+	if not FileAccess.file_exists(PLACEMENT_CACHE):
+		return {}
+	var f := FileAccess.open(PLACEMENT_CACHE, FileAccess.READ)
+	if f == null:
+		return {}
+	var data: Variant = bytes_to_var(f.get_buffer(f.get_length()))
+	if not data is Dictionary or int((data as Dictionary).get("fingerprint", 0)) != _fingerprint:
+		return {}
+	var out := {}
+	var chunks: Dictionary = data.chunks
+	for key: Vector2i in chunks:
+		out[key] = {}
+		for k: String in chunks[key]:
+			var flat: PackedFloat32Array = chunks[key][k]
+			var xfs: Array = []
+			for j in range(0, flat.size(), 12):
+				xfs.append(Transform3D(Vector3(flat[j], flat[j + 1], flat[j + 2]), Vector3(flat[j + 3], flat[j + 4], flat[j + 5]),
+					Vector3(flat[j + 6], flat[j + 7], flat[j + 8]), Vector3(flat[j + 9], flat[j + 10], flat[j + 11])))
+			out[key][k] = xfs
+	return out
+
+
+func _save_placement(chunks: Dictionary) -> void:
+	if not OS.has_feature("editor"):
+		return
+	var flat_chunks := {}
+	for key: Vector2i in chunks:
+		flat_chunks[key] = {}
+		for k: String in chunks[key]:
+			var flat := PackedFloat32Array()
+			for xf: Transform3D in chunks[key][k]:
+				flat.append_array([xf.basis.x.x, xf.basis.x.y, xf.basis.x.z, xf.basis.y.x, xf.basis.y.y, xf.basis.y.z,
+					xf.basis.z.x, xf.basis.z.y, xf.basis.z.z, xf.origin.x, xf.origin.y, xf.origin.z])
+			flat_chunks[key][k] = flat
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(CACHE_DIR))
+	var f := FileAccess.open(PLACEMENT_CACHE, FileAccess.WRITE)
+	if f:
+		f.store_buffer(var_to_bytes({"fingerprint": _fingerprint, "chunks": flat_chunks}))
+
+
+func _process(_delta: float) -> void:
+	if _task < 0 or not WorkerThreadPool.is_group_task_completed(_task):
+		return
+	WorkerThreadPool.wait_for_group_task_completion(_task)
+	_task = -1
+	if _abort:
+		return
+	var merged := {}
+	for chunks: Dictionary in _bands:
+		for key: Vector2i in chunks:
+			if not merged.has(key):
+				merged[key] = {}
+			for k: String in chunks[key]:
+				if not merged[key].has(k):
+					merged[key][k] = []
+				merged[key][k].append_array(chunks[key][k])
+	_bands.clear()
+	_save_placement(merged)
+	print_verbose("FarForest: placement computed in %d ms (threads done at %d ms)" % [Time.get_ticks_msec() - _t0, _band_done_ms])
+	_finish(merged)
 
 
 static var _groves: FastNoiseLite
@@ -165,11 +280,12 @@ func _mask(mask: Image, x: float, z: float) -> float:
 
 
 func _finish(chunks: Dictionary) -> void:
-	if _task >= 0:
-		WorkerThreadPool.wait_for_task_completion(_task)
-		_task = -1
 	if not is_inside_tree():
 		return
+	if _meshes.size() < 3:  # impostors still being photographed (first run): build when they are
+		_pending = chunks
+		return
+	_pending = {}
 	var end: float = END[clampi(int(Settings.get_value("video", "quality")), 0, 2)]
 	for key: Vector2i in chunks:
 		var center := Vector3((key.x + 0.5) * CHUNK, 0.0, (key.y + 0.5) * CHUNK)
@@ -193,11 +309,11 @@ func _finish(chunks: Dictionary) -> void:
 			mmi.visibility_range_end_margin = 80.0
 			mmi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
 			add_child(mmi)
-	print_verbose("FarForest: %d impostors" % instances)
+	print_verbose("FarForest: %d impostors placed in %d ms" % [instances, Time.get_ticks_msec() - _t0])
 
 
 func _exit_tree() -> void:
 	_abort = true
 	if _task >= 0:
-		WorkerThreadPool.wait_for_task_completion(_task)
+		WorkerThreadPool.wait_for_group_task_completion(_task)
 		_task = -1

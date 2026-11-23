@@ -190,6 +190,18 @@ FPS (calitate medie): start ~54, Meyra ~45, râu ~46, Tavren ~29.
   ca cerul. Umbrele se mișcă odată cu norii pe teren, iarbă, copaci și ferigi; noaptea sunt oprite.
 - Unealta de capturi: `SHOT_WEATHER=cloudy|rain|fog|storm`, compatibil cu orice scenariu.
 
+## Pasul 11: pădurea îndepărtată instant la pornire, degetul mare pe mâner (2026-11-23)
+
+- **FarForest pornește în ~40 ms în loc de ~3 s**:
+  - fotografiile copacilor (impostori) sunt păstrate în `assets/textures/impostors/T_Impostor_*.res`, făcute o dată în
+    editor; se refac dacă lipsesc;
+  - pozițiile celor ~60 000 de copaci sunt păstrate în `far_forest_placement.bin`, verificate cu o amprentă a
+    terenului, râurilor, crângurilor și constantelor (`_terrain_fingerprint`); când nu se mai potrivesc, se recalculează
+    în paralel pe toate nucleele (16 benzi, ~1 s) și se salvează din nou. Mărește `VERSION` dacă schimbi regulile;
+  - fișierul `.bin` e inclus explicit la export (`export_presets.cfg` include_filter).
+- **Mâna**: degetul mare e așezat geometric (`gen_fp_hand.py` `wrap_thumb`): prima falangă trece prin fața pumnului,
+  iar vârful stă pe falanga din mijloc a arătătorului; nu mai stă depărtat.
+
 ## Următorii pași propuși
 
 1. **Pădurea de aproape**: copacii reali sunt așezați uniform; grupați în pâlcuri, cu tufișuri și bușteni căzuți.

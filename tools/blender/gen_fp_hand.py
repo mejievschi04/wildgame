@@ -26,12 +26,41 @@ rots = ha.relaxed(body, {}, fist_r=float(os.environ.get("FIST", "0.62")), fist_l
 for n in list(rots):
     if not n.endswith("_r") or not (n in KEEP):
         del rots[n]
-for n in [k for k in rots if k.startswith("thumb")]:      # thumb wraps over the fingers
-    rots[n] = rots[n] + [(ha.Z, float(os.environ.get("THUMB_Z", "30"))), (ha.X, float(os.environ.get("THUMB_X", "0")))]
 bc.pose(rig, rots, (0, 0, 0))
 bpy.context.view_layer.update()
 pb = rig.pose.bones
 M = rig.matrix_world
+
+
+def aim_tail(bone, target):
+    """Rotate a pose bone so its tail points at target (armature space)."""
+    present = bone.matrix.to_quaternion()
+    desired = (bone.tail - bone.head).rotation_difference(target - bone.head) @ present
+    rest = bone.parent.bone.matrix_local.inverted() @ bone.bone.matrix_local
+    bone.rotation_quaternion = rest.to_quaternion().inverted() @ bone.parent.matrix.to_quaternion().inverted() @ desired
+    bpy.context.view_layer.update()
+
+
+def wrap_thumb():
+    """Close the thumb around the handle (a power grip): the first segment swings across the front of the fist,
+    the outer two curl down so the tip rests on the index finger's middle segment."""
+    idx1 = pb["index_01_r"].head.copy()
+    idx2 = pb["index_02_r"].head.copy()
+    idx3 = pb["index_03_r"].head.copy()
+    palm_c = (pb["hand_r"].head + pb["middle_01_r"].head) * 0.5
+    out = (idx2 - palm_c).normalized()                    # from the palm out over the fingers
+    rest_spot = idx2.lerp(idx3, 0.35) + out * 0.014        # on top of the index finger's middle segment
+    t1, t2, t3 = pb["thumb_01_r"], pb["thumb_02_r"], pb["thumb_03_r"]
+    l2 = (t2.tail - t2.head).length
+    l3 = (t3.tail - t3.head).length
+    # where the thumb's middle joint goes: on the far side of the handle, before the tip
+    knuckle = idx1.lerp(idx2, 0.55) + out * 0.028
+    aim_tail(t1, knuckle)
+    aim_tail(t2, t2.head + (rest_spot - t2.head).normalized() * l2 * 1.0 + (rest_spot - t2.head) * 0.0)
+    aim_tail(t3, rest_spot)
+
+
+wrap_thumb()
 wrist = M @ pb["hand_r"].head
 elbow = M @ pb["lowerarm_r"].head
 knuckle_i = M @ pb["index_01_r"].head
