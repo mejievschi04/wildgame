@@ -48,6 +48,7 @@ func _ready() -> void:
 	noise.fractal_octaves = 4
 	cn.noise = noise
 	sky_material.set_shader_parameter("cloud_noise", cn)
+	RenderingServer.global_shader_parameter_set(&"cloud_noise", cn)
 	var sky := Sky.new()
 	sky.sky_material = sky_material
 	environment = Environment.new()
@@ -270,6 +271,9 @@ func update_visuals() -> void:
 	sky_material.set_shader_parameter("day", day_k)
 	sky_material.set_shader_parameter("cloud_cover", cloud_cover)
 	sky_material.set_shader_parameter("cloud_offset", _cloud_offset)
+	RenderingServer.global_shader_parameter_set(&"cloud_offset", _cloud_offset)
+	RenderingServer.global_shader_parameter_set(&"cloud_cover", cloud_cover * smoothstep(0.0, 0.3, day_k))
+	RenderingServer.global_shader_parameter_set(&"cloud_sun_dir", sun.global_transform.basis.z if sun.is_inside_tree() else Vector3.UP)
 	# Overcast: the cloud undersides go a heavier grey.
 	sky_material.set_shader_parameter("cloud_shade", Color(0.52, 0.58, 0.68).lerp(Color(0.42, 0.45, 0.5), cloud))
 	# Overcast days lose the sun but gain sky light.

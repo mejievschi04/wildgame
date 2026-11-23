@@ -65,3 +65,19 @@ wind_direction={
 "type": "vec2",
 "value": Vector2(0.8, 0.6)
 }
+cloud_noise={
+"type": "sampler2D",
+"value": ""
+}
+cloud_offset={
+"type": "vec2",
+"value": Vector2(0, 0)
+}
+cloud_cover={
+"type": "float",
+"value": 0.0
+}
+cloud_sun_dir={
+"type": "vec3",
+"value": Vector3(0, 1, 0)
+}

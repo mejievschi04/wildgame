@@ -1,15 +1,16 @@
 # Grass card atlas for MeadowGrass: 4 columns (512 x 1024 each, roots at the bottom), RGBA with soft-edged blades.
 #   blender -b --python tools/blender/gen_grass_atlas.py
 # 0 lush meadow clump · 1 tall grass with seed heads · 2 dry, yellowed clump · 3 flowering clump (purple, white,
-# yellow heads among the grass). Output: assets/textures/vegetation/T_GrassCards_D.png
+# yellow heads among the grass) · 4 reeds and cattails for the river banks.
+# Output: assets/textures/vegetation/T_GrassCards_D.png
 # Forest floor atlas (same layout): 0 fern · 1 sedge · 2 bilberry · 3 spruce sapling → T_ForestCards_D.png
 import bpy, os, math
 import numpy as np
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 OUT = os.path.join(ROOT, "assets", "textures", "vegetation")
-W, H = 2048, 1024
-CW = W // 4
+W, H = 2560, 1024   # 5 columns of 512
+CW = 512
 rng = np.random.default_rng(20261123)
 img = np.zeros((H, W, 4), dtype=np.float32)
 
@@ -122,7 +123,7 @@ for _ in range(14):
 
 def save(name):
     # fill transparent texels with the column's mean colour (no dark fringes on mips)
-    for c in range(4):
+    for c in range(W // CW):
         reg = img[:, c * CW:(c + 1) * CW]
         m = reg[..., 3] > 0.3
         mean = reg[m][:, :3].mean(0) if m.any() else np.array([0.2, 0.3, 0.1])
@@ -138,6 +139,19 @@ def save(name):
     print("ATLAS", path)
 
 
+# 4: reeds and cattails — tall straight stems and long leaves, brown cattail heads
+REED = [srgb(c) for c in [(0.30, 0.38, 0.14), (0.36, 0.42, 0.17), (0.25, 0.33, 0.11)]]
+for _ in range(70):
+    bx = CW * 4.5 + np.clip(rng.normal(0, CW * 0.16), -CW * 0.42, CW * 0.42)
+    lean = np.clip(rng.normal(0, 0.12), -0.3, 0.3)
+    blade(4, bx, rng.uniform(0.55, 0.98) * H, lean, rng.uniform(4.0, 7.0), REED[rng.integers(0, 3)] * 0.5,
+          np.clip(REED[rng.integers(0, 3)] * 1.25, 0, 1))
+for _ in range(4):
+    bx = CW * 4.5 + rng.normal(0, CW * 0.13)
+    hgt = rng.uniform(0.75, 0.97) * H
+    tip = blade(4, bx, hgt, rng.normal(0, 0.05), 3.0, srgb((0.24, 0.3, 0.1)), srgb((0.32, 0.38, 0.14)))
+    stroke([(bx + (tip[0] - bx) * 0.82, H - 2 - hgt * 0.8), (bx + (tip[0] - bx) * 0.93, H - 2 - hgt * 0.92)], 9, 9,
+           srgb((0.17, 0.12, 0.07)), srgb((0.23, 0.16, 0.09)), 4)
 save("T_GrassCards_D")
 
 # ------------------------------------------------------------------ forest floor
@@ -147,30 +161,33 @@ DARK = [srgb(c) for c in [(0.13, 0.22, 0.07), (0.17, 0.26, 0.09), (0.11, 0.18, 0
 
 
 def frond(col, x0, height, side, c):
-    """A fern frond: an arching rachis with paired leaflets shrinking toward the tip."""
+    """A fern frond seen from the side: rises, arches outward and droops at the tip; broad leaflets in pairs."""
     pts = []
-    n = 24
+    n = 28
+    reach = CW * 0.42 * abs(side)
+    sg = 1 if side >= 0 else -1
     for i in range(n + 1):
         t = i / n
-        pts.append((x0 + side * height * 0.2 * math.sin(t * 1.3) ** 1.4, H - 2 - height * math.sin(t * 1.45) * 0.95))
+        pts.append((x0 + sg * reach * t ** 1.3, H - 2 - height * (math.sin(t * math.pi * 0.62) / math.sin(math.pi * 0.62)) * (1 - 0.25 * t * t)))
     stroke(pts, 3.0, 1.2, c * 0.6, c * 0.9, col)
-    for i in range(3, n):
+    for i in range(2, n):
         t = i / n
         ax, ay = pts[i]
-        bx, by = pts[i - 1]
-        dx, dy = ax - bx, ay - by
+        bx_, by_ = pts[i - 1]
+        dx, dy = ax - bx_, ay - by_
         ln = math.hypot(dx, dy) or 1.0
         nx, ny = -dy / ln, dx / ln
-        leaf = height * 0.085 * math.sin(math.pi * min(t * 1.15, 1.0)) + 3
-        for sgn in (1, -1):
-            e = (ax + nx * leaf * sgn + dx / ln * leaf * 0.35, ay + ny * leaf * sgn + dy / ln * leaf * 0.35)
-            stroke([(ax, ay), e], 4.0 * (1 - t * 0.5), 1.2, c * 0.85, np.clip(c * 1.2, 0, 1), col)
+        leaf = height * 0.12 * math.sin(math.pi * min(t * 1.1, 1.0)) + 4
+        for s_ in (1, -1):
+            e = (ax + nx * leaf * s_ + dx / ln * leaf * 0.45, ay + ny * leaf * s_ + dy / ln * leaf * 0.45)
+            e = (min(max(e[0], col * CW + 3), (col + 1) * CW - 3), e[1])
+            stroke([(ax, ay), e], 7.0 * (1 - t * 0.5), 2.0, c * 0.8, np.clip(c * 1.25, 0, 1), col)
 
 
 cx = CW * 0.5
-for k in range(11):
-    side = 1 if k % 2 else -1
-    frond(0, cx + rng.normal(0, 10), rng.uniform(0.5, 0.95) * H, side * rng.uniform(0.2, 1.0), FERN[rng.integers(0, 3)] * rng.uniform(0.85, 1.15))
+for k in range(14):
+    side = (1 if k % 2 else -1) * rng.uniform(0.25, 1.0)
+    frond(0, cx + rng.normal(0, 8), rng.uniform(0.35, 0.8) * H, side, FERN[rng.integers(0, 3)] * rng.uniform(0.85, 1.15))
 clump(1, 230, 0.35, 0.85, DARK, spread=0.5, lean_max=0.8)
 # bilberry: woody stems with small oval leaves and a few dark berries
 for k in range(26):

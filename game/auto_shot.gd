@@ -119,6 +119,8 @@ func _ready() -> void:
 		p.head.rotation.x = -0.3
 	if scenario in ["rain", "storm", "fog", "cloudy"]:
 		session.world.weather.set_state(StringName(scenario), true)
+	if _env("weather") != "":  # SHOT_WEATHER=cloudy etc. with any scenario
+		session.world.weather.set_state(StringName(_env("weather")), true)
 	if scenario == "wildlife":
 		var wl := session.world.wildlife
 		wl.enabled = false

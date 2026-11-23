@@ -2,6 +2,7 @@
 // forest mask, height, slope and macro noise. Layers:
 // 0 forest floor · 1 grass · 2 mud bank · 3 rock · 4 river pebbles · 5 snow
 shader_type spatial;
+#include "res://world/shaders/cloud_shadow.gdshaderinc"
 render_mode cull_disabled, diffuse_burley, specular_schlick_ggx;
 
 uniform sampler2DArray albedo_tex : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
@@ -111,7 +112,7 @@ void fragment() {
 	float canopy = smoothstep(0.25, 0.8, forest);
 	alb = mix(alb, vec3(0.05, 0.075, 0.035) * (0.8 + 0.4 * n1), canopy * smoothstep(400.0, 1500.0, cam_d) * 0.85);
 	alb *= mix(1.0, 0.62, far * canopy);
-	ALBEDO = alb;
+	ALBEDO = alb * mix(1.0, 0.58, cloud_shadow(wpos));
 	NORMAL_MAP = nrm;
 	NORMAL_MAP_DEPTH = 1.0;
 	AO = arm.r;

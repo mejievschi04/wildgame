@@ -180,6 +180,16 @@ FPS (calitate medie): start ~54, Meyra ~45, râu ~46, Tavren ~29.
   armă (în afară de arc și piatră) și o rotește automat în jurul mânerului, ca antebrațul să vină din dreapta-jos,
   dinspre cameră. Poziția de bază a armei în mână e ceva mai sus (`Player.HAND_REST`), ca pumnul să se vadă.
 
+## Pasul 10: ferigi stufoase, trestie pe maluri, umbre de nori (2026-11-23)
+
+- Atlasul de iarbă are acum 5 coloane (512 px fiecare). Noua coloană e trestie cu papură: crește în pâlcuri (zgomot) pe
+  ultimii ~1,3 m de mal deasupra apei și e de 2,4 ori mai înaltă. Ferigile pictate (atlasul de pădure) au acum frunze
+  late care se arcuiesc în evantai, nu mai arată ca niște bețe.
+- **Umbre de nori** (`cloud_shadow.gdshaderinc`, uniforme globale `cloud_noise/offset/cover/sun_dir` setate de
+  DayNight): fiecare punct e proiectat de-a lungul razei soarelui pe stratul de nori și primește același câmp de nori
+  ca cerul. Umbrele se mișcă odată cu norii pe teren, iarbă, copaci și ferigi; noaptea sunt oprite.
+- Unealta de capturi: `SHOT_WEATHER=cloudy|rain|fog|storm`, compatibil cu orice scenariu.
+
 ## Următorii pași propuși
 
 1. **Pădurea de aproape**: copacii reali sunt așezați uniform; grupați în pâlcuri, cu tufișuri și bușteni căzuți.

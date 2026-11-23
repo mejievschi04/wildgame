@@ -4,6 +4,7 @@
 // view. Height comes from the terrain grid (same interpolation as ForestWorld.height_at); a baked mask keeps
 // water, steep rock and dense forest bare, and fires/buildings clear a circle. Wind from the weather.
 shader_type spatial;
+#include "res://world/shaders/cloud_shadow.gdshaderinc"
 render_mode cull_disabled, diffuse_burley, specular_schlick_ggx, world_vertex_coords;
 
 uniform sampler2D atlas : source_color, filter_linear_mipmap_anisotropic, repeat_disable;
@@ -18,12 +19,15 @@ uniform float radius = 24.0;
 uniform vec2 wind_dir = vec2(0.8, 0.6);
 uniform float wind_strength = 0.35;
 uniform vec4 bare[12];
-uniform bool forest_floor = false;  // T_ForestCards_D: fern, sedge, bilberry, sapling under the trees  // xz centre, radius (fires, buildings)
+uniform bool forest_floor = false;
+uniform float columns = 5.0;        // atlas columns (512 px each)
+uniform float water_level = 0.0;  // T_ForestCards_D: fern, sedge, bilberry, sapling under the trees  // xz centre, radius (fires, buildings)
 
 varying vec3 v_up;
 varying float v_col;   // atlas column 0..3
 varying float v_tint;
 varying float v_dry;
+varying float v_cloud;
 
 float th(int ix, int iz) {
 	return texelFetch(height_tex, ivec2(clamp(ix, 0, grid), clamp(iz, 0, grid)), 0).r;
@@ -79,6 +83,13 @@ void vertex() {
 		if (r2 < dryness * 0.75) col = 2.0;
 		if (r2 > 1.0 - tall * 0.8) col = 1.0;
 		if (hash(inst.xz + 41.0) < bloom * 0.55) col = 3.0;
+		// reeds and cattails along the water's edge
+		float bank = (1.0 - smoothstep(0.6, 1.3, h - water_level))
+			* smoothstep(0.35, 0.65, texture(macro_noise, wrapped * 0.05 + vec2(0.9, 0.2)).r);  // reed beds, not a hedge
+		if (hash(inst.xz + 63.0) < bank * 0.8) {
+			col = 4.0;
+			hmul = 2.4;
+		}
 	}
 	v_col = col;
 	v_dry = dryness;
@@ -94,7 +105,7 @@ void vertex() {
 	// LOD: far clusters keep one of their three cards (COLOR.g = card id)
 	float lod = step(COLOR.g, 1.0 - 0.66 * smoothstep(radius * 0.35, radius * 0.6, dist));
 	vec3 local = VERTEX - inst;
-	float hscale = (forest_floor ? hmul : (col == 1.0 ? 1.5 : 1.0)) * mix(0.75, 1.25, hash(inst.xz + 9.0));
+	float hscale = (forest_floor || col == 4.0 ? hmul : (col == 1.0 ? 1.5 : 1.0)) * mix(0.75, 1.25, hash(inst.xz + 9.0));
 	float s = keep * lod * fade;
 	local.y *= s * hscale;
 	local.xz *= s;  // hidden clumps collapse to a point (a flattened card would lie on the ground as a pale patch)
@@ -104,10 +115,11 @@ void vertex() {
 	VERTEX = vec3(wrapped.x, h - 0.04, wrapped.y) + local;
 	NORMAL = normalize(vec3(-grad.x, 1.0, -grad.y));
 	v_up = normalize((VIEW_MATRIX * vec4(NORMAL, 0.0)).xyz);
+	v_cloud = cloud_shadow(vec3(wrapped.x, h, wrapped.y));
 }
 
 void fragment() {
-	vec2 uv = vec2((v_col + clamp(UV.x, 0.002, 0.998)) * 0.25, UV.y);
+	vec2 uv = vec2((v_col + clamp(UV.x, 0.002, 0.998)) / columns, UV.y);
 	vec4 c = texture(atlas, uv);
 	ALPHA = c.a;
 	ALPHA_SCISSOR_THRESHOLD = 0.45;
@@ -115,7 +127,7 @@ void fragment() {
 	float top = 1.0 - UV.y;
 	vec3 albedo = c.rgb * v_tint * (forest_floor ? vec3(0.8) : mix(vec3(0.86, 1.0, 1.05), vec3(1.05, 1.0, 0.85), v_dry * 0.6));
 	albedo = mix(albedo, vec3(dot(albedo, vec3(0.3, 0.59, 0.11))), 0.18);  // natural, not neon
-	ALBEDO = albedo * mix(0.45, 1.0, smoothstep(0.0, 0.45, top));  // self-shadowed base of the clump
+	ALBEDO = albedo * mix(0.45, 1.0, smoothstep(0.0, 0.45, top)) * mix(1.0, 0.58, v_cloud);  // self-shadowed base
 	ROUGHNESS = 0.78;
 	SPECULAR = 0.3;
 	BACKLIGHT = albedo * 0.55 * top;  // sun through the blades

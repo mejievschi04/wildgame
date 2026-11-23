@@ -32,6 +32,7 @@ func build(w: ForestWorld, heights: PackedFloat32Array, forest_mask: Image, macr
 	_material.set_shader_parameter("cell", ForestWorld.CELL_SIZE)
 	_material.set_shader_parameter("grid", ForestWorld.GRID)
 	_material.set_shader_parameter("map_size", ForestWorld.SIZE)
+	_material.set_shader_parameter("water_level", ForestWorld.WATER_LEVEL)
 	# Forest floor: same field, its own atlas, where the trees stand (forest mask or a grove).
 	_floor_material = _material.duplicate() as ShaderMaterial
 	_floor_material.set_shader_parameter("atlas", preload("res://assets/textures/vegetation/T_ForestCards_D.png"))
@@ -61,7 +62,7 @@ static func _grass_mask(heights: PackedFloat32Array, forest: Image, thin: float,
 			var gz := -ForestWorld.HALF + iz * cell
 			var trees := maxf(smoothstep(0.2, 0.65, f), smoothstep(0.35, 0.8, FarForest.grove_at(gx, gz)))
 			var cover := trees if under_trees else clampf(1.0 - maxf(f * thin, trees * 0.9), 0.0, 1.0)
-			var v := cover * clampf((h - ForestWorld.WATER_LEVEL - 0.3) * 2.0, 0.0, 1.0) \
+			var v := cover * clampf((h - ForestWorld.WATER_LEVEL - 0.05) * 3.0, 0.0, 1.0) \
 				* (1.0 - smoothstep(0.55, 0.8, slope))
 			img.set_pixel(ix, iz, Color(v, v, v))
 	return img

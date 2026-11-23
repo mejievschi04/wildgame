@@ -1,6 +1,7 @@
 // Alpha-tested foliage with translucency and wind sway (trees, grass, ferns, shrubs).
 // Wind is driven globally by the weather system (wind_strength, wind_direction).
 shader_type spatial;
+#include "res://world/shaders/cloud_shadow.gdshaderinc"
 render_mode cull_disabled, diffuse_burley, specular_schlick_ggx;
 
 uniform sampler2D albedo_tex : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
@@ -20,6 +21,7 @@ uniform vec3 color_mul = vec3(1.0);
 uniform float far_begin = 0.0;   // FarForest copies: hidden closer than this (the streamed, fellable trees are there)
 
 varying float v_ao;
+varying float v_cloud;
 
 global uniform float wind_strength;
 global uniform vec2 wind_direction;
@@ -33,6 +35,7 @@ void vertex() {
 		v_ao = mix(0.45, 1.0, clamp(r / crown_radius, 0.0, 1.0)) * mix(0.7, 1.0, clamp((VERTEX.y - crown_center) / crown_radius * 0.5 + 0.5, 0.0, 1.0));
 	}
 	vec3 wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	v_cloud = cloud_shadow(wp);
 	float h = clamp(VERTEX.y / height_ref, 0.0, 1.0);
 	h *= h;
 	float t = TIME * (0.8 + wind_strength);
@@ -50,7 +53,7 @@ void vertex() {
 
 void fragment() {
 	vec4 c = texture(albedo_tex, UV) * albedo_tint;
-	ALBEDO = c.rgb * color_mul * mix(1.0, v_ao, 0.6);
+	ALBEDO = c.rgb * color_mul * mix(1.0, v_ao, 0.6) * mix(1.0, 0.58, v_cloud);
 	AO = v_ao;
 	AO_LIGHT_AFFECT = 0.55;
 	ALPHA = c.a;
