@@ -169,3 +169,29 @@ func test_climate_habitats_and_temperature() -> void:
 	check(w.ambient_temperature_at(w.ground_point(600, 1300)) > mid + 6.0, "the jungle is warm")
 	check(w.ambient_temperature_at(w.ground_point(180, -1800)) < mid - 9.0, "the tundra is cold")
 	await _teardown(s)
+
+
+func test_animal_voices_are_pluggable_and_captioned() -> void:
+	eq(Sfx.animal_key("wolf_howl_02.ogg"), "wolf_howl", "numbered variants share a key")
+	eq(Sfx.animal_key("Mammoth_Stamp.wav"), "mammoth_stamp", "case does not matter")
+	eq(Sfx.animal_key("any_alarm_1.wav"), "any_alarm", "a fallback for every species")
+	eq(Sfx.animal_key("wolf_running.wav"), "", "unknown events are ignored")
+	var s: GameSession = await _boot()
+	var heard: Array = []
+	var cb := func(t: String) -> void: heard.append(t)
+	Sfx.caption.connect(cb)
+	var was: Variant = Settings.get_value("accessibility", "subtitles")
+	Settings.set_value("accessibility", "subtitles", true, false)
+	var wolf := s.world.wildlife.spawn(&"wolf", s.player.global_position + Vector3(0, 0, -20))
+	await tree.physics_frame
+	wolf.voice(&"growl")
+	wolf.voice(&"growl")
+	eq(heard.size(), 1, "a subtitle even without a recording, and no spam")
+	check(heard.size() > 0 and "рычание" in heard[0], "it says what the wolf did (%s)" % [heard])
+	var far := s.world.wildlife.spawn(&"deer", s.player.global_position + Vector3(0, 0, -300))
+	await tree.physics_frame
+	far.voice(&"call")
+	eq(heard.size(), 1, "too far away to hear a deer's call")
+	Settings.set_value("accessibility", "subtitles", was, false)
+	Sfx.caption.disconnect(cb)
+	await _teardown(s)

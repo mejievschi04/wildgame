@@ -68,6 +68,8 @@ var _orbit := 1.0        # pack members circle the player clockwise or anticlock
 var _feed_until := 0.0
 var _carcass: Animal = null
 var _bite_anim_t := 0.0
+var _voice_next: Dictionary = {}  # event -> uptime when this animal may make that sound again
+var _call_t := 0.0
 
 
 func setup(p_species: StringName, p_world: ForestWorld, pos: Vector3, seed: int, p_id: String = "") -> void:
@@ -244,6 +246,7 @@ func take_damage(amount: float, source: Node3D = null, hit_pos: Vector3 = Vector
 	if health <= 0.0:
 		die(&"player" if source and source.is_in_group("player") else &"other")
 		return
+	voice(&"hurt", 1.5)
 	if source:
 		threat = source
 		last_known = source.global_position
@@ -285,6 +288,7 @@ func die(cause: StringName) -> void:
 	add_to_group("interactable")
 	add_to_group("carcass")
 	_play("death", false)
+	voice(&"death", 10.0)
 	if world:
 		Gore.decal(world, global_position, 0.9)
 	died.emit(self)
@@ -340,6 +344,11 @@ func _set_state(s: State) -> void:
 			_goal = _water_near()
 		State.FEED:
 			_feed_until = _uptime + rng.randf_range(FEED_TIME.x, FEED_TIME.y)
+		State.THREAT:
+			if is_defensive():
+				voice(&"stamp", 2.0)
+			else:
+				voice(&"roar" if species in [&"lion", &"bear"] else &"growl", 2.0)
 
 
 func _physics_process(delta: float) -> void:
@@ -371,6 +380,7 @@ func _physics_process(delta: float) -> void:
 
 
 func _think(dt: float) -> void:
+	_ambient_voice(dt)
 	var p := _player()
 	var stim := perceive_player(p) if p else 0.0
 	if stim > 0.0:
@@ -435,6 +445,35 @@ func _think_prey(_dt: float, p: Node3D, stim: float) -> void:
 			elif state_time > 12.0:
 				home = global_position
 				_set_state(State.GRAZE)
+
+
+## Makes a sound (Sfx.play_animal: a dropped-in recording if there is one, and a subtitle), at most once per
+## `cooldown` seconds per kind of sound.
+func voice(event: StringName, cooldown := 4.0) -> void:
+	if _uptime < float(_voice_next.get(event, -1.0)) or not is_inside_tree():
+		return
+	_voice_next[event] = _uptime + cooldown
+	Sfx.play_animal(species, event, global_position + Vector3.UP * float(def.get("height", 1.0)) * 0.8)
+
+
+## Calls now and then: herds while grazing, a wolf pack howling at night (one starts, the others join in).
+func _ambient_voice(dt: float) -> void:
+	_call_t -= dt
+	if _call_t > 0.0:
+		return
+	_call_t = rng.randf_range(50.0, 140.0)
+	if species == &"wolf":
+		if _is_night() and state in [State.PATROL, State.IDLE] and leader() == self:
+			voice(&"howl", 30.0)
+			for m: Animal in _herd_members():
+				if m != self:
+					m.get_tree().create_timer(rng.randf_range(0.8, 3.0)).timeout.connect(func() -> void:
+						if is_instance_valid(m) and not m.is_dead():
+							m.voice(&"howl", 30.0))
+	elif state in [State.GRAZE, State.WANDER, State.IDLE] and not is_predator():
+		voice(&"call", 30.0)
+	elif state == State.FEED:
+		voice(&"eat", 3.0)
 
 
 ## A predator that is hunting (or simply close) and that this animal notices: a stalking one only from close up,
@@ -738,6 +777,7 @@ func _pack_call(target: Node3D) -> void:
 func _bite(prey: Animal) -> void:
 	_attack_cd = float(def.attack_cooldown) * 0.8
 	_bite_anim_t = 0.45
+	voice(&"attack", 0.8)
 	var at := prey.global_position + Vector3.UP * float(prey.def.get("height", 1.0)) * 0.6
 	prey.take_damage(float(def.damage) * 1.5, self, at)
 	if prey.is_dead() and prey.killed_by != &"player":
@@ -891,6 +931,7 @@ func _alarm_herd(source: Node3D) -> void:
 	away.y = 0.0
 	away = away.normalized() if away.length() > 0.01 else Vector3(1, 0, 0)
 	away = away.rotated(Vector3.UP, rng.randf_range(-0.35, 0.35))
+	voice(&"alarm", 6.0)
 	for a: Animal in members:
 		a._flee_dir = away
 		if a != self and a.state != State.FLEE and a.global_position.distance_to(global_position) < 35.0:
@@ -908,7 +949,7 @@ func _update_attack(delta: float) -> void:
 	if _windup < 0.0 and state_time < 0.05:
 		_windup = float(def.attack_windup)
 		_play("attack", false)
-		Sfx.play(&"hurt", global_position, -12.0, 0.2)
+		voice(&"attack", 0.8)
 	if _windup >= 0.0:
 		_windup -= delta
 		if _windup < 0.0:

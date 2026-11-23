@@ -123,6 +123,16 @@ const CAPTIONS := {
 	&"fire_ignite": "CAPTION_FIRE", &"tool_break": "CAPTION_TOOL_BREAK",
 	&"collapse": "CAPTION_COLLAPSE", &"hurt": "CAPTION_HURT", &"door": "CAPTION_DOOR",
 }
+## Animal voices: dropped into ANIMAL_DIR as <species>_<event>[_NN].(wav|ogg|mp3), e.g. wolf_howl_01.ogg,
+## mammoth_stamp.wav; "any_<event>" serves every species without its own. Found at start-up, no code changes needed.
+## Without a file nothing is heard, but the subtitle still says what the animal did (see play_animal).
+const ANIMAL_DIR := "res://assets/audio/animals"
+const ANIMAL_EVENTS := [&"howl", &"growl", &"roar", &"stamp", &"alarm", &"call", &"attack", &"hurt", &"death", &"eat"]
+## How far each event carries (m) and how loud it is — howls and roars are heard across a valley.
+const ANIMAL_RANGE := {&"howl": 400.0, &"roar": 250.0, &"call": 90.0, &"alarm": 80.0, &"growl": 35.0, &"stamp": 45.0,
+	&"attack": 40.0, &"hurt": 50.0, &"death": 50.0, &"eat": 15.0}
+## Events worth a subtitle (the quiet ones aren't).
+const ANIMAL_CAPTIONED := [&"howl", &"roar", &"growl", &"stamp", &"alarm", &"call"]
 const POOL_3D := 16
 const POOL_2D := 6
 
@@ -133,6 +143,7 @@ var _pool3d: Array[AudioStreamPlayer3D] = []
 var _pool2d: Array[AudioStreamPlayer] = []
 var _next3d := 0
 var _next2d := 0
+var animal_sounds: Dictionary = {}  # "wolf_howl" -> Array[AudioStream]
 
 
 func _ready() -> void:
@@ -154,6 +165,7 @@ func _ready() -> void:
 			ambience.loop_mode = AudioStreamWAV.LOOP_FORWARD
 			ambience.loop_begin = 0
 			ambience.loop_end = ambience.data.size() / 2
+	_load_animal_sounds()
 	print_verbose("Sfx: prepared %d sounds in %d ms" % [streams.size(), Time.get_ticks_msec() - t0])
 	for i in POOL_3D:
 		var p := AudioStreamPlayer3D.new()
@@ -195,6 +207,8 @@ func play(name: StringName, pos: Variant = null, volume_db: float = 0.0, pitch_v
 	if pos is Vector3:
 		var p := _pool3d[_next3d]
 		_next3d = (_next3d + 1) % POOL_3D
+		p.max_distance = 45.0
+		p.unit_size = 6.0
 		p.stream = s
 		p.global_position = pos
 		p.volume_db = volume_db
@@ -209,6 +223,56 @@ func play(name: StringName, pos: Variant = null, volume_db: float = 0.0, pitch_v
 		p.play()
 	if CAPTIONS.has(name) and bool(Settings.get_value("accessibility", "subtitles")):
 		caption.emit(Loc.t(CAPTIONS[name]))
+
+
+func _load_animal_sounds() -> void:
+	animal_sounds.clear()
+	if not DirAccess.dir_exists_absolute(ANIMAL_DIR):
+		return
+	for f: String in ResourceLoader.list_directory(ANIMAL_DIR):
+		if not (f.ends_with(".wav") or f.ends_with(".ogg") or f.ends_with(".mp3")):
+			continue
+		var key := animal_key(f)
+		if key == "":
+			continue
+		var st := load(ANIMAL_DIR.path_join(f)) as AudioStream
+		if st:
+			if not animal_sounds.has(key):
+				animal_sounds[key] = []
+			animal_sounds[key].append(st)
+
+
+## "wolf_howl_02.ogg" → "wolf_howl" (species + a known event; numbering and extension dropped), else "".
+static func animal_key(file: String) -> String:
+	var parts := file.get_basename().to_lower().split("_")
+	for i in range(1, parts.size()):
+		if StringName(parts[i]) in ANIMAL_EVENTS:
+			return "_".join(parts.slice(0, i)) + "_" + parts[i]
+	return ""
+
+
+## An animal makes a sound: a recorded variant if one was dropped in (species-specific, then "any_"), and a
+## subtitle for the loud ones when the player is close enough to hear it.
+func play_animal(species: StringName, event: StringName, pos: Vector3, volume_db: float = 0.0) -> void:
+	var range: float = ANIMAL_RANGE.get(event, 40.0)
+	var cam := get_viewport().get_camera_3d() if is_inside_tree() else null
+	var dist := cam.global_position.distance_to(pos) if cam else 0.0
+	if dist > range:
+		return
+	var list: Array = animal_sounds.get("%s_%s" % [species, event], animal_sounds.get("any_%s" % event, []))
+	if not list.is_empty():
+		var p := _pool3d[_next3d]
+		_next3d = (_next3d + 1) % POOL_3D
+		p.stream = list[randi() % list.size()]
+		p.global_position = pos
+		p.volume_db = volume_db
+		p.max_distance = range
+		p.unit_size = range * 0.12
+		p.pitch_scale = 1.0 + randf_range(-0.06, 0.06)
+		p.play()
+	if event in ANIMAL_CAPTIONED and bool(Settings.get_value("accessibility", "subtitles")):
+		caption.emit(Loc.t("CAPTION_ANIMAL", {"animal": Loc.t("ANIMAL_%s" % String(species).to_upper()),
+			"sound": Loc.t("ANIMAL_SOUND_%s" % String(event).to_upper())}))
 
 
 func ui_click() -> void:
