@@ -249,6 +249,101 @@ def alder(seed):
     return b, H
 
 
+def jungle(seed):
+    """Tropical canopy tree: buttress roots, a tall straight bole, a few heavy limbs spreading into a broad,
+    layered umbrella crown of big-leaf sprays, lianas hanging from the limbs and epiphytes on the trunk."""
+    rng = random.Random(seed)
+    b = Builder()
+    H = rng.uniform(17.0, 22.0)
+    r0 = rng.uniform(0.36, 0.46)
+    split = H * rng.uniform(0.6, 0.7)
+    path = trunk_path(split + 0.5, Vector((rng.uniform(-0.25, 0.25), rng.uniform(-0.25, 0.25), 0)), rng, 10)
+    b.tube(path, [r0 * (1.25 if i == 0 else 1.0) * (1 - i / 16) + 0.05 for i in range(11)], 12, 0, 2.5, 0.8)
+    # buttress roots: thin flanges running out and down from the bole
+    for k in range(rng.randint(4, 6)):
+        ang = 2 * math.pi * k / 5 + rng.uniform(-0.3, 0.3)
+        out = horiz(ang)
+        top = Vector((0, 0, rng.uniform(1.8, 2.8)))
+        foot = out * rng.uniform(1.6, 2.4) + Vector((0, 0, -0.15))
+        for j in range(3):  # stacked thin tubes read as a flat flange
+            o = j / 2.0
+            b.tube([top * (1 - o * 0.6) + out * 0.2, (top * (1 - o * 0.6) + foot) * 0.5 + out * 0.25, foot * (0.75 + 0.25 * o)],
+                   [0.07, 0.06, 0.04], 5, 0, 1.0, 1.0)
+    crown_h = H - split
+    clusters = []
+    for k in range(rng.randint(4, 6)):
+        ang = 2 * math.pi * k / 5 + rng.uniform(-0.4, 0.4)
+        rise = math.radians(rng.uniform(20, 38))
+        d = (horiz(ang) * math.cos(rise) + Vector((0, 0, math.sin(rise)))).normalized()
+        start = path[-2].copy()
+        L = rng.uniform(4.0, 6.0)
+        mid = start + d * L * 0.55 + Vector((0, 0, 0.4))
+        end = start + d * L + Vector((0, 0, crown_h * 0.25))
+        b.tube([start, mid, end], [r0 * 0.5, r0 * 0.33, 0.06], 7, 0, 1.0, 1.0)
+        clusters.append(end)
+        # lianas hanging from the limb
+        for v in range(rng.randint(1, 2)):
+            a = mid.lerp(end, rng.uniform(0.0, 0.8))
+            drop = rng.uniform(4.0, a.z - 0.5)
+            sway = horiz(rng.uniform(0, 2 * math.pi)) * rng.uniform(0.2, 0.6)
+            b.tube([a, a + sway * 0.5 + Vector((0, 0, -drop * 0.5)), a + sway + Vector((0, 0, -drop))], [0.035, 0.03, 0.025], 4, 0, 0.3, 2.0)
+    clusters.append(Vector((path[-1].x, path[-1].y, H - crown_h * 0.35)))
+    center = Vector((path[-1].x, path[-1].y, H - crown_h * 0.45))
+    # layered umbrella: flattened leaf clumps at the limb ends
+    for c in clusters:
+        rx, rz = rng.uniform(2.4, 3.2), rng.uniform(1.0, 1.5)
+        for i in range(rng.randint(46, 60)):
+            u = rng.uniform(0, 2 * math.pi)
+            v = math.acos(rng.uniform(-0.3, 1.0))
+            r = rng.uniform(0.3, 1.0) ** 0.6
+            p = c + Vector((math.cos(u) * math.sin(v) * rx * r, math.sin(u) * math.sin(v) * rx * r, math.cos(v) * rz * r))
+            d = (p - c)
+            d = Vector((d.x, d.y, d.z * 0.4 + 0.25)).normalized()
+            side = d.cross(Vector((0, 0, 1)))
+            side = side.normalized() if side.length > 0.01 else Vector((1, 0, 0))
+            q = rng.randint(0, 3)
+            rect = (q / 4, 0.0, (q + 1) / 4, 1.0)
+            sz = rng.uniform(1.5, 2.2)
+            b.card(p - d * sz * 0.5, d, side, sz, sz, 1, center, uv_rect=rect, bend=sz * 0.15)
+            b.card(p - d * sz * 0.5, d, d.cross(side).normalized(), sz, sz * 0.8, 1, center, uv_rect=rect)
+    # epiphytes and young shoots on the bole
+    for i in range(rng.randint(10, 16)):
+        z = rng.uniform(1.0, split - 1.0)
+        ang = rng.uniform(0, 2 * math.pi)
+        p = Vector((path[int(z / split * 10)].x, path[int(z / split * 10)].y, z)) + horiz(ang) * r0 * 0.9
+        d = (horiz(ang) + Vector((0, 0, 0.4))).normalized()
+        q = rng.randint(0, 3)
+        b.card(p, d, horiz(ang + math.pi / 2), 1.0, 0.9, 1, p - horiz(ang), uv_rect=(q / 4, 0.0, (q + 1) / 4, 1.0), bend=0.2)
+    return b, H
+
+
+def palm(seed):
+    """A palm: a slender, gently curving ringed trunk and a crown of long arching pinnate fronds."""
+    rng = random.Random(seed)
+    b = Builder()
+    H = rng.uniform(8.0, 12.0)
+    lean = horiz(rng.uniform(0, 2 * math.pi)) * rng.uniform(0.8, 2.0)
+    steps = 14
+    path = [Vector((lean.x * (i / steps) ** 2, lean.y * (i / steps) ** 2, H * i / steps)) for i in range(steps + 1)]
+    radii = [0.2 * (1.35 if i == 0 else 1.0) * (1 - 0.35 * i / steps) + (0.012 if i % 2 else 0.0) for i in range(steps + 1)]
+    b.tube(path, radii, 10, 0, 1.5, 1.6)
+    top = path[-1]
+    center = top + Vector((0, 0, -0.6))
+    n = rng.randint(13, 17)
+    for k in range(n):
+        ang = 2 * math.pi * k / n + rng.uniform(-0.15, 0.15)
+        up = math.radians(rng.uniform(5, 55) if k % 3 else rng.uniform(40, 70))
+        d = (horiz(ang) * math.cos(up) + Vector((0, 0, math.sin(up)))).normalized()
+        L = rng.uniform(3.6, 4.8)
+        side = horiz(ang + math.pi / 2)
+        # two segments per frond so it arches over and droops
+        b.card(top, d, side, L * 0.55, 1.5, 1, center, uv_rect=(0.0, 0.0, 0.55, 1.0), bend=0.15)
+        tip_d = (horiz(ang) * math.cos(up - 0.9) + Vector((0, 0, math.sin(up - 0.9)))).normalized()
+        b.card(top + d * L * 0.53 + Vector((0, 0, -0.06)), tip_d, side, L * 0.47, 1.3, 1, center,
+               uv_rect=(0.53, 0.0, 1.0, 1.0), bend=0.4)
+    return b, H
+
+
 # ---------------------------------------------------------------- export
 
 def export(obj, name):
@@ -273,9 +368,16 @@ def main():
         "spruce": [bark_material("M_PineBark", "PineBark"), card_material("M_SpruceFoliage", "T_FirTwigCard_D.png")],
         "pine": [bark_material("M_PineBark2", "PineBark"), card_material("M_PineFoliage", "T_PineTwigCard_D.png")],
         "alder": [bark_material("M_AlderBark", "AlderBark"), card_material("M_AlderFoliage", "T_LeavesCard_D.png")],
+        "jungle": [bark_material("M_JungleBark", "AlderBark"), card_material("M_JungleFoliage", "T_JungleLeafCard_D.png")],
+        "palm": [bark_material("M_PalmBark", "PineBark"), card_material("M_PalmFoliage", "T_PalmFrondCard_D.png")],
     }
-    makers = {"spruce": ("SM_Spruce", spruce, 3), "pine": ("SM_Pine", pine, 2), "alder": ("SM_Alder", alder, 2)}
+    makers = {"spruce": ("SM_Spruce", spruce, 3), "pine": ("SM_Pine", pine, 2), "alder": ("SM_Alder", alder, 2),
+              "jungle": ("SM_Jungle", jungle, 2), "palm": ("SM_Palm", palm, 2)}
+    import sys
+    only = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
     for key, (prefix, fn, count) in makers.items():
+        if only and key not in only:
+            continue
         for i in range(count):
             for o in list(bpy.context.scene.objects):
                 bpy.data.objects.remove(o)

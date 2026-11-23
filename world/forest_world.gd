@@ -413,6 +413,16 @@ func _terrain_height(x: float, z: float, legacy_river := false) -> float:
 
 
 ## Interpolate the same two triangles used by the visible terrain and its collision mesh.
+## Climate bands, north (−z) to south (+z): tundra · taiga · temperate · jungle. 0..1, with wavy borders.
+## Keep in sync with biome.gdshaderinc.
+static func jungle_at(x: float, z: float) -> float:
+	return smoothstep(650.0, 1150.0, z + 120.0 * sin(x * 0.004) + 80.0 * sin(x * 0.011 + 1.0))
+
+
+static func tundra_at(x: float, z: float) -> float:
+	return 1.0 - smoothstep(-1550.0, -1200.0, z + 100.0 * sin(x * 0.005 + 2.0) + 60.0 * sin(x * 0.013))
+
+
 ## Dry, walkable ground well inside the map (hunting grounds, forage spots).
 func habitat_ok_for_people(p: Vector3) -> bool:
 	return height_at(p.x, p.z) > WATER_LEVEL + 0.4 and absf(p.x) < PLAYABLE - 20.0 and absf(p.z) < PLAYABLE - 20.0

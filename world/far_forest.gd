@@ -14,7 +14,7 @@ const END := {0: 900.0, 1: 1500.0, 2: 2200.0}
 const IMPOSTOR_PX := 512
 const CACHE_DIR := "res://assets/textures/impostors"
 const PLACEMENT_CACHE := "res://assets/textures/impostors/far_forest_placement.bin"
-const VERSION := 1  # bump when the placement rules change
+const VERSION := 2  # bump when the placement rules change
 const SPAWN_CLEAR := 135.0
 ## region -> [species, trees per m²] (as Vegetation._chunk)
 const REGION_TREES := {
@@ -48,7 +48,7 @@ func build(w: ForestWorld, mask: Image) -> void:
 		grove_at(0.0, 0.0)  # create the shared noise before the threads read it
 		_bands.resize(BANDS)
 		_task = WorkerThreadPool.add_group_task(_compute_band.bind(mask), BANDS, -1, false, "FarForest")
-	for sp: StringName in [&"spruce", &"pine", &"alder"]:
+	for sp: StringName in [&"spruce", &"pine", &"alder", &"jungle", &"palm"]:
 		var list: Array[Mesh] = []
 		for path: String in AssetLib.TREES[sp]:
 			list.append(await _impostor(path))
@@ -143,7 +143,10 @@ func _compute_band(band: int, mask: Image) -> void:
 			var forest := _mask(mask, px, pz)
 			var g := grove_at(px, pz)
 			# groves close into a canopy (crowns overlap), with a few lone trees in the meadows between them
-			var p := float(row[1]) * STEP * STEP * (0.3 + forest) * (0.12 + 7.0 * g * g)
+			var jg := ForestWorld.jungle_at(px, pz)
+			var tn := ForestWorld.tundra_at(px, pz)
+			var dens := lerpf(float(row[1]), 0.009, jg) * (1.0 - 0.85 * tn)
+			var p := dens * STEP * STEP * (0.3 + maxf(forest, jg)) * (0.12 + 7.0 * g * g)
 			if rng.randf() > p:
 				continue
 			if Vector2(px, pz).distance_to(ForestWorld.SPAWN) < SPAWN_CLEAR or world.river_distance(px, pz) < 20.0:
@@ -152,8 +155,14 @@ func _compute_band(band: int, mask: Image) -> void:
 			if h < 1.5 or h > 135.0 or world.normal_at(px, pz).y < 0.72:
 				continue
 			var sp: StringName = row[0]
+			var climate := 1.0
+			if rng.randf() < jg:
+				sp = &"palm" if rng.randf() < 0.3 else &"jungle"
+			elif tn > 0.0:
+				sp = &"spruce"
+				climate = lerpf(1.0, 0.5, tn)
 			var i := rng.randi() % (AssetLib.TREES[sp] as Array).size()
-			var s := rng.randf_range(1.0, 1.55) * Vegetation.TREE_SCALE
+			var s := rng.randf_range(1.0, 1.55) * Vegetation.TREE_SCALE * climate
 			var xf := Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3.ONE * s), Vector3(px, h - 0.3, pz))
 			var key := Vector2i(floori(px / CHUNK), floori(pz / CHUNK))
 			if not chunks.has(key):
@@ -268,7 +277,10 @@ static func grove_at(x: float, z: float) -> float:
 		_groves.fractal_octaves = 3
 	# none in the start valley (no trees grow within SPAWN_CLEAR of the spawn)
 	var open_valley := smoothstep(SPAWN_CLEAR, SPAWN_CLEAR + 45.0, Vector2(x, z).distance_to(ForestWorld.SPAWN))
-	return smoothstep(-0.05, 0.35, _groves.get_noise_2d(x, z)) * open_valley
+	var g := smoothstep(-0.05, 0.35, _groves.get_noise_2d(x, z))
+	g = maxf(g, ForestWorld.jungle_at(x, z) * 0.9)          # the jungle closes into one canopy
+	g *= 1.0 - 0.85 * ForestWorld.tundra_at(x, z)           # the tundra is open
+	return g * open_valley
 
 
 func _mask(mask: Image, x: float, z: float) -> float:
@@ -282,7 +294,7 @@ func _mask(mask: Image, x: float, z: float) -> float:
 func _finish(chunks: Dictionary) -> void:
 	if not is_inside_tree():
 		return
-	if _meshes.size() < 3:  # impostors still being photographed (first run): build when they are
+	if _meshes.size() < 5:  # impostors still being photographed (first run): build when they are
 		_pending = chunks
 		return
 	_pending = {}

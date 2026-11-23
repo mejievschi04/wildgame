@@ -3,6 +3,7 @@
 // 0 forest floor · 1 grass · 2 mud bank · 3 rock · 4 river pebbles · 5 snow
 shader_type spatial;
 #include "res://world/shaders/cloud_shadow.gdshaderinc"
+#include "res://world/shaders/biome.gdshaderinc"
 render_mode cull_disabled, diffuse_burley, specular_schlick_ggx;
 
 uniform sampler2DArray albedo_tex : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
@@ -93,6 +94,27 @@ void fragment() {
 	alb *= mix(0.96, 1.04, n1) * mix(vec3(1.0), biome, 0.14);
 	// Wet darkening near the waterline.
 	float wet = max(1.0 - smoothstep(-0.1, 0.5, h), rain_wetness * 0.75);
+	// ---- climate bands
+	float tn = tundra_at(wpos.xz);
+	float jg = jungle_at(wpos.xz);
+	float ground = 1.0 - w[2] - w[3] - w[4] - w[5];   // the soil layers (meadow + forest floor)
+	if (tn > 0.0) {
+		// tundra: lichen-grey and moss-olive mottling with rusty dwarf-shrub patches, snow lying in hollows
+		float l = dot(alb, vec3(0.299, 0.587, 0.114));
+		float m1 = texture(macro_noise, wpos.xz * 0.05).r;
+		float m2 = texture(macro_noise, wpos.xz * 0.21 + vec2(0.4, 0.1)).r;
+		vec3 lichen = mix(vec3(0.46, 0.47, 0.40), vec3(0.30, 0.33, 0.18), smoothstep(0.35, 0.7, m1));
+		lichen = mix(lichen, vec3(0.42, 0.24, 0.12), smoothstep(0.62, 0.8, m2) * 0.8);
+		alb = mix(alb, lichen * clamp(l / 0.3, 0.7, 1.3), tn * ground * 0.85);
+		float patch = smoothstep(0.58, 0.7, texture(macro_noise, wpos.xz * 0.018 + vec2(0.7, 0.3)).r + (1.0 - wnrm.y) * -1.5);
+		alb = mix(alb, vec3(0.86, 0.88, 0.92), patch * tn * smoothstep(0.5, 1.0, tn));
+	}
+	if (jg > 0.0) {
+		// jungle: deep, saturated greens in the open; dark red-brown soil and leaf litter under the canopy
+		alb = mix(alb, alb * vec3(0.7, 0.95, 0.55), jg * w[1] * 0.7);
+		vec3 soil = mix(vec3(0.20, 0.10, 0.05), vec3(0.11, 0.13, 0.05), smoothstep(0.4, 0.7, n2));
+		alb = mix(alb, soil * (0.8 + 0.4 * n1), jg * w[0] * 0.7);
+	}
 	alb *= mix(1.0, 0.62, wet);
 	alb = mix(alb, vec3(dot(alb, vec3(0.299, 0.587, 0.114))), w[2] * 0.35);  // muddy banks: earthy, not orange
 	// Beyond the 3D grass, the ground reads as covered: meadows a deeper green, forests in their canopy's shade.

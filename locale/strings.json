@@ -530,6 +530,8 @@
 		"TREE_SPRUCE": "Ель",
 		"TREE_PINE": "Сосна",
 		"TREE_ALDER": "Ольха",
+		"TREE_JUNGLE": "Тропическое дерево",
+		"TREE_PALM": "Пальма",
 		"NODE_FALLEN_TRUNK": "Поваленный ствол",
 		"NODE_STUMP": "Пень",
 		"ACT_FELL": "Рубить дерево",

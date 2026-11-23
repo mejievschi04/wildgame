@@ -13,6 +13,25 @@ const TREE_SCALE := 1.2  # wilderness trees grow a little taller than the starte
 
 
 ## …except in regions that are already dense (Tavren's tall spruce): bigger crowns there cost a lot of fill-rate.
+## The species and size factor a tree takes in its climate band, or [] when it doesn't grow there (most of the
+## tundra). Decided by the id's hash, so the chunk's shared RNG sequence (and save ids) doesn't change.
+static func climate_tree(id: String, x: float, z: float, species: StringName) -> Array:
+	var h := absi(hash(id + "climate")) % 1000 / 1000.0
+	var j := ForestWorld.jungle_at(x, z)
+	var t := ForestWorld.tundra_at(x, z)
+	if h < j:
+		return [&"palm" if absi(hash(id + "palm")) % 10 < 3 else &"jungle", lerpf(1.0, 1.05, j)]
+	if t > 0.0:
+		if h < t * 0.85:
+			return []
+		return [&"spruce", lerpf(1.0, 0.5, t)]  # a few stunted spruce out on the tundra
+	return [species, 1.0]
+
+
+static func tree_kind(species: StringName) -> StringName:
+	return &"tree_birch" if species in [&"alder", &"jungle", &"palm"] else &"tree_pine"
+
+
 static func tree_scale(density: float) -> float:
 	return lerpf(TREE_SCALE, 1.0, smoothstep(0.006, 0.01, density))
 
@@ -150,10 +169,15 @@ func _chunk(key: Vector2i, origin: Vector2, grass: Array[Mesh], ferns: Array[Mes
 			continue
 		if not world.is_scatter_site_free(x, z, 1.0) or _within_clearance(x, z, occupied):
 			continue
-		occupied.append(Vector2(x, z))
 		var id := "region_%d_%d_tree_%d" % [key.x, key.y, i]
-		var kind := &"tree_birch" if species == &"alder" else &"tree_pine"
-		world.spawn_region_resource(root, id, kind, Vector2(x, z), _rng.randf_range(0.78, 1.22) * tree_scale(tree_density), _rng.randf() * TAU, species)
+		var size := _rng.randf_range(0.78, 1.22) * tree_scale(tree_density)
+		var yaw := _rng.randf() * TAU
+		var climate := climate_tree(id, x, z, species)
+		if climate.is_empty():
+			continue  # the tundra is open: most trees just don't grow there
+		occupied.append(Vector2(x, z))
+		var sp: StringName = climate[0]
+		world.spawn_region_resource(root, id, tree_kind(sp), Vector2(x, z), size * float(climate[1]), yaw, sp)
 	for kind: StringName in [&"sticks", &"stones"]:
 		for i in 2:
 			var at := origin + Vector2(_rng.randf_range(2.0, CHUNK - 2.0), _rng.randf_range(2.0, CHUNK - 2.0))
@@ -229,6 +253,8 @@ func _place_groves(key: Vector2i, origin: Vector2, region: StringName, species: 
 	rng.seed = int(hash(Vector3i(key.x, key.y, ForestWorld.SEED + 2727)))
 	# top dense regions up to ~0.012 trees/m² inside a grove; regions already that dense (Tavren) get none
 	var tries := int(CHUNK * CHUNK * clampf(0.0125 - density, 0.0, 0.009))
+	var cj := ForestWorld.jungle_at(origin.x + CHUNK * 0.5, origin.y + CHUNK * 0.5)
+	tries = int(lerpf(tries, CHUNK * CHUNK * 0.011, cj))  # the jungle is one continuous stand
 	var logs: Array = []
 	for i in tries:
 		var x := origin.x + rng.randf() * CHUNK
@@ -245,14 +271,18 @@ func _place_groves(key: Vector2i, origin: Vector2, region: StringName, species: 
 				break
 		if clear:
 			continue
-		occupied.append(Vector2(x, z))
 		var sp := species
 		if species != &"spruce" and rng.randf() < 0.35:
 			sp = &"spruce"
-		var kind := &"tree_birch" if sp == &"alder" else &"tree_pine"
 		var sc := rng.randf_range(0.7, 1.3) * lerpf(0.75, 1.0, g) * tree_scale(density)  # younger, smaller at the edge
-		world.spawn_region_resource(root, "region_%d_%d_grove_%d" % [key.x, key.y, i], kind, Vector2(x, z), sc,
-			rng.randf() * TAU, sp)
+		var yaw := rng.randf() * TAU
+		var gid := "region_%d_%d_grove_%d" % [key.x, key.y, i]
+		var climate := climate_tree(gid, x, z, sp)
+		if climate.is_empty():
+			continue
+		occupied.append(Vector2(x, z))
+		sp = climate[0]
+		world.spawn_region_resource(root, gid, tree_kind(sp), Vector2(x, z), sc * float(climate[1]), yaw, sp)
 		if g > 0.7 and rng.randf() < 0.06:
 			logs.append(Vector2(x + rng.randf_range(-4, 4), z + rng.randf_range(-4, 4)))
 	# fallen trunks on the forest floor

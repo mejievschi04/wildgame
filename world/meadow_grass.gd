@@ -38,6 +38,7 @@ func build(w: ForestWorld, heights: PackedFloat32Array, forest_mask: Image, macr
 	_floor_material.set_shader_parameter("atlas", preload("res://assets/textures/vegetation/T_ForestCards_D.png"))
 	_floor_material.set_shader_parameter("grass_mask", ImageTexture.create_from_image(_grass_mask(heights, forest_mask, 1.0, true)))
 	_floor_material.set_shader_parameter("forest_floor", true)
+	_floor_material.set_shader_parameter("atlas_jungle", preload("res://assets/textures/vegetation/T_JungleCards_D.png"))
 	_rebuild()
 	Settings.changed.connect(func(_s: String, _k: String) -> void: _rebuild())
 

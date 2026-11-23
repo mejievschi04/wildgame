@@ -202,6 +202,27 @@ FPS (calitate medie): start ~54, Meyra ~45, râu ~46, Tavren ~29.
 - **Mâna**: degetul mare e așezat geometric (`gen_fp_hand.py` `wrap_thumb`): prima falangă trece prin fața pumnului,
   iar vârful stă pe falanga din mijloc a arătătorului; nu mai stă depărtat.
 
+## Pasul 12: tundră la nord, junglă la sud (2026-11-23)
+
+Benzi climatice de la nord (−z) la sud (+z): **tundră · taiga · temperat · junglă**, cu granițe ondulate
+(`ForestWorld.jungle_at` / `tundra_at`, aceleași formule în `biome.gdshaderinc`). Jungla începe la z ≈ 650–1150, tundra
+la z ≈ −1200…−1550.
+
+- **Copaci noi** (`gen_trees.py -- jungle palm`, texturi `gen_jungle_cards.py`): copac tropical de 17–22 m cu rădăcini
+  proptea, trunchi drept, coroană lată în etaje din frunze mari lucioase, liane atârnând din crengi și epifite pe trunchi
+  (~3 000 de triunghiuri); palmier cu trunchi inelat, curbat, și 13–17 frunze penate arcuite (~400 de triunghiuri).
+  Se pot tăia ca orice copac (`tree_birch`).
+- **Specia după climă** (`Vegetation.climate_tree`, decisă din hash-ul ID-ului, deci salvările și ordinea RNG nu se
+  schimbă): în junglă copaci tropicali (30 % palmieri); în tundră ~85 % dintre copaci lipsesc, iar restul sunt molizi
+  pitici (×0,5). Jungla e un singur crâng dens (crângurile ating ~0,011 copaci/m²); pădurea îndepărtată urmează aceleași
+  reguli (impostori pentru junglă/palmier, `VERSION` 2 pentru cache).
+- **Solul**: în junglă plante pictate (`T_JungleCards_D`: urechea-elefantului, ferigă, heliconia cu bractee roșii,
+  puieți cu frunze late), iarbă mai înaltă și mai verde, pământ roșcat-brun sub coronament; în tundră iarbă joasă,
+  rară și ruginie, licheni gri-verzi, pete de arbuști pitici și petice de zăpadă, fără trestie.
+- **Fundalul**: câmpia vulcanică din sud e acum junglă verde-închis până la poalele vulcanilor.
+
+FPS: jungla ~42–45, tundra ~60, taiga ~48.
+
 ## Următorii pași propuși
 
 1. **Pădurea de aproape**: copacii reali sunt așezați uniform; grupați în pâlcuri, cu tufișuri și bușteni căzuți.

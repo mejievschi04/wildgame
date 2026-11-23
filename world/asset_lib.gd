@@ -9,6 +9,8 @@ const TREES := {
 		"res://assets/models/trees/SM_Spruce_03.gltf"],
 	&"pine": ["res://assets/models/trees/SM_Pine_01.gltf", "res://assets/models/trees/SM_Pine_02.gltf"],
 	&"alder": ["res://assets/models/trees/SM_Alder_01.gltf", "res://assets/models/trees/SM_Alder_02.gltf"],
+	&"jungle": ["res://assets/models/trees/SM_Jungle_01.gltf", "res://assets/models/trees/SM_Jungle_02.gltf"],
+	&"palm": ["res://assets/models/trees/SM_Palm_01.gltf", "res://assets/models/trees/SM_Palm_02.gltf"],
 	&"stump": ["res://assets/models/trees/SM_Stump_01.gltf", "res://assets/models/trees/SM_Stump_02.gltf"],
 	&"dead_trunk": ["res://assets/models/trees/SM_DeadTrunk_01.gltf"],
 }
@@ -105,11 +107,13 @@ static func tuned(m: Material, profile: StringName = &"ground") -> Material:
 		if profile == &"tree":
 			f.set_shader_parameter("sway", 0.7)
 			f.set_shader_parameter("height_ref", 14.0)
-			var conifer := "Spruce" in String(b.resource_name) or "Pine" in String(b.resource_name)
+			var mname := String(b.resource_name)
+			var conifer := "Spruce" in mname or "Pine" in mname
+			var tropical := "Jungle" in mname or "Palm" in mname
 			f.set_shader_parameter("crown", true)
-			f.set_shader_parameter("crown_center", 8.0 if conifer else 10.0)
-			f.set_shader_parameter("crown_radius", 3.0 if conifer else 4.0)
-			f.set_shader_parameter("color_mul", Vector3(0.78, 0.9, 0.66) if not conifer else Vector3(0.85, 0.95, 0.8))
+			f.set_shader_parameter("crown_center", 15.0 if "Jungle" in mname else (8.5 if "Palm" in mname else (8.0 if conifer else 10.0)))
+			f.set_shader_parameter("crown_radius", 5.0 if "Jungle" in mname else (3.5 if "Palm" in mname else (3.0 if conifer else 4.0)))
+			f.set_shader_parameter("color_mul", Vector3(1.0, 1.05, 0.95) if tropical else (Vector3(0.78, 0.9, 0.66) if not conifer else Vector3(0.85, 0.95, 0.8)))
 			f.set_shader_parameter("backlight_color", Color(0.32, 0.38, 0.14))
 		else:
 			f.set_shader_parameter("sway", 0.12)

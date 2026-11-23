@@ -226,3 +226,57 @@ for i in range(tiers):
                 stroke([(px, py), (px + sgn * ln * 0.5, py + d * ln)], 3.0, 1.2, srgb((0.06, 0.13, 0.05)),
                        srgb((0.12, 0.24, 0.08)) * rng.uniform(0.8, 1.2), 3)
 save("T_ForestCards_D")
+
+# ------------------------------------------------------------------ jungle floor
+# 0 elephant-ear: big heart-shaped leaves on long stalks · 1 jungle fern · 2 heliconia: paddle leaves and red
+# bracts · 3 broadleaf seedling shrub. → T_JungleCards_D.png (same layout as the forest atlas)
+img[:] = 0.0
+JG = [srgb(c) for c in [(0.10, 0.26, 0.05), (0.14, 0.32, 0.06), (0.08, 0.21, 0.04), (0.18, 0.36, 0.08)]]
+
+
+def paddle(col, base, ang, ln, wd, c):
+    """A broad leaf blade from base along ang (radians from vertical), filled as a stack of strokes."""
+    d = np.array([math.sin(ang), -math.cos(ang)])
+    n = np.array([-d[1], d[0]])
+    steps = max(int(ln / 2.0), 8)
+    for k in range(steps + 1):
+        t = k / steps
+        half = wd * math.sin(math.pi * min(t * 1.05, 1.0)) ** 0.7
+        a = np.array(base) + d * ln * t
+        shade = c * (0.8 + 0.25 * t)
+        stroke([tuple(a - n * half), tuple(a), tuple(a + n * half)], 2.2, 2.2, shade * 0.8, shade * 1.1, col)
+    stroke([tuple(np.array(base)), tuple(np.array(base) + d * ln)], 1.6, 0.8, c * 1.5, c * 1.4, col)
+
+
+for k in range(7):   # elephant ears
+    bx = CW * 0.5 + rng.normal(0, 30)
+    stalk_h = rng.uniform(0.3, 0.55) * H
+    lean = rng.normal(0, 0.25)
+    top = (bx + lean * stalk_h * 0.6, H - 2 - stalk_h)
+    stroke([(bx, H - 2), ((bx + top[0]) / 2, H - 2 - stalk_h * 0.55), top], 6, 3, JG[2] * 0.8, JG[1], 0)
+    paddle(0, top, rng.normal(0, 0.3) + (0.9 if lean > 0 else -0.9), rng.uniform(130, 190),
+           rng.uniform(60, 85), JG[rng.integers(0, 4)] * rng.uniform(0.9, 1.15))
+for k in range(12):  # fern
+    side = (1 if k % 2 else -1) * rng.uniform(0.25, 1.0)
+    frond(1, CW * 1.5 + rng.normal(0, 8), rng.uniform(0.4, 0.85) * H, side, JG[rng.integers(0, 4)] * rng.uniform(0.9, 1.2))
+for k in range(8):   # heliconia
+    bx = CW * 2.5 + rng.normal(0, 45)
+    hgt = rng.uniform(0.55, 0.95) * H
+    paddle(2, (bx, H - 2), rng.normal(0, 0.18), hgt, rng.uniform(38, 55), JG[rng.integers(0, 4)] * rng.uniform(0.9, 1.15))
+    if k % 2 == 0:   # hanging red-and-yellow bracts on a stem
+        sx = bx + rng.normal(0, 15)
+        stem_top = H - 2 - hgt * 0.7
+        stroke([(sx, H - 2), (sx, stem_top)], 3, 2, srgb((0.2, 0.3, 0.1)), srgb((0.25, 0.35, 0.1)), 2)
+        for b in range(6):
+            y = stem_top + b * 26
+            sgn = 1 if b % 2 else -1
+            stroke([(sx, y), (sx + sgn * 34, y + 10)], 12, 3, srgb((0.85, 0.12, 0.06)), srgb((0.95, 0.75, 0.15)), 2)
+for k in range(30):  # broadleaf seedlings
+    bx = CW * 3.5 + rng.normal(0, 70)
+    hgt = rng.uniform(0.25, 0.7) * H
+    stroke([(bx, H - 2), (bx + rng.normal(0, 10), H - 2 - hgt)], 3, 1.5, srgb((0.22, 0.18, 0.1)), srgb((0.2, 0.3, 0.1)), 3)
+    for j in range(4):
+        y = H - 2 - hgt * (0.4 + 0.2 * j)
+        sgn = 1 if j % 2 else -1
+        paddle(3, (bx, y), sgn * rng.uniform(0.9, 1.5), rng.uniform(45, 75), rng.uniform(16, 24), JG[rng.integers(0, 4)])
+save("T_JungleCards_D")

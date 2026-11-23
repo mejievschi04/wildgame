@@ -90,13 +90,13 @@ void fragment() {
 	float crowns = texture(noise_tex, wpos.xz * 0.045 + vec2(0.11, 0.53)).r;
 	vec3 forest = vec3(0.04, 0.065, 0.032) * (0.65 + 0.7 * crowns) * mix(0.75, 1.0, ao);
 	vec3 meadow = mix(vec3(0.20, 0.24, 0.09), vec3(0.32, 0.30, 0.14), n2) * (0.85 + 0.3 * crowns);
-	vec3 ash_plain = vec3(0.17, 0.15, 0.1) * (0.8 + 0.4 * n3);
+	vec3 ash_plain = vec3(0.045, 0.085, 0.03) * (0.65 + 0.7 * crowns);  // the southern lowlands are jungle
 	float treeline = mix(mix(850.0, 1050.0, north), 600.0, south) + (n - 0.5) * 260.0 + flow * 220.0;
 	float tree = (1.0 - smoothstep(treeline - 60.0, treeline + 60.0, h)) * (1.0 - smoothstep(0.42, 0.62, slope));
 	float grass = (1.0 - smoothstep(treeline + 250.0, treeline + 450.0, h)) * (1.0 - smoothstep(0.35, 0.55, slope)) * (1.0 - tree);
 	vec3 col = rock;
 	col = mix(col, mix(meadow, ash_plain, south * 0.7), grass);
-	col = mix(col, mix(forest, ash_plain * 0.8, south * 0.5), tree);
+	col = mix(col, mix(forest, ash_plain, south), tree);
 
 	// ---- snow: on ledges and gentle slopes above the snowline, deep in the couloirs, blown off the steep faces
 	float snowline = mix(mix(1400.0, 1250.0, north), 2300.0, south) + (n - 0.5) * 300.0 + (n2 - 0.5) * 120.0;

@@ -5,9 +5,11 @@
 // water, steep rock and dense forest bare, and fires/buildings clear a circle. Wind from the weather.
 shader_type spatial;
 #include "res://world/shaders/cloud_shadow.gdshaderinc"
+#include "res://world/shaders/biome.gdshaderinc"
 render_mode cull_disabled, diffuse_burley, specular_schlick_ggx, world_vertex_coords;
 
 uniform sampler2D atlas : source_color, filter_linear_mipmap_anisotropic, repeat_disable;
+uniform sampler2D atlas_jungle : source_color, filter_linear_mipmap_anisotropic, repeat_disable;  // forest floor, south
 uniform sampler2D height_tex : filter_nearest;        // (GRID+1)² terrain heights, R32F
 uniform sampler2D grass_mask : hint_default_black, filter_linear;  // baked: 0 bare … 1 full meadow
 uniform sampler2D macro_noise : hint_default_white, filter_linear_mipmap, repeat_enable;
@@ -28,6 +30,8 @@ varying float v_col;   // atlas column 0..3
 varying float v_tint;
 varying float v_dry;
 varying float v_cloud;
+varying float v_jungle;   // 1: sample the jungle atlas (forest floor)
+varying float v_tundra;
 
 float th(int ix, int iz) {
 	return texelFetch(height_tex, ivec2(clamp(ix, 0, grid), clamp(iz, 0, grid)), 0).r;
@@ -91,6 +95,23 @@ void vertex() {
 			hmul = 2.4;
 		}
 	}
+	// climate: lush, tall jungle undergrowth in the south; short, sparse, rusty tundra sward in the north
+	float jg = jungle_at(wrapped);
+	float tn = tundra_at(wrapped);
+	v_jungle = 0.0;
+	if (forest_floor && hash(inst.xz + 77.0) < jg) {
+		v_jungle = 1.0;
+		col = floor(hash(inst.xz + 91.0) * 3.99);
+		hmul = col == 2.0 ? 2.6 : (col == 0.0 ? 2.0 : 1.6);
+	}
+	if (!forest_floor) {
+		if (col == 2.0) col = mix(col, 0.0, step(0.5, jg));          // no dry clumps in the jungle
+		if (col == 3.0 && tn > 0.5 && r2 > 0.15) col = 2.0;          // few flowers on the tundra
+		if (tn > 0.3 && r2 < tn * 0.6) col = 2.0;
+		if (col == 4.0 && tn > 0.4) { col = 0.0; hmul = 1.0; }       // no reed beds on the tundra
+		hmul = mix(hmul, hmul * 1.35, jg);
+	}
+	v_tundra = tn;
 	v_col = col;
 	v_dry = dryness;
 	v_tint = 0.85 + 0.3 * hash(inst.xz + 5.0);
@@ -105,7 +126,9 @@ void vertex() {
 	// LOD: far clusters keep one of their three cards (COLOR.g = card id)
 	float lod = step(COLOR.g, 1.0 - 0.66 * smoothstep(radius * 0.35, radius * 0.6, dist));
 	vec3 local = VERTEX - inst;
-	float hscale = (forest_floor || col == 4.0 ? hmul : (col == 1.0 ? 1.5 : 1.0)) * mix(0.75, 1.25, hash(inst.xz + 9.0));
+	float hscale = (forest_floor || col == 4.0 ? hmul : (col == 1.0 ? 1.5 : 1.0) * mix(1.0, 1.35, jg)) * mix(0.75, 1.25, hash(inst.xz + 9.0));
+	hscale *= mix(1.0, 0.55, tn);                    // tundra: everything hugs the ground
+	keep *= step(hash(inst.xz + 53.0), 1.0 - 0.45 * tn);   // …and is sparse
 	float s = keep * lod * fade;
 	local.y *= s * hscale;
 	local.xz *= s;  // hidden clumps collapse to a point (a flattened card would lie on the ground as a pale patch)
@@ -120,13 +143,14 @@ void vertex() {
 
 void fragment() {
 	vec2 uv = vec2((v_col + clamp(UV.x, 0.002, 0.998)) / columns, UV.y);
-	vec4 c = texture(atlas, uv);
+	vec4 c = v_jungle > 0.5 ? texture(atlas_jungle, uv) : texture(atlas, uv);
 	ALPHA = c.a;
 	ALPHA_SCISSOR_THRESHOLD = 0.45;
 	NORMAL = v_up;
 	float top = 1.0 - UV.y;
 	vec3 albedo = c.rgb * v_tint * (forest_floor ? vec3(0.8) : mix(vec3(0.86, 1.0, 1.05), vec3(1.05, 1.0, 0.85), v_dry * 0.6));
 	albedo = mix(albedo, vec3(dot(albedo, vec3(0.3, 0.59, 0.11))), 0.18);  // natural, not neon
+	albedo = mix(albedo, albedo * vec3(1.12, 0.92, 0.7) + vec3(0.03, 0.0, 0.0), v_tundra * 0.7);  // rusty tundra
 	ALBEDO = albedo * mix(0.45, 1.0, smoothstep(0.0, 0.45, top)) * mix(1.0, 0.58, v_cloud);  // self-shadowed base
 	ROUGHNESS = 0.78;
 	SPECULAR = 0.3;
