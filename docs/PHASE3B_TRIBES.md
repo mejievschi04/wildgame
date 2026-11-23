@@ -68,7 +68,7 @@ ridge, sloping forehead, long low skull, broad projecting nose and midface, weak
 full beard, red-ochre smear on the cheekbones (no white paint). Heavier furs per the concept: the mantle drops lower and
 hangs down the back as a cape; women wear a fur collar over both shoulders; tall fur boots. New spec options shared by
 all races: `mantle_drop`, `mantle_back`, `female_mantle`, `boot_h`, `fur_len`, `face_depth` / `front_sweep` (keeps hair off
-a sloping forehead). Budget: M ≈ 137k tris (body + clothes ≈ 47k), F ≈ 107k — the hair-card LOD pass is still open.
+a sloping forehead). Budget (before the hair pass below): M ≈ 137k tris, F ≈ 107k.
 In game the **clan** (and the regional garrisons) are Neanderthals: variants `NM1–NM3`, `NF1–NF2` in `HumanNPC.BODY_STYLES`.
 
 ## NPC AI v2 — a day in camp, beasts, fighting together, movement (2026-11-23)
@@ -101,3 +101,24 @@ turning on the spot plays `life/step`; walking speeds build up and run down over
 Screenshots: `--shot-scenario=tribe` (clan lineup; `SHOT_ANIM=life/sleep`, `SHOT_DIST`, `SHOT_TURN`) and
 `--shot-scenario=tribelife` (a camp from outside, `SHOT_CAMP=hunters|clan|gatherers`, with `--shot-hour`).
 Tests: `tests/test_npc_ai.gd` (12).
+
+## Hair & look pass (2026-11-23)
+The strand-card hair (tens of thousands of thin cards, spring-simulated) read as a messy mop that stuck out sideways in
+game. Hair is now built like game hair:
+- **Hair cap**: the scalp faces of the body pushed out into a thin shell (thicker toward the crown and back), UV'd so its
+  tileable strand texture combs away from the face and thins out into wisps at the hairline. Rigid on the head.
+- **Locks**: a few dozen wide clump cards (`clump_atlas`: many fine strands gathering into a lock, solid core, wispy edges)
+  rooted on the back and sides of the cap, falling straight down over the neck, back and shoulders (collision with the
+  body, cap and clothes; kept off the face). They follow head → back through their skin weights; no spring chains.
+- **Beard**: the same cap on the beard area (thicker toward the chin) plus short locks under the chin.
+- **Fur garments**: a textured pelt (`pelt_material`, soft combed tufts) with a sparse layer of short, fine tufts instead
+  of dense spiky cards.
+- Skin is lighter (less AO darkening, lighter base tones); the Neanderthal is taller (≈ a head shorter than Sapiens
+  rather than chest height) with a softer nose and less sunken eyes; a lighter, shorter mantle.
+
+- **Stance**: the MPFB rest pose stands in an A (ankles ~10 cm outside the hips, ~6° per leg) and every procedural clip
+  kept it. `human_anim.stance_fix` swings each thigh in about the forward axis (foot turned back to stay flat) so the
+  ankle sits ~2 cm outside the hip; combat/life poses place the feet with `stance_x`. Mocap walk/run were already
+  correct. Test: `test_legs_stand_under_the_hips`.
+
+Budget now: Sapiens M ≈ 63k tris, F ≈ 56k, Neanderthal M ≈ 66k, F ≈ 62k (body + clothes ≈ 47k of that). Hair + beard ≈ 3–6k.

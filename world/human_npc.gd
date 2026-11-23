@@ -223,7 +223,11 @@ func _style_outfit(style: Array) -> void:
 	var fur_tint: Color = style[3]
 	var removed: Array = style[4]
 	for mesh: MeshInstance3D in _model.find_children("*", "MeshInstance3D", true, false):
-		if String(mesh.name).get_slice(".", 0).get_slice("_", 0) in removed or String(mesh.name) in removed:
+		var mesh_name := String(mesh.name)
+		var gone := mesh_name.get_slice(".", 0).get_slice("_", 0) in removed or mesh_name in removed
+		for r: String in removed:
+			gone = gone or ("_" in r and mesh_name.begins_with(r))  # "…Beard" also hides the beard cap
+		if gone:
 			mesh.hide()
 			continue
 		for i in mesh.mesh.get_surface_count():

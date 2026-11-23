@@ -316,3 +316,22 @@ func test_throw_clip_draws_the_spear_back_over_the_shoulder() -> void:
 	print("THROW released hand=", f)
 	check(f.z > top.z + 0.2, "hand forward after release")
 	await _teardown(s)
+
+
+func test_legs_stand_under_the_hips() -> void:
+	var s: GameSession = await _boot()
+	for id in ["npc_clan_0", "npc_clan_2", "npc_gatherers_0", "npc_gatherers_1"]:
+		var n: HumanNPC = s.world.camps.npcs[id]
+		_hold(n)
+		var sk := n._skel
+		for clip in ["idle", "alert", "gesture", "combat/guard"]:
+			n._play(clip, false, 0.0)
+			n._anim.seek(0.5, true)
+			sk.force_update_all_bone_transforms()
+			var widest := 0.0
+			for side in ["l", "r"]:
+				var hip := sk.get_bone_global_pose(sk.find_bone("thigh_" + side)).origin
+				var ankle := sk.get_bone_global_pose(sk.find_bone("foot_" + side)).origin
+				widest = maxf(widest, absf(ankle.x) - absf(hip.x))
+			check(widest < 0.075, "%s %s: ankle %.3f m outside the hip (legs not splayed)" % [id, clip, widest])
+	await _teardown(s)

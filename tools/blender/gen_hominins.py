@@ -417,7 +417,7 @@ def bake_skin(body, spec, sex, name, size=2048):
         imgs[kind] = img
     ao = np.kron(np.array(imgs["ao"].pixels[:]).reshape(size // 2, size // 2, 4)[..., 0], np.ones((2, 2)))
     al = np.array(imgs["albedo"].pixels[:]).reshape(size, size, 4)
-    al[..., :3] *= (0.55 + 0.45 * ao)[..., None]
+    al[..., :3] *= (0.72 + 0.28 * ao)[..., None]
     imgs["albedo"].pixels[:] = al.ravel()
     tdir = os.path.join(OUT, "textures"); os.makedirs(tdir, exist_ok=True)
     paths = {}
@@ -657,9 +657,170 @@ def strand_cards(name, src, region, style, palette, collide, weight_src, density
     loops = [obj.data.loops[i].vertex_index for i in range(len(obj.data.loops))]
     obj.data.normals_split_custom_set([nrm[i] for i in loops])
     sp = {"name": name, "hair_palette": palette, "strands_per_card": style.get("strands", 160)}
-    atlas = hair_atlas(name, palette) if style.get("hair") else fl.strand_atlas(sp, OUT)
+    if style.get("clump"):
+        atlas = clump_atlas(name, palette)
+    else:
+        atlas = hair_atlas(name, palette) if style.get("hair") else fl.strand_atlas(sp, OUT)
     obj.data.materials.append(fl.fur_material(sp, atlas))
     return obj
+
+
+# ============================================================== simplified hair: a cap + a few wide clumps
+
+def clump_atlas(name, palette, w=1024, h=1024):
+    """4 hair clumps (one per column, roots at v=0): many fine strands that gather toward the tip, a solid core
+    and wispy edges. Wide cards with these read as locks of hair instead of single sticks."""
+    rng = np.random.default_rng(abs(hash(name)) % 2**32)
+    img = np.zeros((h, w, 4), dtype=np.float32)
+    cw = w // 4
+    rows = np.arange(h)
+    mean = np.mean(np.array(palette, float), 0)
+    for c in range(4):
+        base = np.array(palette[c], float)
+        cx = c * cw + cw / 2
+        for _ in range(420):
+            r0 = rng.normal(0, 0.24) * cw
+            x0 = cx + np.clip(r0, -0.46 * cw, 0.46 * cw)
+            x1 = cx + (x0 - cx) * rng.uniform(0.35, 0.7)            # the lock narrows toward the tip
+            y0 = int(h * rng.uniform(0.0, 0.08))
+            L = int((h - y0) * rng.uniform(0.7, 1.0) * (1 - 0.35 * abs(r0) / (0.5 * cw)))
+            ys = rows[y0:y0 + L]; t = (ys - y0) / max(L, 1)
+            xc = x0 + (x1 - x0) * t + 1.8 * np.sin(t * rng.uniform(4, 9) + rng.uniform(0, 6))
+            wd = rng.uniform(1.2, 2.2)
+            colr = base * rng.uniform(0.8, 1.2)
+            shade = (0.62 + 0.5 * t)[:, None] * colr[None, :]      # darker toward the root (self-shadow)
+            fade = np.clip((1 - t) * 4.0, 0, 1)
+            for dx in range(-3, 4):
+                xs = np.clip(np.round(xc).astype(int) + dx, c * cw, c * cw + cw - 1)
+                cov = np.clip(wd - np.abs(xs - xc) + 0.5, 0, 1) * fade
+                old = img[ys, xs, 3]
+                img[ys, xs, :3] = np.where((cov > old)[:, None], shade, img[ys, xs, :3])
+                img[ys, xs, 3] = np.maximum(old, cov)
+    img[..., :3] = np.where(img[..., 3:4] > 0.02, img[..., :3], mean * 0.85)
+    im = bpy.data.images.new(f"T_{name}_hair", w, h, alpha=True)
+    im.pixels[:] = img.ravel()
+    p = os.path.join(OUT, "textures", f"T_{name}_hair.png")
+    im.filepath_raw = p; im.file_format = "PNG"; im.save()
+    return p
+
+
+def cap_texture(name, palette, w=512, h=512):
+    """Tileable strands running along v for a hair/beard cap; v < ~0.15 thins out into wisps (the hairline)."""
+    rng = np.random.default_rng(abs(hash(name)) % 2**32)
+    img = np.zeros((h, w, 4), dtype=np.float32)
+    v = np.arange(h) / h
+    mean = np.mean(np.array(palette, float), 0)
+    img[..., :3] = mean * 0.9
+    img[..., 3] = np.clip((v[:, None] - 0.06) / 0.12, 0, 1)
+    for _ in range(1400):
+        x0 = rng.uniform(0, w)
+        y0 = int(h * rng.uniform(0.0, 0.2))
+        L = int(h * rng.uniform(0.3, 0.9))
+        ys = np.arange(y0, min(h, y0 + L))
+        t = (ys - y0) / max(L, 1)
+        xc = x0 + 2.0 * np.sin(t * rng.uniform(3, 8) + rng.uniform(0, 6))
+        colr = np.array(palette[int(rng.integers(0, len(palette)))], float) * rng.uniform(0.75, 1.25)
+        for dx in (-1, 0, 1):
+            xs = (np.round(xc).astype(int) + dx) % w
+            cov = (1.0 if dx == 0 else 0.45) * np.clip(np.minimum(t * 6, (1 - t) * 3), 0, 1)
+            img[ys, xs, :3] = img[ys, xs, :3] * (1 - cov[:, None]) + colr * cov[:, None]
+            img[ys, xs, 3] = np.maximum(img[ys, xs, 3], cov * 0.95)
+    im = bpy.data.images.new(f"T_{name}_cap", w, h, alpha=True)
+    im.pixels[:] = img.ravel()
+    p = os.path.join(OUT, "textures", f"T_{name}_cap.png")
+    im.filepath_raw = p; im.file_format = "PNG"; im.save()
+    return p
+
+
+def hair_cap(name, ref, hf, select, palette, tile=5.0):
+    """A solid shell of hair over the scalp (or beard area): the selected head faces of the body, pushed out by
+    select()'s thickness and smoothed. UV u runs around the head (tiling), v from the hairline inward, so the cap
+    texture's strands comb away from the face and thin out at the hairline. Rigid on the head bone."""
+    gn = {g.index: g.name for g in ref.vertex_groups}
+    me = ref.data
+    info = {}
+    for v in me.vertices:
+        if gh.dominant_bone(v, gn, {"head", "neck_01"}) != "head":
+            continue
+        r = select(v.co)
+        if r is not None:
+            info[v.index] = r                                     # (thickness, v coordinate)
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    bm.verts.ensure_lookup_table()
+    kill = [f for f in bm.faces if not all(vv.index in info for vv in f.verts)]
+    bmesh.ops.delete(bm, geom=kill, context="FACES")
+    bm.verts.ensure_lookup_table()
+    orig = {vv: vv.index for vv in bm.verts}
+    for vv in bm.verts:
+        if vv.index in info and vv.link_faces:
+            vv.co = vv.co + vv.normal * info[orig[vv]][0]
+    bmesh.ops.delete(bm, geom=[vv for vv in bm.verts if not vv.link_faces], context="VERTS")
+    bmesh.ops.smooth_vert(bm, verts=list(bm.verts), factor=0.5, use_axis_x=True, use_axis_y=True, use_axis_z=True)
+    ymid = (hf["y"][0] + hf["y"][1]) / 2
+    uvl = bm.loops.layers.uv.verify()
+    for f in bm.faces:
+        us, vs = [], []
+        for lp in f.loops:
+            c = lp.vert.co
+            us.append((math.atan2(c.x, c.y - ymid) / math.tau + 0.5) * tile)
+            vs.append(info.get(orig.get(lp.vert, -1), (0, 0.5))[1])
+        if max(us) - min(us) > tile / 2:                           # face across the seam behind the head
+            us = [u + tile if u < tile / 2 else u for u in us]
+        for lp, u, vv in zip(f.loops, us, vs):
+            lp[uvl].uv = (u, vv)
+    for f in bm.faces:
+        f.smooth = True
+    dl = bm.verts.layers.deform.active
+    if dl is not None:                                            # the cap is rigid on the head: drop body weights
+        bm.verts.layers.deform.remove(dl)
+    mesh = bpy.data.meshes.new(name)
+    bm.to_mesh(mesh); bm.free()
+    obj = bpy.data.objects.new(name, mesh)
+    bpy.context.scene.collection.objects.link(obj)
+    fl.rigid_to_bone(obj, "head")
+    sp = {"name": name}
+    obj.data.materials.append(fl.fur_material(sp, cap_texture(name, palette)))
+    return obj
+
+
+def pelt_material(name, rgb, size=1024):
+    """Fur garment base: soft, combed tufts with gentle colour variation (the garment UVs come from the body)."""
+    rng = np.random.default_rng(abs(hash(name + str(rgb))) % 2**32)
+    img = np.zeros((size, size, 4), dtype=np.float32); img[..., 3] = 1
+    base = np.array(rgb, float)
+    col = np.broadcast_to(base * 0.7, (size, size, 3)).copy()
+    for _ in range(9000):
+        x0, y0 = rng.uniform(0, size), rng.uniform(0, size)
+        L = int(rng.uniform(18, 44))
+        t = np.arange(L) / L
+        ys = (np.arange(L) + int(y0)) % size
+        xc = x0 + 2.0 * np.sin(t * 3 + rng.uniform(0, 6))
+        tint = base * rng.uniform(0.82, 1.15)
+        for dx in (-2, -1, 0, 1, 2):
+            xs = (np.round(xc).astype(int) + dx) % size
+            k = (0.55 if dx == 0 else (0.3 if abs(dx) == 1 else 0.12)) * np.sin(np.pi * t)[:, None]
+            col[ys, xs] = col[ys, xs] * (1 - k) + tint * (0.7 + 0.45 * t)[:, None] * k
+    for _ in range(2):  # soften
+        col = (col + np.roll(col, 1, 0) + np.roll(col, -1, 0) + np.roll(col, 1, 1) + np.roll(col, -1, 1)) / 5
+    img[..., :3] = col
+    im = bpy.data.images.new(f"T_{name}_pelt", size, size, alpha=False)
+    im.pixels[:] = img.ravel()
+    p = os.path.join(OUT, "textures", f"T_{name}_pelt.png")
+    im.filepath_raw = p; im.file_format = "PNG"; im.save()
+    m = bpy.data.materials.new("M_FurBase")
+    m.use_nodes = True
+    N, L_ = m.node_tree.nodes, m.node_tree.links
+    b = N["Principled BSDF"]
+    tc = N.new("ShaderNodeTexCoord")
+    mp = N.new("ShaderNodeMapping"); mp.inputs["Scale"].default_value = (3, 3, 1)
+    L_.new(tc.outputs["UV"], mp.inputs["Vector"])
+    t = N.new("ShaderNodeTexImage"); t.image = bpy.data.images.load(p)
+    L_.new(mp.outputs["Vector"], t.inputs["Vector"])
+    L_.new(t.outputs["Color"], b.inputs["Base Color"])
+    b.inputs["Roughness"].default_value = 0.92
+    b.inputs["Specular IOR Level"].default_value = 0.2
+    return m
 
 
 # ============================================================== garments
@@ -771,7 +932,7 @@ def bone_weights_rigid(obj, ref, bones):
 def garments_sapiens(body, sex, lm, spec):
     t = spec["leather"]
     hide = leather("M_Hide", t); dark = leather("M_HideDark", tuple(x * 0.6 for x in t)); strap = leather("M_Strap", tuple(x * 0.45 for x in t), 4.0)
-    furbase = gh.mat_flat("M_FurBase", spec["fur_palette"][0], 0.95)
+    furbase = pelt_material(f"Human_{spec.get('_variant', 'X')}", spec["fur_palette"][0])
     hip, knee, ankle, sh, neck, chest, waist = (lm[k].z for k in ("hip", "knee", "ankle", "shoulder", "neck", "chest", "waist"))
     BODY = gh.TORSO | gh.UPPERARM | gh.LEGS_UP
     out = {}
@@ -1049,7 +1210,7 @@ SAPIENS = {
     },
     "morphs": {"chin-prominent-incr": 0.3, "head-square": 0.25},
     "face_units": "caucasian",
-    "skin": {"M": (0.56, 0.39, 0.28), "F": (0.60, 0.43, 0.32)},
+    "skin": {"M": (0.66, 0.48, 0.36), "F": (0.70, 0.52, 0.40)},
     "hair": {"M": (0.17, 0.11, 0.07), "F": (0.20, 0.13, 0.08)},
     "hair_palette": [(0.20, 0.13, 0.08), (0.30, 0.20, 0.12), (0.12, 0.08, 0.05), (0.40, 0.27, 0.16)],
     "fur_palette": [(0.30, 0.21, 0.13), (0.42, 0.31, 0.20), (0.20, 0.14, 0.09), (0.52, 0.40, 0.27)],
@@ -1075,22 +1236,22 @@ def paint_neanderthal(xx, yy, zz, x):
 # projecting nose and midface, weak chin. Lighter skin, reddish-brown hair, heavier furs for the cold.
 NEANDERTHAL = {
     "macro": {
-        "M": {"gender": 1.0, "age": 0.55, "muscle": 0.95, "weight": 0.62, "height": 0.30, "proportions": 0.35,
+        "M": {"gender": 1.0, "age": 0.55, "muscle": 0.9, "weight": 0.58, "height": 0.44, "proportions": 0.45,
               "race": {"african": 0.05, "asian": 0.10, "caucasian": 0.85}},
-        "F": {"gender": 0.0, "age": 0.48, "muscle": 0.80, "weight": 0.58, "height": 0.25, "proportions": 0.35,
+        "F": {"gender": 0.0, "age": 0.48, "muscle": 0.75, "weight": 0.55, "height": 0.40, "proportions": 0.45,
               "race": {"african": 0.05, "asian": 0.10, "caucasian": 0.85}},
     },
-    "morphs": {"eyebrows-trans-forward": 1.0, "eyebrows-trans-down": 0.35, "forehead-trans-backward": 0.8,
+    "morphs": {"eyebrows-trans-forward": 0.85, "eyebrows-trans-down": 0.12, "forehead-trans-backward": 0.8,
                "forehead-scale-vert-decr": 0.5, "forehead-nubian-decr": 0.4,
                "head-scale-depth-incr": 0.55, "head-back-scale-depth-incr": 0.6, "head-scale-horiz-incr": 0.2,
-               "nose-scale-horiz-incr": 0.8, "nose-volume-incr": 0.75, "nose-flaring-incr": 0.6, "nose-trans-forward": 0.5,
-               "nose-width3-incr": 0.6, "nose-scale-vert-incr": 0.3,
+               "nose-scale-horiz-incr": 0.45, "nose-volume-incr": 0.35, "nose-flaring-incr": 0.35, "nose-trans-forward": 0.35,
+               "nose-width3-incr": 0.3, "nose-scale-vert-incr": 0.2,
                "chin-prominent-decr": 0.6, "chin-prognathism-incr": 0.25, "chin-width-incr": 0.35, "chin-bones-incr": 0.4,
                "mouth-trans-forward": 0.4, "mouth-scale-horiz-incr": 0.2, "l-cheek-bones-decr": 0.3, "r-cheek-bones-decr": 0.3,
                "neck-scale-horiz-incr": 0.6, "neck-scale-depth-incr": 0.4, "torso-scale-depth-incr": 0.55,
                "torso-scale-horiz-incr": 0.25, "measure-shoulder-dist-incr": 0.3},
     "face_units": "caucasian",
-    "skin": {"M": (0.64, 0.46, 0.35), "F": (0.68, 0.50, 0.39)},
+    "skin": {"M": (0.72, 0.54, 0.42), "F": (0.76, 0.58, 0.46)},
     "skin_red": (0.70, 0.34, 0.26),
     "hair": {"M": (0.24, 0.13, 0.07), "F": (0.27, 0.15, 0.08)},
     "fur_palette": [(0.36, 0.25, 0.15), (0.50, 0.38, 0.25), (0.24, 0.17, 0.10), (0.62, 0.50, 0.36)],
@@ -1100,7 +1261,7 @@ NEANDERTHAL = {
     "hair_len": {"M": 0.38, "F": 0.44}, "beard": {"M": 0.10, "F": 0.0},
     "garments": garments_sapiens, "necklace": True,
     "face_depth": 0.14, "front_sweep": 0.45,
-    "mantle_drop": 0.17, "mantle_back": 0.16, "female_mantle": "both", "boot_h": 0.32, "fur_len": 0.12,
+    "mantle_drop": 0.14, "mantle_back": 0.10, "female_mantle": "both", "boot_h": 0.30, "fur_len": 0.10,
     "scars": [((0.05, -0.11, 1.52), (0.075, -0.10, 1.49), 0.006),        # brow
               ((-0.26, -0.04, 1.15), (-0.29, -0.07, 1.06), 0.009),        # right upper arm
               ((0.08, -0.14, 1.20), (0.14, -0.12, 1.13), 0.008)],         # ribs
@@ -1110,7 +1271,8 @@ SPECIES = {"Sapiens": SAPIENS, "Neanderthal": NEANDERTHAL}
 
 def build(variant):
     spec_name, sex = variant[:-1], variant[-1]
-    spec = SPECIES[spec_name]
+    spec = dict(SPECIES[spec_name])
+    spec["_variant"] = variant
     bpy.ops.wm.read_factory_settings(use_empty=True)
     for o in list(bpy.context.scene.objects):
         bpy.data.objects.remove(o)
@@ -1130,60 +1292,77 @@ def build(variant):
     pieces += list(gar.values())
     acc_objs = accessories(ref, sex, lm, hf, spec) if spec.get("accessories", True) else []
     pieces += acc_objs
-    collide = bvh_of([ref] + pieces)
-    # head hair: scalp from a hairline (low at the back, high on the forehead), drapes over shoulders
     hl = spec["hair_len"][sex]
-    crown = Vector((0, (hf["y"][0] + hf["y"][1]) / 2 + 0.01, hf["z"][1]))
-
-    def scalp(c, n):
-        xx, yy, zz = hcoords(c, hf)
-        if c.z < hf["z"][0] or not in_scalp(xx, yy, zz):
-            return None
-        out = (c - crown); out.z = 0
-        front = yy < 0.4
-        if front:   # swept back and to the sides, clear of the face
-            flow = Vector((math.copysign(spec.get("front_sweep", 0.8), c.x), 1.0, 0.2))
-        else:
-            flow = (out.normalized() if out.length > 1e-3 else Vector((0, 1, 0))) * 0.6 + Vector((0, 0.5, -0.6))
-        return {"face_box": face_box, "length": hl * (0.75 if front else 1.0), "width": 0.013, "lift": 0.0, "droop": 0.9 if not front else 0.7,
-                "flow": tuple(flow), "segs": 7, "layer": 0.003 + 0.006 * (1 - zz), "follow": 0.9,
-                "hug": 0.15, "hug_min_z": hf["z"][0] + 0.45 * (hf["z"][1] - hf["z"][0])}
     hair_pal = [tuple(x * k for x in spec["hair"][sex]) for k in (1.0, 1.35, 0.75, 1.6)]
     face_y = hf["y"][0]
-    hairline_z = hf["z"][0] + 0.8 * (hf["z"][1] - hf["z"][0])
-
     face_d = spec.get("face_depth", 0.09)   # a sloping (Neanderthal) forehead lies further back than the brow ridge
-
-    def face_box(q):   # the face: forehead below the hairline down to the chin, front half of the head
-        return q.y < face_y + face_d and q.z < hairline_z and abs(q.x) < 0.075
 
     def avoid(q):   # keep strands off the face: anything in front of it slides out to the side
         zz = (q.z - hf["z"][0]) / (hf["z"][1] - hf["z"][0])
         if q.y < face_y + face_d - 0.03 and -0.1 < zz < 0.8 and abs(q.x) < 0.085:
             q = Vector((math.copysign(0.085, q.x if abs(q.x) > 1e-4 else 1.0), q.y, q.z))
         return q
-    pieces.append(strand_cards(f"Human_{variant}Hair", ref, scalp, {"hair": True, "avoid": avoid}, hair_pal, collide, ref, 38000, seed=3))
+    # ---- hair: a cap over the scalp + a curtain of wide locks falling over the back and shoulders
+    hpal = hair_pal
+    ymid = (hf["y"][0] + hf["y"][1]) / 2
+
+    def scalp_sel(c):
+        xx, yy, zz = hcoords(c, hf)
+        m = zz - (0.78 - 0.5 * yy)
+        if c.z < hf["z"][0] or m < -0.03 or (yy < 0.2 and zz < 0.77):
+            return None
+        k = smooth01(m / 0.14)
+        return (0.003 + (0.010 + 0.007 * yy) * k, 0.02 + min(m, 0.45) / 0.45 * 0.95)
+    cap = hair_cap(f"Human_{variant}HairCap", ref, hf, scalp_sel, hpal)
+    pieces.append(cap)
+    collide = bvh_of([ref, cap] + [p for p in pieces if p is not cap])
+
+    def locks(c, n):
+        xx, yy, zz = hcoords(c, hf)
+        if yy < 0.5 or zz > 0.78 or zz < 0.3 or (yy < 0.7 and xx > 0.8):
+            return None
+        back = yy > 0.7
+        out = Vector((c.x, c.y - ymid, 0))
+        out = out.normalized() if out.length > 1e-4 else Vector((0, 1, 0))
+        return {"length": hl * (1.0 if back else 0.55), "width": 0.06, "lift": 0.0, "droop": 1.0,
+                "flow": tuple(out * 0.25 + Vector((0, 0, -1))), "segs": 6, "layer": 0.005 + 0.01 * (1 - zz),
+                "follow": 0.9}
+    if hl > 0.12:
+        pieces.append(strand_cards(f"Human_{variant}Hair", cap, locks, {"clump": True, "avoid": avoid}, hpal, collide,
+                                   ref, spec.get("lock_density", 5200), seed=3))
     if spec["beard"][sex] > 0:
         bl = spec["beard"][sex]
 
-        def beard(c, n):
+        def beard_sel(c):
             xx, yy, zz = hcoords(c, hf)
             if not in_beard(xx, yy, zz):
                 return None
-            return {"length": bl * (0.6 if zz > 0.3 else 1.0), "width": 0.010, "lift": 0.3, "droop": 0.8,
-                    "flow": (0, -0.3, -1), "segs": 3, "layer": 0.004, "follow": 0.2}
-        pieces.append(strand_cards(f"Human_{variant}Beard", ref, beard, {"hair": True}, hair_pal, collide, ref, 32000, seed=5))
-    # fur on the fur garments (mantle, boots)
+            low = 1 - min(zz / 0.47, 1.0)
+            return (0.003 + bl * 0.16 * low, 0.05 + 0.9 * low)
+        bcap = hair_cap(f"Human_{variant}BeardCap", ref, hf, beard_sel, hpal, tile=4.0)
+        pieces.append(bcap)
+
+        def beard(c, n):
+            xx, yy, zz = hcoords(c, hf)
+            if zz > 0.24 or yy > 0.5:
+                return None
+            return {"length": bl * 0.9, "width": 0.035, "lift": 0.0, "droop": 1.0, "flow": (0, -0.4, -1), "segs": 3,
+                    "layer": 0.003, "follow": 0.15}
+        pieces.append(strand_cards(f"Human_{variant}Beard", bcap, beard, {"clump": True}, hpal, collide, ref, 2200, seed=5))
+    # ---- fur garments: textured pelt + a sparse fringe of flat-lying tufts
     for key in ("mantle", "boots"):
         if key not in gar:
             continue
         g = gar[key]
-        ln = spec.get("fur_len", 0.09) if key == "mantle" else spec.get("fur_len", 0.09) * 0.5
+        ln = spec.get("fur_len", 0.09) * (0.7 if key == "mantle" else 0.4)
 
         def fur(c, n, ln=ln):
-            return {"length": ln, "width": 0.03, "lift": 0.3, "droop": 0.8, "flow": (0, 0.2, -1), "segs": 3, "layer": 0.004, "follow": 0.0}
-        pieces.append(strand_cards(f"Human_{variant}{key.title()}Fur", g, fur, {"strands": 170}, spec["fur_palette"],
-                                   collide, ref, 5000 if key == "mantle" else 1800, seed=7))
+            return {"length": ln, "width": 0.035, "lift": 0.15, "droop": 0.9, "flow": (0, 0.2, -1), "segs": 2,
+                    "layer": 0.003, "follow": 0.0}
+        # tufts in the pelt's own colour (four very different tones read as camouflage squares at a distance)
+        fur_pal = [tuple(x * k for x in spec["fur_palette"][0]) for k in (0.85, 0.95, 1.05, 0.9)]
+        pieces.append(strand_cards(f"Human_{variant}{key.title()}Fur", g, fur, {"hair": True}, fur_pal,
+                                   collide, ref, 1600 if key == "mantle" else 900, seed=7))
     extra = []
     if spec.get("necklace"):
         for o, bone in necklace(ref, lm):
@@ -1204,7 +1383,7 @@ def build(variant):
             m = p.modifiers.new("Armature", "ARMATURE"); m.object = rig
         if p.data.shape_keys and p.name != "Mouth":
             p.shape_key_clear()
-    hair_objs = [p for p in pieces if p.name.endswith("Hair")] if spec["hair_len"][sex] > 0.25 else []
+    hair_objs = []  # no spring chains for hair: the locks follow head and back through their skin weights
     add_dynamic_bones(rig, lm, hf, gar.get("kilt"), hair_objs, spec["hair_len"][sex])
     bpy.data.objects.remove(ref)
     gh.PARTS["head"] = {"head"} | {b.name for b in rig.data.bones if b.name.startswith("hair_")}

@@ -114,7 +114,27 @@ def skirt_follow(rig, rots):
         rots[f"skirt_{k}_2"] = [(X, rot * 0.25)]
 
 
+STANCE = 0.02   # m each ankle sits outside its hip joint when standing: legs nearly vertical, not the rig's A-stance
+
+
+def stance_fix(rig, rots, keep=STANCE):
+    """The MPFB rest pose stands in an A (ankles ~10 cm outside the hips, ~6° per leg). Swing each thigh in about
+    the armature's forward axis so the ankle comes under the hip, and turn the foot back so the sole stays flat.
+    Applied after the clip's own leg rotations (fixed-axis order), so it only changes the leg's sideways angle."""
+    if rots.pop("_free_legs", None):
+        return
+    B = rig.data.bones
+    for s, sign in (("l", 1.0), ("r", -1.0)):
+        if "thigh_" + s not in B:
+            continue
+        hip, ank = B["thigh_" + s].head_local, B["foot_" + s].head_local
+        ang = math.degrees(math.atan2((ank.x - hip.x) - sign * keep, hip.z - ank.z))
+        add(rots, "thigh_" + s, Y, ang)
+        add(rots, "foot_" + s, Y, -ang)
+
+
 def key(rig, frame, rots, root=(0, 0, 0)):
+    stance_fix(rig, rots)
     skirt_follow(rig, rots)
     for pb in rig.pose.bones:
         pb.rotation_mode = "QUATERNION"

@@ -29,7 +29,14 @@ def update(rig):
     bpy.context.view_layer.update()
 
 
+def stance_x(body, side, extra=0.0):
+    """Ankle x for a natural stance: just outside the hip joint (the rig's rest pose stands in an A)."""
+    sign = 1.0 if side == "l" else -1.0
+    return body.h["thigh_" + side].x + sign * (ha.STANCE + extra)
+
+
 def pose(rig, rotations, root):
+    ha.stance_fix(rig, rotations)   # legs under the hips (clips that place the feet with reach() re-aim them anyway)
     ha.skirt_follow(rig, rotations)
     for bone in rig.pose.bones:
         bone.rotation_mode = "QUATERNION"
@@ -88,7 +95,7 @@ def combat_pose(rig, body, draw, drive, extra=(), shift=(0.0, 0.0, 0.0)):
     for side, stride, lift in (("l", -0.20 - 0.28 * drive, 0.12 * math.sin(math.pi * drive)),
                                ("r", 0.18, 0)):
         foot = body.h["foot_" + side].copy()
-        foot.x += (0.045 if side == "l" else -0.055) * scale
+        foot.x = stance_x(body, side, 0.035 * scale)       # fighting stance: a little wider than standing
         foot.y += stride * scale
         foot.z += lift * scale
         reach(rig, tuple(bone + "_" + side for bone in ("thigh", "calf", "foot")), foot, Vector((0, -1, 0)))
@@ -122,7 +129,7 @@ def sidestep(rig, body, phase, direction):
             lift = 0.09 * math.sin(math.pi * swing)
         foot = body.h["foot_" + side].copy()
         # Use staggered foot depth to leave room for both feet during the close step.
-        foot.x += direction * x + (0.085 if side == "l" else -0.085)
+        foot.x = stance_x(body, side, 0.03) + direction * x
         foot.y += -0.11 if side == "l" else 0.08
         foot.z += lift
         reach(rig, tuple(bone + "_" + side for bone in ("thigh", "calf", "foot")), foot, Vector((0, -1, 0)))
@@ -142,7 +149,7 @@ def throw_pose(rig, body, cock, release):
     pose(rig, rotations, root)
     for side, stride in (("l", -0.24 - 0.06 * release), ("r", 0.20)):
         foot = body.h["foot_" + side].copy()
-        foot.x += (0.05 if side == "l" else -0.06) * scale
+        foot.x = stance_x(body, side, 0.04 * scale)
         foot.y += stride * scale
         reach(rig, tuple(bone + "_" + side for bone in ("thigh", "calf", "foot")), foot, Vector((0, -1, 0)))
     guard = Vector((-0.30, -0.14, 1.14))
@@ -209,6 +216,7 @@ def step_turn(rig, body, phase):
         u = (phase + offset) % 1.0
         lift = 0.07 * math.sin(math.pi * (u - 0.55) / 0.45) if u > 0.55 else 0.0
         foot = body.h["foot_" + side].copy()
+        foot.x = stance_x(body, side)
         foot.z += lift * scale
         reach(rig, tuple(bone + "_" + side for bone in ("thigh", "calf", "foot")), foot, Vector((0, -1, 0)))
 

@@ -18,6 +18,11 @@ var _n := 0
 var _fps_samples: Array[float] = []
 
 
+## Screenshot tuning from environment variables named SHOT_<KEY> (e.g. SHOT_DIST, SHOT_ANIM).
+static func _env(key: String) -> String:
+	return OS.get_environment("SHOT" + "_" + key.to_upper())
+
+
 static func attach_if_requested(parent: Node) -> void:
 	var args := {}
 	for a: String in OS.get_cmdline_user_args():
@@ -162,22 +167,25 @@ func _ready() -> void:
 		fwd = fwd.normalized()
 		var right := fwd.cross(Vector3.UP)
 		var ids := ["npc_clan_0", "npc_clan_2", "npc_clan_1", "npc_gatherers_0", "npc_gatherers_1", "npc_clan_3"]
+		if _env("ids") != "":  # e.g. SHOT_IDS=npc_clan_0,npc_gatherers_1 for close portraits
+			ids.assign(_env("ids").split(",", false))
 		for i in ids.size():
 			var n: HumanNPC = session.world.camps.npcs[ids[i]]
-			var dist := float(OS.get_environment("SHOT_DIST")) if OS.get_environment("SHOT_DIST") != "" else 3.4
-			var pos: Vector3 = p.global_position + fwd * (dist + absf(i - 2.5) * 0.25) + right * (i - 2.5) * 0.9
+			var dist := float(_env("dist")) if _env("dist") != "" else 3.4
+			var mid := (ids.size() - 1) * 0.5
+			var pos: Vector3 = p.global_position + fwd * (dist + absf(i - mid) * 0.25) + right * (i - mid) * 0.9
 			n.global_position = session.world.ground_point(pos.x, pos.z)
-			n.rotation.y = atan2(-fwd.x, -fwd.z) + deg_to_rad(float(OS.get_environment("SHOT_TURN")) if OS.get_environment("SHOT_TURN") != "" else 0.0)
+			n.rotation.y = atan2(-fwd.x, -fwd.z) + deg_to_rad(float(_env("turn")) if _env("turn") != "" else 0.0)
 			n.set_physics_process(false)
-			var clip := OS.get_environment("SHOT_ANIM")  # e.g. life/sleep, life/work, combat/throw
+			var clip := _env("anim")  # e.g. life/sleep, life/work, combat/throw
 			n._play(clip if clip != "" and n._anim.has_animation(clip) else "idle")
-			if OS.get_environment("SHOT_ANIM_T") != "" and n._anim.has_animation(clip):
+			if _env("anim_t") != "" and n._anim.has_animation(clip):
 				n._anim.speed_scale = 0.0
-				n._anim.seek(float(OS.get_environment("SHOT_ANIM_T")), true)
-		p.head.rotation.x = -0.12
+				n._anim.seek(float(_env("anim_t")), true)
+		p.head.rotation.x = float(_env("pitch")) if _env("pitch") != "" else -0.12
 	if scenario == "tribelife":  # a camp seen from outside: at work by day, asleep around the fire at night
 		session.world.wildlife.enabled = false
-		var g: TribeGroup = session.world.camps.groups["camp_" + str(OS.get_environment("SHOT_CAMP") if OS.get_environment("SHOT_CAMP") != "" else "hunters")]
+		var g: TribeGroup = session.world.camps.groups["camp_" + str(_env("camp") if _env("camp") != "" else "hunters")]
 		var at := g.home + Vector3(1.5, 0.0, -9.5)  # the side without shelters
 		p.global_position = session.world.ground_point(at.x, at.z) + Vector3.UP * 0.3
 		p.look_at(Vector3(g.home.x, p.global_position.y, g.home.z))
