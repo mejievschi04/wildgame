@@ -333,5 +333,8 @@ func test_legs_stand_under_the_hips() -> void:
 				var hip := sk.get_bone_global_pose(sk.find_bone("thigh_" + side)).origin
 				var ankle := sk.get_bone_global_pose(sk.find_bone("foot_" + side)).origin
 				widest = maxf(widest, absf(ankle.x) - absf(hip.x))
-			check(widest < 0.075, "%s %s: ankle %.3f m outside the hip (legs not splayed)" % [id, clip, widest])
+			# motion-captured bodies stand with the feet about shoulder-width apart (as the library's own
+			# mannequin does, ~0.12 m outside the hip joints); the hand-keyed rigs stand narrower
+			var limit := 0.14 if n._anim.has_animation(&"combat_thrust") else 0.075
+			check(widest < limit, "%s %s: ankle %.3f m outside the hip (legs not splayed)" % [id, clip, widest])
 	await _teardown(s)

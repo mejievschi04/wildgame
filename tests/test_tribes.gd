@@ -161,7 +161,8 @@ func test_npc_spear_hits_player() -> void:
 	n._face(p.global_position)
 	n._set_state(HumanNPC.State.COMBAT)
 	var hp := p.stats.health
-	for i in 30:
+	var before_hit := int((n._hit_t - 0.06) * 60.0)   # each body has its own contact frame
+	for i in before_hit:
 		n._update_attack(1.0 / 60.0)
 	near(p.stats.health, hp, 0.01, "the draw-back telegraphs the attack without doing damage")
 	for i in 10:
@@ -172,7 +173,7 @@ func test_npc_spear_hits_player() -> void:
 	near(p.stats.health, hp - HumanNPC.DAMAGE, 0.01, "recovery cannot hit twice")
 
 	n._attack_cd = 0.0
-	for i in 30:
+	for i in int((n._commit_t + n._hit_t) * 0.5 * 60.0):   # committed, the tip not yet there
 		n._update_attack(1.0 / 60.0)
 	var dodge := n.global_transform.basis.x
 	p.global_position += dodge

@@ -34,6 +34,10 @@ const ATTACK_COOLDOWN := 1.8
 const THROW_MIN := 6.0
 const THROW_MAX := 15.0
 const THROW_RELEASE := 0.68  # THROW_FRAME 17 / 25 fps
+## Bodies with their own motion-captured clips (tools/blender/rig_sapiens_ual.py): [thrust hit, commit, throw release].
+const CLIP_TIMES := {"SapiensM": [0.43, 0.28, 0.28]}
+## Clips of the "combat" / "life" libraries that loop, when a body carries them as combat_* / life_*.
+const LOOPED := ["guard", "strafe_l", "strafe_r", "sleep", "work", "step"]
 const THROW_SPEED := 20.0
 const SPEAR_TIP := 1.31  # model origin is the grip, with the tip along +Y
 const DAMAGE := 18.0
@@ -113,6 +117,9 @@ var _think_t := 0.0
 var _scan_t := 0.0
 var _attack_cd := 0.0
 var _attack_time := -1.0
+var _hit_t := ATTACK_WINDUP       # the thrust's contact, the point of no return and the throw's release, per body
+var _commit_t := ATTACK_COMMIT
+var _release_t := THROW_RELEASE
 var _attack_kind := &"thrust"
 var _attack_target := Vector3.ZERO
 var _avoid_until := 0.0
@@ -200,14 +207,23 @@ func _ready() -> void:
 			if _anim.has_animation(n):
 				_anim.get_animation(n).loop_mode = Animation.LOOP_LINEAR
 		_center_mocap()
-		for kind in ["combat", "life"]:
-			var lib_path := "res://assets/models/humans/AN_%s_%s.tres" % [_body_model, kind]
-			if ResourceLoader.exists(lib_path):
-				_anim.add_animation_library(StringName(kind), load(lib_path))
+		if _anim.has_animation(&"combat_thrust"):
+			_libraries_from_clips()
+		else:
+			for kind in ["combat", "life"]:
+				var lib_path := "res://assets/models/humans/AN_%s_%s.tres" % [_body_model, kind]
+				if ResourceLoader.exists(lib_path):
+					_anim.add_animation_library(StringName(kind), load(lib_path))
+	if CLIP_TIMES.has(_body_model):
+		var times: Array = CLIP_TIMES[_body_model]
+		_hit_t = times[0]
+		_commit_t = times[1]
+		_release_t = times[2]
 	var skels := _model.find_children("*", "Skeleton3D", true, false)
 	_skel = skels[0] if not skels.is_empty() else null
 	if _skel:
 		_add_look_at()
+		_add_forearm_twist()
 		_severed_mod = SeveredBones.new()
 		_skel.add_child(_severed_mod)
 		_add_spring_bones()
@@ -215,6 +231,39 @@ func _ready() -> void:
 		_attach_spear()
 	process_priority = 1  # place the spear after AnimationPlayer has posed the hand
 	_set_state(State.SIT if rng.randf() < 0.5 else State.IDLE)
+
+
+## A body that carries its own clips (combat_thrust, life_sleep, …) gets its "combat" and "life" libraries from them.
+func _libraries_from_clips() -> void:
+	var libs := {}
+	for clip_name: StringName in _anim.get_animation_list():
+		var s := String(clip_name)
+		for kind: String in ["combat", "life"]:
+			if not s.begins_with(kind + "_"):
+				continue
+			var short := s.trim_prefix(kind + "_")
+			var clip := _anim.get_animation(clip_name)
+			if short in LOOPED:
+				clip.loop_mode = Animation.LOOP_LINEAR
+			if not libs.has(kind):
+				libs[kind] = AnimationLibrary.new()
+			(libs[kind] as AnimationLibrary).add_animation(StringName(short), clip)
+	for kind: String in libs:
+		_anim.add_animation_library(StringName(kind), libs[kind])
+
+
+## The forearm twist joint takes part of the hand's twist, so the wrist doesn't pinch when the hand turns.
+func _add_forearm_twist() -> void:
+	if _skel.find_bone("lowerarm_twist_01_l") < 0:
+		return
+	var tw := BoneTwistDisperser3D.new()
+	tw.name = "ForearmTwist"
+	_skel.add_child(tw)
+	tw.setting_count = 2
+	for i in 2:
+		var side := "_l" if i == 0 else "_r"
+		tw.set_root_bone_name(i, "lowerarm" + side)
+		tw.set_end_bone_name(i, "hand" + side)
 
 
 func _style_outfit(style: Array) -> void:
@@ -365,7 +414,9 @@ func _add_spring_bones() -> void:
 		sim.set_enable_all_child_collisions(i, true)
 		if root < 0:
 			push_warning("spring chain without bones: %s" % c[0])
-	for b: Array in [["thigh_l", 0.085, 0.45], ["thigh_r", 0.085, 0.45], ["spine_03", 0.13, 0.32]]:
+	# the sculpted body with its own clips has heavy thighs (~0.13 m): the skirt is kept off them
+	var thighs := 0.125 if _anim and _anim.has_animation(&"combat_thrust") else 0.085
+	for b: Array in [["thigh_l", thighs, 0.45], ["thigh_r", thighs, 0.45], ["spine_03", 0.13, 0.32]]:
 		if _skel.find_bone(b[0]) < 0:
 			continue
 		var cap := SpringBoneCollisionCapsule3D.new()
@@ -652,7 +703,7 @@ func take_damage(amount: float, source: Node3D = null, hit_pos: Vector3 = Vector
 		Gore.decal(world, Vector3(at.x, global_position.y, at.z), 0.4)
 	if heavy:
 		stagger(0.6)
-	elif _attack_time >= 0.0 and _attack_time < ATTACK_COMMIT:
+	elif _attack_time >= 0.0 and _attack_time < _commit_t:
 		_cancel_attack()  # a blow during the wind-up spoils the attack
 	_hit_reaction(source, at)
 	var by_player := source != null and source.is_in_group("player")
@@ -1440,14 +1491,14 @@ func _update_attack(delta: float) -> void:
 		_start_attack(target)
 		return
 	var clip := _anim.get_animation(&"combat/" + String(_attack_kind))
-	if _attack_time < ATTACK_COMMIT or (_attack_kind == &"throw" and _attack_time < THROW_RELEASE):
+	if _attack_time < _commit_t or (_attack_kind == &"throw" and _attack_time < _release_t):
 		_attack_target = _aim_point(target)
 	var before := _attack_time
 	_attack_time = minf(_attack_time + delta, clip.length)
 	match _attack_kind:
 		&"thrust":
-			if before < ATTACK_WINDUP and _attack_time >= ATTACK_WINDUP:
-				_anim.seek(ATTACK_WINDUP, true)
+			if before < _hit_t and _attack_time >= _hit_t:
+				_anim.seek(_hit_t, true)
 				_skel.force_update_all_bone_transforms()
 				_pose_spear(delta, true)
 				_attack_cd = ATTACK_COOLDOWN
@@ -1456,7 +1507,7 @@ func _update_attack(delta: float) -> void:
 				if _attack_time < 0.0:  # the player can parry and cancel the thrust on contact
 					return
 		&"throw":
-			if before < THROW_RELEASE and _attack_time >= THROW_RELEASE:
+			if before < _release_t and _attack_time >= _release_t:
 				_release_throw(target)
 		&"feint":
 			if before < 0.5 and _attack_time >= 0.5:
@@ -1700,7 +1751,7 @@ func _move(delta: float) -> void:
 	var face := dir
 	var pl := _player()
 	var target := foe if foe and is_instance_valid(foe) else pl
-	if state == State.COMBAT and target and (_attack_time < ATTACK_COMMIT or _attack_kind == &"throw"):
+	if state == State.COMBAT and target and (_attack_time < _commit_t or _attack_kind == &"throw"):
 		face = (target.global_position - global_position)  # keep facing the opponent while circling
 		face.y = 0.0
 	elif state == State.WARN and pl:

@@ -6,16 +6,17 @@
 # through the fist (thumb side up), the grip centre at the origin, the forearm going back along -Y.
 # Output: assets/models/humans/SM_FP_Hand_R.gltf (shares the humans/textures folder).
 import bpy, bmesh, math, os, sys
-from mathutils import Vector, Matrix
+from mathutils import Vector, Matrix, Quaternion
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import human_anim as ha
+import fp_hand_skin
 import bake_human_combat as bc
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 HUM = os.path.join(ROOT, "assets", "models", "humans")
-KEEP = {"lowerarm_r", "hand_r"} | {f"{f}_{i:02d}_r" for f in ("thumb", "index", "middle", "ring", "pinky") for i in (1, 2, 3)}
-FOREARM = 0.24   # metres of forearm kept behind the wrist
+KEEP = {"upperarm_r", "lowerarm_r", "hand_r"} | {f"{f}_{i:02d}_r" for f in ("thumb", "index", "middle", "ring", "pinky") for i in (1, 2, 3)}
+FOREARM = 0.44   # metres of arm kept behind the wrist: past the elbow, so the cut end stays out of view
 
 bpy.ops.wm.read_factory_settings(use_empty=True)
 bpy.ops.import_scene.gltf(filepath=os.path.join(HUM, "SK_Human_SapiensM.gltf"), bone_heuristic="BLENDER")
@@ -60,17 +61,48 @@ def wrap_thumb():
     aim_tail(t3, rest_spot)
 
 
+HANDLE_R = 0.020    # radius of a tool handle
+SKIN = 0.011        # finger joint centre to the skin of the palm side
+
+
+def wrap_fingers():
+    """A power grip: the handle lies across the palm, diagonally from the base of the index finger to the heel
+    of the hand under the little finger, and each finger wraps round it. Each finger's joints are put on a
+    circle around the handle axis (chords of the segment lengths) and the phalanges are aimed at them.
+    Returns the handle axis (armature space): a point on it under the middle finger and its direction, and the
+    palm normal."""
+    hand = pb["hand_r"].head
+    fdir = (pb["middle_01_r"].head - hand).normalized()
+    across = (pb["index_01_r"].head - pb["pinky_01_r"].head).normalized()
+    # the relaxed fist curls the fingertips towards the palm: that side is where the handle goes
+    curl = pb["middle_03_r"].tail - pb["middle_01_r"].head
+    palm_n = across.cross(fdir).normalized()
+    if palm_n.dot(curl) < 0:
+        palm_n = -palm_n
+    axis_dir = (across + fdir * 0.28).normalized()           # index end further out: the grip is diagonal
+    centre = pb["middle_01_r"].head + palm_n * (SKIN + HANDLE_R) - fdir * 0.012
+    for f in ("index", "middle", "ring", "pinky"):
+        bones = [pb[f"{f}_{i:02d}_r"] for i in (1, 2, 3)]
+        k = bones[0].head.copy()
+        c = centre + axis_dir * (k - centre).dot(axis_dir)    # nearest point of the handle axis
+        v0 = k - c
+        radius = max(v0.length, HANDLE_R + SKIN)
+        sense = 1.0 if axis_dir.cross(v0).dot(fdir) > 0 else -1.0
+        angle = 0.0
+        for b in bones:
+            seg = (b.tail - b.head).length
+            angle += 2 * math.asin(min(1.0, seg / (2 * radius))) * 1.04   # a little tighter: skin presses in
+            aim_tail(b, c + Quaternion(axis_dir, sense * angle) @ v0)
+    return centre, axis_dir, palm_n
+
+
+handle_centre, handle_dir, palm_normal = wrap_fingers()
 wrap_thumb()
 wrist = M @ pb["hand_r"].head
 elbow = M @ pb["lowerarm_r"].head
-knuckle_i = M @ pb["index_01_r"].head
-knuckle_p = M @ pb["pinky_01_r"].head
-mid_tip = M @ pb["middle_03_r"].tail
-mid_base = M @ pb["middle_01_r"].head
-# the fist's hole: halfway between the palm and the middle finger's second segment
-palm = wrist.lerp(mid_base, 0.78)
-grip = (palm + (M @ pb["middle_02_r"].head)) * 0.5
-axis = (knuckle_i - knuckle_p).normalized()         # handle: from the little finger toward the thumb side
+# the handle passes through the fist along the axis the fingers were wrapped around
+grip = M @ handle_centre
+axis = (M.to_3x3() @ handle_dir).normalized()       # handle: from the little finger toward the thumb side
 arm = (elbow - wrist)
 arm = (arm - axis * arm.dot(axis)).normalized()     # forearm, perpendicular to the handle
 side = axis.cross(arm).normalized()
@@ -117,8 +149,10 @@ def arm_part(co, v, groups):
 
 
 def near_forearm(co, v, groups):
+    # wraps stop at the wrist: their strap ends reach over the back of the hand and stretch into thin threads
+    # once the fingers close
     d = (co - wrist).dot(arm)
-    return -0.04 < d < FOREARM and ((co - wrist) - arm * d).length < 0.09
+    return 0.012 < d < FOREARM and ((co - wrist) - arm * d).length < 0.09
 
 
 human = bpy.data.objects["Human"]
@@ -171,7 +205,21 @@ cuff = bpy.data.objects.new("Cuff_FP", me)
 bpy.context.scene.collection.objects.link(cuff)
 if fur_mat:
     cuff.data.materials.append(fur_mat)
-pieces.append(cuff)
+if os.environ.get("CUFF") == "1":   # the open pelt tube reads as a black pipe in the view: bare forearm by default
+    pieces.append(cuff)
+else:
+    bpy.data.objects.remove(cuff)
+
+# skin and musculature: landmarks in item space, then subdivide, shape and bake (fp_hand_skin.py)
+marks = {"wrist": T @ wrist, "elbow": T @ elbow}
+for f in ("thumb", "index", "middle", "ring", "pinky"):
+    for i in (1, 2, 3):
+        marks[f"{f}{i}"] = T @ (M @ pb[f"{f}_{i:02d}_r"].head)
+    marks[f"{f}tip"] = T @ (M @ pb[f"{f}_03_r"].tail)
+dorsal = -(T.to_3x3() @ (M.to_3x3() @ palm_normal)).normalized()
+thumb_side = (T.to_3x3() @ axis).normalized()
+if os.environ.get("PLAIN_SKIN") != "1":
+    fp_hand_skin.detail(pieces[0], fp_hand_skin.Frame(marks, dorsal, thumb_side), os.path.join(HUM, "textures"))
 
 for o in pieces:
     for p in o.data.polygons:

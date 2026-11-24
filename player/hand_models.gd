@@ -5,8 +5,8 @@ extends RefCounted
 
 ## Hold pose per item: [position, rotation_degrees, scale] relative to the hand anchor.
 const HOLD := {
-	&"stone_axe": [Vector3(-0.035, 0.015, 0.05), Vector3(-17, -35, 8), 1.0],
-	&"club": [Vector3(-0.03, -0.02, 0.05), Vector3(-17, -20, 8), 1.0],
+	&"stone_axe": [Vector3(-0.05, 0.11, 0.03), Vector3(-20, -35, 16), 1.0],
+	&"club": [Vector3(-0.045, 0.08, 0.03), Vector3(-20, -20, 16), 1.0],
 	&"flint_knife": [Vector3(0, -0.02, 0), Vector3(-55, 0, -5), 1.0],
 	&"bone_knife": [Vector3(0, -0.02, 0), Vector3(-55, 0, -5), 1.0],
 	&"sickle": [Vector3(0, -0.04, 0), Vector3(-35, -20, -8), 1.0],

@@ -39,7 +39,26 @@ game-ready versions live in `assets/`.
 | Tree Stump 02 (`tree_stump_02`) | model 1k | Rob Tuytel | https://polyhaven.com/a/tree_stump_02 |
 | Wicker Basket 01 (`wicker_basket_01`) | model 1k | Kuutti Siitonen | https://polyhaven.com/a/wicker_basket_01 |
 
+## Wildlife models
+
+- `SK_Bison_Textured.glb` adapts the Woolly Rhino torso, skeleton and animation clips credited below. The bison head, horns and mane are from the project's procedural `SK_Bison.gltf`.
+
+- [Smilodon-fractalus](https://sketchfab.com/3d-models/smilodon-fractalus-e2b1ffd0537244399111cd5127bcb11a) by [eyork4633](https://sketchfab.com/eyork4633), [CC BY 4.0 as listed in the supplied file](https://creativecommons.org/licenses/by/4.0/). Adapted as `SK_Smilodon.glb` with game scale, renamed joints, six selected clips and a new standing idle. The same model is also adapted as the cave lion `SK_Lion_Textured.glb` (`tools/prepare_lion.py`, `tools/blender/lion_coat.py`): about 15 % smaller, the sabre teeth shortened to ordinary canines, the neck ruff, nape crest, cheek tufts and chin flange removed, a repainted tawny coat without stripes, and the clips retimed to the lion's speeds.
+
+- [Woolly Rhino](https://sketchfab.com/3d-models/woolly-rhino-27bd263368d741fc9126f83bcee1f43f) by [planeta-elefante](https://sketchfab.com/planeta-elefante), [CC BY 4.0 as listed in the supplied file](https://creativecommons.org/licenses/by/4.0/). Adapted as `SK_Rhino_Textured.glb` with game scale and orientation, an opaque material, renamed joints and seven animation clips with adjusted timing and travel.
+
+- [Realistic Animated Elk 3D Model](https://sketchfab.com/3d-models/realistic-animated-elk-3d-model-787834f9caa2474d9f1814b807c072d7) by [WildMesh 3D](https://sketchfab.com/WildMesh_3D), [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Adapted as `SK_Deer_Textured.glb` with game scale and orientation, PBR materials, renamed joints, adjusted locomotion and two new clips for alert and attack. The deer also forms the base of `SK_Megaloceros_Textured.glb`, with enlarged proportions, original palmated antler geometry and recolored albedo maps.
+
+- [3D High-poly Baby Woolly Mammoth](https://sketchfab.com/3d-models/3d-high-poly-baby-woolly-mammoth-fce1c86ccedf47a5b9627098be6719d5) by [SDPM Esare](https://sketchfab.com/sdpm), [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Adapted as `SK_Mammoth_Textured.glb` with `tools/blender/rig_mammoth.py`: game scale and orientation, straightened spine, head, trunk and tail, mirrored into a symmetric standing pose, reduced to about 29k triangles, given a matte hide and a woolly coat of hair cards, rigged and given seven procedural animation clips.
+
+- [Realistic Animated Bear 3D Model](https://sketchfab.com/3d-models/realistic-animated-bear-3d-model-bffc3c87d2d148ff8533e1cc8a11c9f1) by [WildMesh 3D](https://sketchfab.com/WildMesh_3D), [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Adapted as `SK_Bear_Textured.glb` with game scale and orientation, PBR materials, renamed joints and a selection of seven animation clips with adjusted timing and root movement.
+
+- Wolf: generated for this project with Tripo AI (generation 54f37569-7ad3-4349-983c-86519c5cbfed). Adapted as `SK_Wolf_Textured.glb` with `tools/blender/rig_wolf.py`: turned onto its axis, set in a square stance, rigged and given the procedural wolf clips.
+
+- Homo sapiens man: generated for this project with Tripo AI (generation 8ee2127b-7dae-4b54-b063-bb30df6786f5). Adapted as `SK_Human_SapiensM.gltf` with `tools/blender/rig_sapiens.py`: scaled to 1.82 m and bound to the existing Sapiens skeleton (its clips and skin weights carried over from the earlier model), texture converted to PNG. Re-rigged with `tools/blender/rig_sapiens_ual.py` onto the Universal Animation Library skeleton (below), with a forearm twist joint.
+
 ## Motion capture
+- **Universal Animation Library** and **Universal Animation Library 2** (Standard) by [Quaternius](https://quaternius.com), [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/). Skeleton and motion-captured clips of the Homo sapiens man (`SK_Human_SapiensM.gltf`): idle, walk, jog, combat stance, sword stab (spear thrust), cross punch (feint), overhand throw, hit reactions, crouch, kneeling work, interact, death.
 - **CMU Graphics Lab Motion Capture Database** — http://mocap.cs.cmu.edu — "The data used in this project was obtained from mocap.cs.cmu.edu. The database was created with funding from NSF EIA-0196217." Free for research and commercial use with this credit. BVH conversion by Bruce Hahne (cgspeed). Files in `art_source/mocap/`: 08_01, 08_02, 16_15 (walk), 09_02, 09_03 (run), 02_07, 02_08 (swordplay → spear thrust), 14_01 (boxing). Retargeted with `tools/blender/mocap_retarget.py`.
 
 ## Interface
@@ -58,6 +77,9 @@ CC0 needs no credit; public-domain recordings are listed the same way. Runtime f
 | Bear growls and the lowered roar | U.S. Fish & Wildlife Service, prepared by AntumDeluge | CC0 1.0 | https://opengameart.org/content/bear-growls |
 | Tree creak | Department64, cleaned by AntumDeluge | CC0 1.0 | https://opengameart.org/content/tree-creaking |
 | Campfire crackle | AntumDeluge | CC0 1.0 | https://opengameart.org/content/fire-crackling |
+| Campfire field loop | Defaultv | CC0 1.0 | https://freesound.org/people/Defaultv/sounds/536935/ |
+| Five axe impacts in wood | Selector | CC0 1.0 | https://freesound.org/people/Selector/sounds/410768/ |
+| Tree snap, falling rush and landing | ecfike | CC0 1.0 | https://freesound.org/people/ecfike/sounds/139952/ |
 | Weapon swishes | artisticdude | CC0 1.0 | https://opengameart.org/content/swishes-sound-pack |
 | Swallows | qubodup | CC0 1.0 | https://opengameart.org/content/liquid-bottle-drink-set |
 | Axe hits, glances, snow steps, medium wood chops | Kenney | CC0 1.0 | https://kenney.nl/assets/impact-sounds |
