@@ -13,7 +13,7 @@ from mathutils import Vector, Matrix
 
 argv = sys.argv[sys.argv.index("--") + 1:]
 src, dst, prev = argv[0], argv[1], argv[2]
-P = {"body_yaw": 0.0, "head_x": 0.5, "blend": 0.25, "head_yaw": 0.0, "head_roll": 0.0, "head_pitch": 0.0, "head_shift": 0.0, "center": 1.0}
+P = {"body_yaw": 0.0, "head_x": 0.5, "blend": 0.25, "head_yaw": 0.0, "head_roll": 0.0, "head_pitch": 0.0, "head_shift": 0.0, "center": 1.0, "unbend": 0.0}
 for a in argv[3:]:
     k, v = a.split("=")
     P[k] = float(v)
@@ -52,6 +52,27 @@ for p in pts:
            @ Matrix.Rotation(math.radians(P["head_roll"] * w), 3, "X"))
     out.append(piv + rot @ (p - piv) + Vector((0, P["head_shift"] * w, 0)))
 pts = out
+
+# 2b. unbend: the body's own centre line (seen from above) is pulled onto x... here y = 0. Measured on the
+# upper half of each cross-section (legs excluded), smoothed with a cubic, held flat past the shoulders / rump.
+if P["unbend"] > 0:
+    zmin = min(p.z for p in pts); zmax = max(p.z for p in pts)
+    zcut = zmin + 0.5 * (zmax - zmin)
+    import numpy as np
+    A = np.array([p[:] for p in pts])
+    xs, ys = [], []
+    for i in range(24):
+        a = lo + L * (0.12 + 0.68 * i / 23)
+        sel = A[(np.abs(A[:, 0] - a) < 0.02 * L) & (A[:, 2] > zcut)]
+        if len(sel) > 20:
+            xs.append(a); ys.append(0.5 * (sel[:, 1].min() + sel[:, 1].max()))
+    c = np.polyfit(xs, ys, 3)
+    x0c, x1c = min(xs), max(xs)
+    def off(x):
+        return float(np.polyval(c, min(max(x, x0c), x1c)))
+    ref = off((x0c + x1c) / 2)
+    pts = [Vector((p.x, p.y - P["unbend"] * (off(p.x) - ref), p.z)) for p in pts]
+    print("UNBEND centre line offsets (m):", [round(off(x) - ref, 3) for x in np.linspace(x0c, x1c, 7)])
 
 # 3. centre the side axis on the spine line (upper half of the torso), feet on z = min
 if P["center"] > 0:

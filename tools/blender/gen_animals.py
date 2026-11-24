@@ -271,7 +271,8 @@ def build(sp):
     bpy.context.view_layer.objects.active = rig
     bpy.ops.object.parent_set(type="ARMATURE_AUTO")
     rigid = []
-    eye_m = fl.simple_mat(f"M_{sp['name']}_Eye", sp.get("eye_color", (0.2, 0.12, 0.05)), 0.04, 0.9)
+    eye_m = fl.simple_mat(f"M_{sp['name']}_Eye", sp.get("eye_color", (0.2, 0.12, 0.05)),
+                          sp.get("eye_rough", 0.04), sp.get("eye_spec", 0.9))
     for c, r in sp.get("eyes", []):
         for s in (1, -1):
             e = fl.eye("Eye", (c[0] * s, c[1], c[2]), r, eye_m)

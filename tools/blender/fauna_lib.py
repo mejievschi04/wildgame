@@ -547,7 +547,58 @@ def nearest_bone(sp, P):
 
 # ============================================================== coat attributes & bake
 
-def isolate_chains(body, rig, chains):
+def smooth_weights(body, iters=6, factor=0.5):
+    """Laplacian smoothing of all skin weights over the mesh edges, then renormalised. Softens the abrupt
+    hand-over between bones that tears thin, noisy surfaces (fur ruffs on AI sculpts)."""
+    me = body.data
+    nv = len(me.vertices)
+    names = [g.name for g in body.vertex_groups]
+    W = np.zeros((nv, len(names)))
+    for v in me.vertices:
+        for g in v.groups:
+            W[v.index, g.group] = g.weight
+    E = np.array([e.vertices[:] for e in me.edges])
+    deg = np.bincount(E.ravel(), minlength=nv).astype(float)
+    for _ in range(iters):
+        acc = np.zeros_like(W)
+        np.add.at(acc, E[:, 0], W[E[:, 1]])
+        np.add.at(acc, E[:, 1], W[E[:, 0]])
+        avg = acc / np.maximum(deg, 1)[:, None]
+        W = (1 - factor) * W + factor * avg
+    W[W < 1e-3] = 0
+    W /= np.maximum(W.sum(1, keepdims=True), 1e-9)
+    for j, g in enumerate(body.vertex_groups):
+        g.remove(list(range(nv)))
+        nz = np.nonzero(W[:, j])[0]
+        for i in nz:
+            g.add([int(i)], float(W[i, j]), "REPLACE")
+
+
+def firm_weights(body, max_inf=2, power=3.0):
+    """Makes skinning firm instead of rubbery: keeps the `max_inf` strongest bones per vertex and sharpens them
+    (w^power, renormalised), so each patch of skin follows one bone and only joints blend."""
+    me = body.data
+    nv = len(me.vertices)
+    W = np.zeros((nv, len(body.vertex_groups)))
+    for v in me.vertices:
+        for g in v.groups:
+            W[v.index, g.group] = g.weight
+    order = np.argsort(-W, axis=1)
+    keep = np.zeros_like(W, dtype=bool)
+    np.put_along_axis(keep, order[:, :max_inf], True, axis=1)
+    W = np.where(keep, W, 0.0) ** power
+    W /= np.maximum(W.sum(1, keepdims=True), 1e-9)
+    W[W < 0.02] = 0
+    W /= np.maximum(W.sum(1, keepdims=True), 1e-9)
+    for j, g in enumerate(body.vertex_groups):
+        g.remove(list(range(nv)))
+        for i in np.nonzero(W[:, j])[0]:
+            g.add([int(i)], float(W[i, j]), "REPLACE")
+    infl = (W > 0).sum(1)
+    print("FIRM weights: 1 bone %.0f%%, 2 bones %.0f%% of vertices" % (100 * np.mean(infl == 1), 100 * np.mean(infl == 2)))
+
+
+def isolate_chains(body, rig, chains, lo=0.4, hi=0.65):
     """Auto weights bleed between parts that touch at rest (a bushy tail against the thighs). For each chain
     (a tuple of bone names) a vertex gets a share a = how much nearer it is to the chain than to any other bone
     (smooth, so there is no seam); its chain weights are scaled to a and the rest to 1 - a."""
@@ -569,7 +620,7 @@ def isolate_chains(body, rig, chains):
         nc = np.array(chain)[np.argmin([D[c] for c in chain], axis=0)]
         do = np.min([D[n] for n in D if n not in chain], axis=0)
         r = do / np.maximum(dc + do, 1e-9)
-        share = np.clip((r - 0.4) / 0.25, 0, 1)
+        share = np.clip((r - lo) / (hi - lo), 0, 1)
         share = share * share * (3 - 2 * share)
         for i, v in enumerate(body.data.vertices):
             ws = {groups[g.group]: g.weight for g in v.groups}
@@ -673,9 +724,22 @@ def bake_material(sp):
     L.new(vor.outputs["Distance"], height.inputs[2])
     hf = N.new("ShaderNodeMath"); hf.operation = "MULTIPLY"
     L.new(height.outputs[0], hf.inputs[0]); L.new(furA.outputs["Fac"], hf.inputs[1])
+    # Unfurred areas still need surface breakup: pores and shallow creases on trunks, noses and feet.
+    inv_fur = N.new("ShaderNodeMath"); inv_fur.operation = "SUBTRACT"
+    inv_fur.inputs[0].default_value = 1.0
+    L.new(furA.outputs["Fac"], inv_fur.inputs[1])
+    sm = N.new("ShaderNodeMapping"); sm.inputs["Scale"].default_value = (s * 0.38, s * 0.38, s * 0.38)
+    L.new(tc.outputs["Object"], sm.inputs["Vector"])
+    sn = N.new("ShaderNodeTexNoise"); sn.inputs["Scale"].default_value = 1.0
+    sn.inputs["Detail"].default_value = 4.0; sn.inputs["Roughness"].default_value = 0.72
+    L.new(sm.outputs["Vector"], sn.inputs["Vector"])
+    smul = N.new("ShaderNodeMath"); smul.operation = "MULTIPLY"
+    L.new(sn.outputs["Fac"], smul.inputs[0]); L.new(inv_fur.outputs[0], smul.inputs[1])
+    hadd = N.new("ShaderNodeMath"); hadd.operation = "ADD"
+    L.new(hf.outputs[0], hadd.inputs[0]); L.new(smul.outputs[0], hadd.inputs[1])
     bump = N.new("ShaderNodeBump"); bump.inputs["Strength"].default_value = sp.get("bump", 0.55)
-    bump.inputs["Distance"].default_value = 0.004
-    L.new(hf.outputs[0], bump.inputs["Height"]); L.new(bump.outputs["Normal"], b.inputs["Normal"])
+    bump.inputs["Distance"].default_value = sp.get("bump_distance", 0.004)
+    L.new(hadd.outputs[0], bump.inputs["Height"]); L.new(bump.outputs["Normal"], b.inputs["Normal"])
     # colour: dark roots / light tips from the same strand signal, only where furred
     ramp = N.new("ShaderNodeMapRange")
     L.new(mixh.outputs[0], ramp.inputs["Value"])
@@ -794,9 +858,10 @@ def strand_atlas(sp, out_dir, w=1024, h=1024):
             t = ys / L
             xc = x0 + bend * t * t + wav * np.sin(t * rng.uniform(4, 9))
             wd = w0 * (1 - 0.8 * t)
-            bright = rng.uniform(0.7, 1.25)
+            bright = rng.uniform(*sp.get("strand_bright", (0.7, 1.25)))
             colr = pal[c] * bright
-            shade = (0.6 + 0.5 * t)[:, None] * colr[None, :]
+            root, tip = sp.get("strand_shade", (0.6, 0.5))   # root darkness, extra brightness towards the tip
+            shade = (root + tip * t)[:, None] * colr[None, :]
             fade = 1 - t ** 3
             for dx in range(-4, 5):
                 xs = np.clip(np.round(xc).astype(int) + dx, c * cw, c * cw + cw - 1)
@@ -1095,7 +1160,7 @@ def gait_ik(rig, sp, g):
     fold_h = g.get("fold_h", 22 if run else 18)
     scap_amp = g.get("scap", 14 if run else 9)          # scapula swing, degrees at full reach
     toe_curl = g.get("toe_curl", 35 if run else 25)     # toe flex in swing
-    exc = min(stride * duty, 0.8 * legL)      # stance sweep a leg can really make; faster gaits skate slightly
+    exc = min(stride * duty, g.get("reach", 0.8) * legL)   # stance sweep a leg can really make; faster gaits skate slightly
     legs = {}
     for s in ("L", "R"):
         for leg, (a, b, c, d, e) in (("f", ("sh", "el", "ca", "fh", "toe_f")), ("h", ("hp", "st", "ho", "hh", "toe_h"))):

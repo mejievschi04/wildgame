@@ -57,7 +57,8 @@ sc.view_settings.view_transform = "AgX"
 sc.render.film_transparent = False
 import os
 base, ext = os.path.splitext(out)
-views = [("side", (1, 0.05, 0.12)), ("front34", (0.75, 0.75, 0.2)), ("back34", (-0.7, -0.75, 0.3))]
+views = [("side", (1, 0.05, 0.12)), ("front", (0, 1, 0.05)),
+         ("front34", (0.75, 0.75, 0.2)), ("back34", (-0.7, -0.75, 0.3))]
 files = []
 for name, d in views:
     dv = Vector(d).normalized()

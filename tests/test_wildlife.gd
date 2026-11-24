@@ -171,7 +171,7 @@ func test_carcass_persists() -> void:
 	await _teardown(s2)
 
 
-func test_all_species_have_models_clips_and_fur() -> void:
+func test_all_species_have_models_clips_and_coats() -> void:
 	var s: GameSession = await _boot()
 	for sp: StringName in ItemDB.animals.keys():
 		var a := _spawn(s, sp, Vector3(30, 0, 30))
@@ -179,6 +179,26 @@ func test_all_species_have_models_clips_and_fur() -> void:
 		check(a._anim != null, "%s has an AnimationPlayer" % sp)
 		for clip in ["idle", "walk", "run", "graze", "alert", "attack", "death"]:
 			check(a._anim.has_animation(clip), "%s has clip %s" % [sp, clip])
+		for move: Dictionary in ItemDB.animals[sp].get("attacks", []):
+			check(a._anim.has_animation(String(move.clip)), "%s has attack clip %s" % [sp, move.clip])
+		if sp in [&"mammoth", &"bear", &"deer", &"megaloceros", &"rhino", &"smilodon", &"lion", &"wolf"]:
+			var skeletons := a._model.find_children("*", "Skeleton3D", true, false)
+			check(not skeletons.is_empty(), "%s has an imported skeleton" % sp)
+			if not skeletons.is_empty():
+				var skeleton := skeletons[0] as Skeleton3D
+				var bones := ["head", "ear.L", "ear.R"]
+				bones.append_array(["snout", "snout2", "snout3", "snout4"] if sp == &"mammoth"
+					else ["jaw", "upperarm.L", "forearm.R", "thigh.L", "shin.R"])
+				for bone in bones:
+					check(skeleton.find_bone(bone) >= 0, "%s has bone %s" % [sp, bone])
+			var textured_skin := false
+			for mesh: MeshInstance3D in a._model.find_children("*", "MeshInstance3D", true, false):
+				var material := mesh.mesh.surface_get_material(0) as BaseMaterial3D
+				if mesh.skin and material and material.albedo_texture:
+					textured_skin = true
+			check(textured_skin, "%s has a skinned mesh with its baked coat texture" % sp)
+			a.queue_free()
+			continue
 		var fur := false
 		for mi: MeshInstance3D in a._model.find_children("*", "MeshInstance3D", true, false):
 			var m := mi.get_surface_override_material(0)
@@ -207,6 +227,18 @@ func test_mammoth_defends_itself() -> void:
 	await tree.physics_frame
 	far.take_damage(30.0, s.player)
 	check(far.state == Animal.State.CHASE, "a hurt mammoth turns on the attacker instead of fleeing")
+	# several attack moves: up close they vary; the short rear-up stomp is never drawn out of its reach
+	var near := {}
+	m.threat = s.player
+	s.player.global_position = m.global_position + Vector3(0, 0, 2.0)
+	for i in 60:
+		near[String(m._pick_attack().clip)] = true
+	check(near.size() >= 3, "a mammoth up close varies its attacks (%s)" % [near.keys()])
+	s.player.global_position = m.global_position + Vector3(0, 0, 3.5)
+	var stomped := false
+	for i in 60:
+		stomped = stomped or m._pick_attack().clip == "attack_stomp"
+	check(not stomped, "the stomp is only drawn when the target is close enough for it")
 	await _teardown(s)
 
 
@@ -219,13 +251,13 @@ func test_bear_is_territorial_and_wolves_skip_megafauna() -> void:
 	check(bear._find_prey() == null, "bears don't hunt deer")
 	var wolf := _spawn(s, &"wolf", Vector3(60, 0, 0))
 	var mam := _spawn(s, &"mammoth", Vector3(64, 0, 0))
-	var roe := _spawn(s, &"roe", Vector3(56, 0, 0))
+	var prey_deer := _spawn(s, &"deer", Vector3(56, 0, 0))
 	await tree.physics_frame
 	var prey := wolf._find_prey()
 	check(prey != mam, "wolves don't pick a mammoth as prey")
-	check(prey == null or prey == roe, "roe deer are valid wolf prey")
+	check(prey == null or prey == prey_deer, "deer are valid wolf prey")
 	var stag := _spawn(s, &"megaloceros", Vector3(58, 0, 3))
-	roe.queue_free()
+	prey_deer.queue_free()
 	await tree.physics_frame
 	check(wolf._find_prey() != stag, "a giant deer is too big for a wolf")
 	await _teardown(s)
@@ -243,7 +275,7 @@ func test_start_valley_has_no_dangerous_spawns() -> void:
 		if Wildlife.is_dangerous(a.def):
 			dangerous += 1
 	check(dangerous == 0, "no predators/defensive animals around the start clearing (%d)" % dangerous)
-	check(w.living(&"deer").size() + w.living(&"roe").size() > 0, "prey still populates the start valley")
+	check(w.living(&"deer").size() > 0, "prey still populates the start valley")
 	await _teardown(s)
 
 

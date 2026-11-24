@@ -184,7 +184,7 @@ func _ready() -> void:
 		fwd.y = 0.0
 		fwd = fwd.normalized()
 		var right := fwd.cross(Vector3.UP)
-		var row := [[&"roe", -3.2, 5.5], [&"wolf", -1.2, 6.0], [&"deer", 1.2, 7.5], [&"bear", 4.0, 8.0], [&"rhino", -5.5, 12.0], [&"bison", 6.5, 11.0], [&"horse", -2.5, 10.0], [&"megaloceros", -8.0, 14.0], [&"lion", 2.6, 6.5], [&"boar", -0.5, 4.5], [&"reindeer", 5.5, 6.0], [&"fox", 1.0, 3.5], [&"hare", -1.6, 3.2], [&"mammoth", 1.0, 15.0]]
+		var row := [[&"wolf", -1.2, 6.0], [&"deer", 1.2, 7.5], [&"bear", 4.0, 8.0], [&"rhino", -5.5, 12.0], [&"bison", 6.5, 11.0], [&"megaloceros", -8.0, 14.0], [&"lion", 2.6, 6.5], [&"mammoth", 1.0, 15.0]]
 		for e: Array in row:
 			var pos: Vector3 = p.global_position + fwd * float(e[2]) + right * float(e[1])
 			var a := wl.spawn(e[0], session.world.ground_point(pos.x, pos.z) + Vector3.UP * 0.3)

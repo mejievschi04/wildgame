@@ -324,43 +324,54 @@ BEAR = {
 
 MAM_J = mirror_joints({
     "head": (0, 1.85, 3.05), "nose": (0, 2.36, 2.0), "trunk2": (0, 2.40, 1.30), "trunk3": (0, 2.34, 0.72),
-    "trunk4": (0, 2.26, 0.42),
+    "trunk4": (0, 2.06, 0.45),
     "neck2": (0, 1.55, 2.95), "neck": (0, 1.30, 2.85), "chest": (0, 0.95, 2.85), "spine": (0, 0.0, 2.6),
     "hips": (0, -0.85, 2.3), "tail": (0, -1.15, 2.18), "tail2": (0, -1.28, 1.80), "tail3": (0, -1.32, 1.45),
-    "ear.L": (0.45, 1.55, 2.95), "ear_t.L": (0.55, 1.45, 2.70),
+    "ear.L": (0.54, 1.48, 2.98), "ear_t.L": (0.88, 1.22, 2.76),
     "sh.L": (0.48, 1.00, 2.15), "el.L": (0.46, 0.86, 1.30), "ca.L": (0.44, 0.92, 0.40), "fh.L": (0.44, 0.98, 0.06),
     "hp.L": (0.45, -0.85, 1.95), "st.L": (0.48, -0.58, 1.15), "ho.L": (0.44, -0.78, 0.45), "hh.L": (0.44, -0.72, 0.06),
 })
-TUSK = [(0.24, 2.12, 2.48), (0.36, 2.42, 1.85), (0.62, 2.95, 1.38), (0.68, 3.50, 1.48), (0.42, 3.82, 1.95)]
+TUSK = [(0.34, 2.16, 2.48), (0.52, 2.42, 1.92), (0.83, 2.94, 1.53), (0.96, 3.44, 1.67), (0.76, 3.70, 2.23)]
 
 
 def mam_sculpt(J):
     sc = Sculpt()
     sc.ell((0, 0.35, 2.05), (0.85, 1.10, 0.95), k=0.3)             # ribcage
-    sc.ell((0, 0.95, 2.85), (0.45, 0.50, 0.42), k=0.3)             # shoulder hump
-    sc.ell((0, -0.35, 1.95), (0.85, 0.95, 0.85), k=0.3)            # belly
+    sc.ell((0, 0.92, 2.96), (0.52, 0.58, 0.50), k=0.3)             # raised shoulder hump / mane root
+    sc.ell((0, -0.35, 1.90), (0.78, 0.90, 0.73), k=0.3)            # deep but lifted belly
     sc.ell((0, -0.85, 2.05), (0.65, 0.55, 0.55), k=0.25)           # rump (sloping back)
     for s in (1, -1):
         sc.ell((0.42 * s, -0.75, 1.75), (0.30, 0.45, 0.60), k=0.2)
         sc.ell((0.48 * s, 0.90, 2.10), (0.30, 0.45, 0.70), k=0.2)
     sc.ell((0, 1.35, 2.75), (0.58, 0.45, 0.58), k=0.25)            # neck
-    sc.ell((0, 1.78, 3.0), (0.50, 0.55, 0.56), k=0.15)             # skull
-    sc.ell((0, 1.62, 3.38), (0.32, 0.36, 0.30), k=0.15)            # high dome
+    sc.ell((0, 1.64, 3.0), (0.68, 0.70, 0.58), k=0.18)             # broad, long mammoth cranium
+    sc.ell((0, 1.52, 3.36), (0.46, 0.42, 0.30), k=0.16)            # single-domed forehead
+    for s in (1, -1):
+        sc.ell((0.43 * s, 1.88, 2.76), (0.34, 0.31, 0.24), k=0.10) # broad cheek / temporal mass
+        sc.ell((0.49 * s, 2.04, 2.99), (0.19, 0.18, 0.10), k=0.04) # brow above the lateral-front eye
     sc.cone((0, 1.95, 2.85), (0, 2.22, 2.45), 0.42, 0.24, k=0.12)  # face / tusk sheaths
     sc.ell((0, 1.90, 2.32), (0.24, 0.28, 0.20), k=0.1)             # lower jaw
-    sc.cone((0, 2.18, 2.55), J["nose"], 0.22, 0.17, k=0.08)        # trunk
-    sc.cone(J["nose"], J["trunk2"], 0.17, 0.13, k=0.05)
-    sc.cone(J["trunk2"], J["trunk3"], 0.13, 0.095, k=0.04)
-    sc.cone(J["trunk3"], J["trunk4"], 0.095, 0.07, k=0.03)
-    sc.ell(J["trunk4"], (0.08, 0.08, 0.06), k=0.03)
+    sc.cone((0, 2.18, 2.55), J["nose"], 0.36, 0.31, k=0.085)      # muscular root, narrowing smoothly downward
+    sc.cone(J["nose"], J["trunk2"], 0.31, 0.25, k=0.065)
+    sc.cone(J["trunk2"], J["trunk3"], 0.25, 0.18, k=0.055)
+    sc.cone(J["trunk3"], J["trunk4"], 0.18, 0.13, k=0.045)
+    sc.ell(J["trunk4"], (0.14, 0.14, 0.10), k=0.04)
+    sc.cone(J["trunk4"], (0, 2.01, 0.54), 0.13, 0.09, k=0.06) # gently curled tip
     for s in (1, -1):
-        sc.sphere((0.44 * s, 2.0, 2.85), 0.05, k=0.03, sub=True)
-        sc.leaf((0.42 * s, 1.55, 2.92), (0.55 * s, 1.45, 2.66), 0.2, 0.04, (s, 0, 0), k=0.06)
+        sc.sphere((0.49 * s, 2.12, 2.89), 0.070, k=0.04, sub=True)
+        sc.leaf((0.54 * s, 1.48, 2.98), (0.88 * s, 1.22, 2.76), 0.32, 0.055, (s, 0, 0), k=0.05)
         L = lambda k: X(J[k + ".L"], s)
         sc.cone(L("sh"), L("el"), 0.40, 0.30, k=0.12)
         sc.cone(L("el"), L("ca"), 0.28, 0.24, k=0.1)
         sc.cone(L("ca"), L("fh"), 0.24, 0.27, k=0.08)
         sc.ell(np.add(L("fh"), (0, 0.02, 0.04)), (0.28, 0.30, 0.10), k=0.06)
+        for foot_key in ("fh", "hh"):
+            foot = L(foot_key)
+            # Four compact toe pads and shallow clefts give the broad feet an elephant-like front edge.
+            for dx in (-0.16, -0.055, 0.055, 0.16):
+                sc.ell((foot[0] + dx, foot[1] + 0.18, 0.085), (0.075, 0.12, 0.07), k=0.018)
+            for dx in (-0.11, 0.0, 0.11):
+                sc.ell((foot[0] + dx, foot[1] + 0.25, 0.09), (0.018, 0.10, 0.055), k=0.004, sub=True)
         sc.cone(L("hp"), L("st"), 0.45, 0.30, k=0.15)
         sc.cone(L("st"), L("ho"), 0.27, 0.22, k=0.1)
         sc.cone(L("ho"), L("hh"), 0.22, 0.26, k=0.08)
@@ -373,17 +384,27 @@ def mam_sculpt(J):
 def mam_coat(p, n, bone):
     x, y, z = p
     pb = part(bone)
-    base, light, dark, skin = (0.30, 0.19, 0.11), (0.42, 0.28, 0.16), (0.18, 0.12, 0.08), (0.20, 0.18, 0.17)
+    base, light, dark, skin = (0.30, 0.19, 0.11), (0.42, 0.28, 0.16), (0.18, 0.12, 0.08), (0.22, 0.19, 0.16)
     fur, rough = 1.0, 0.9
     c = mix(base, light, (n[2] - 0.3) * 1.2)
     if pb in LEG:
         c = mix(base, dark, (1.2 - z) * 0.8)
         if z < 0.07:
             c, fur, rough = skin, 0.2, 0.8                                 # feet
-    if pb.startswith("snout") or (pb == "head" and y > 2.15):
-        c = mix(dark, skin, 0.3)
+    if pb.startswith("snout") or (pb == "head" and y > 2.23 and z < 2.82):
+        c, fur, rough = (0.17, 0.135, 0.105), (0.0 if pb.startswith("snout") else 0.025), 0.86
+        # Shallow, uneven transverse folds in the leathery trunk, baked into the color and normal maps.
+        phase = z * 58.0 + y * 4.0 + 0.62 * math.sin(x * 15.0 + y * 4.0) + 0.22 * math.sin(x * 31.0 - z * 9.0)
+        fold = max(0.0, math.cos(phase)) ** 5
+        c = mix(c, (0.075, 0.060, 0.050), 0.32 * fold)
+        c = mix(c, (0.25, 0.21, 0.17), 0.12 * max(0.0, math.sin(phase)))
         if z < 0.55:
-            c, fur, rough = skin, 0.3, 0.7                                 # trunk tip skin
+            c, fur, rough = mix(c, skin, 0.35), 0.0, 0.78                 # bare, deeply folded trunk tip
+    if pb == "head":
+        eye_d = math.sqrt((abs(x) - 0.49) ** 2 + (y - 2.12) ** 2 + (z - 2.89) ** 2)
+        if eye_d < 0.13:
+            c = mix(c, (0.075, 0.045, 0.03), 0.70)
+            fur, rough = min(fur, 0.08), 0.76
     if pb == "ear":
         c = dark
     return c, fur, rough
@@ -392,19 +413,19 @@ def mam_coat(p, n, bone):
 def mam_hair(p, n, bone):
     x, y, z = p
     pb = part(bone)
-    if pb.startswith("snout") or (pb == "head" and y > 2.1):
-        return (0.07 if z > 0.6 else 0.0), 0.1, 0.4, 0.05, (0, 0, -1)
+    if pb.startswith("snout") or (pb == "head" and y > 2.23 and z < 2.82):
+        return 0.0, 0.0, 0.0, 0.0, (0, 0, -1)
     if pb in ("head", "neck2") and n[2] > 0.3:
-        return 0.32, 0.4, 0.5, 0.12, (0, -1, 0.2)                          # topknot
+        return 0.27, 0.25, 0.65, 0.10, (0, -1, -0.25)                      # swept forelock
     if pb == "head":
-        return 0.22, 0.1, 0.9, 0.1, (0, -0.3, -1)
+        return 0.34, 0.2, 0.85, 0.11, (0, -0.3, -1)
     if pb == "ear":
         return 0.18, 0.1, 0.9, 0.1, (0, -0.3, -1)
     if pb in TORSO or pb in ("neck",):
         if n[2] > 0.5:
-            return 0.28, 0.2, 0.7, 0.12, (0, -1, -0.6)
-        skirt = 0.4 + max(0.0, 2.3 - z) * 0.6                             # longer lower down
-        return min(skirt, 1.05), 0.05, 1.0, 0.13, (0, -0.25, -1)
+            return 0.38, 0.2, 0.7, 0.12, (0, -1, -0.6)
+        skirt = 0.45 + max(0.0, 2.3 - z) * 0.62                           # hanging locks under the chest and belly
+        return min(skirt, 1.08), 0.05, 1.0, 0.13, (0, -0.25, -1)
     if pb in ("upperarm", "thigh"):
         return 0.55, 0.05, 1.0, 0.12, (0, -0.2, -1)
     if pb in ("forearm", "shin"):
@@ -417,11 +438,54 @@ def mam_hair(p, n, bone):
 
 
 def mam_parts():
-    ivory = fl.simple_mat("M_Mammoth_Ivory", (0.80, 0.72, 0.58), 0.35)
+    ivory = fl.simple_mat("M_Mammoth_Ivory", (0.58, 0.48, 0.35), 0.72, 0.24)
+    bsdf = ivory.node_tree.nodes["Principled BSDF"]
+    tone = ivory.node_tree.nodes.new("ShaderNodeVertexColor")
+    tone.layer_name = "TuskTone"
+    ivory.node_tree.links.new(tone.outputs["Color"], bsdf.inputs["Base Color"])
+    stops = [(0.0, (0.12, 0.055, 0.025)), (0.18, (0.38, 0.24, 0.13)),
+             (0.72, (0.68, 0.58, 0.43)), (1.0, (0.25, 0.16, 0.09))]
     out = []
     for s in (1, -1):
         pts = [(x * s, y, z) for x, y, z in TUSK]
-        out.append((fl.tube("Tusk", pts, 0.115, 0.028, ring=14, n=30, mat=ivory, power=0.8), "head"))
+        # Slightly asymmetrical, worn growth: each tusk bends differently instead of reading as a clean hook.
+        pts = [(x + s * 0.018 * math.sin(i * 1.7), y + (0.035 if s > 0 else -0.025) * math.sin(i * 1.2), z + 0.025 * math.sin(i * 2.1))
+               for i, (x, y, z) in enumerate(pts)]
+        tusk = fl.tube("Tusk", pts, 0.19, 0.025, ring=40, n=72, mat=ivory, power=0.82)
+        colors = tusk.data.color_attributes.new(name="TuskTone", type="FLOAT_COLOR", domain="POINT")
+        controls = np.array(pts, dtype=float)
+        for v in tusk.data.vertices:
+            p = np.array(v.co[:], dtype=float)
+            best, progress = 1e9, 0.0
+            radial, tangent = None, None
+            for i, (a, b) in enumerate(zip(controls[:-1], controls[1:])):
+                ab = b - a
+                t = float(np.clip(np.dot(p - a, ab) / np.dot(ab, ab), 0.0, 1.0))
+                q = a + t * ab
+                d = float(np.linalg.norm(p - q))
+                if d < best:
+                    best, progress, radial = d, (i + t) / (len(controls) - 1), p - q
+                    tangent = ab / np.linalg.norm(ab)
+            k = next(i for i in range(len(stops) - 1) if stops[i][0] <= progress <= stops[i + 1][0])
+            ta, ca = stops[k]
+            tb, cb = stops[k + 1]
+            u = (progress - ta) / (tb - ta)
+            col = np.array(ca) * (1 - u) + np.array(cb) * u
+            ref = np.array((1.0, 0.0, 0.0))
+            side = np.cross(tangent, ref)
+            if np.linalg.norm(side) < 1e-5:
+                side = np.cross(tangent, np.array((0.0, 1.0, 0.0)))
+            side /= np.linalg.norm(side)
+            up = np.cross(tangent, side)
+            angle = math.atan2(np.dot(radial, up), np.dot(radial, side))
+            groove = math.sin(angle * 8.0 + progress * 5.0)
+            weather = math.sin(angle * 5.0 + progress * 31.0) * math.sin(progress * 17.0 + angle * 2.0)
+            ridge = 0.010 * groove + 0.003 * math.sin(angle * 13.0 - progress * 19.0)
+            v.co = tuple(p + (radial / max(np.linalg.norm(radial), 1e-9)) * ridge)
+            col *= 0.78 + 0.15 * (0.5 + 0.5 * groove) + 0.10 * weather
+            colors.data[v.index].color = (*fl.lin(tuple(col)), 1.0)
+        tusk.data.update()
+        out.append((tusk, "head"))
     return out
 
 
@@ -454,24 +518,30 @@ def mam_attack(rig):
     return n
 
 
-def mam_clips(rig):
-    walk = {"period": 1.9, "duty": 0.68, "amp_f": 14, "amp_h": 12, "lift": 35,
+MAM_WALK = {"period": 1.9, "duty": 0.68, "amp_f": 14, "amp_h": 12, "lift": 35,
             "phases": {"hL": 0.0, "fL": -0.25, "hR": -0.5, "fR": -0.75},
             "bob": 0.04, "bob_freq": 2, "spine": 1, "yaw": 2, "head": 2.5, "tail": 6}
-    run = {"period": 1.05, "duty": 0.5, "amp_f": 21, "amp_h": 19, "lift": 50,
+MAM_RUN = {"period": 1.05, "duty": 0.5, "amp_f": 21, "amp_h": 19, "lift": 50,
            "phases": {"hL": 0.0, "fL": -0.25, "hR": -0.5, "fR": -0.75},
            "bob": 0.08, "bob_freq": 2, "spine": 2, "yaw": 2, "head": 4, "tail": 10}
-    return std_clips(rig, MAMMOTH, walk, run)
+
+
+def mam_clips(rig):
+    return std_clips(rig, MAMMOTH, MAM_WALK, MAM_RUN)
 
 
 MAMMOTH = {
-    "name": "Mammoth", "J": MAM_J, "sculpt": mam_sculpt, "voxel": 0.028, "tris": 18000,
+    "name": "Mammoth", "J": MAM_J, "sculpt": mam_sculpt, "voxel": 0.020, "tris": 28000,
+    "mouth": ((1.84, 2.34), (2.18, 2.30), 0.22, 0.05), "mouth_depth": 0.05,
+    "mouth_width": 0.045, "mouth_reach": 0.84,
     "extra_bones": [("snout2", "nose", "trunk2", "snout"), ("snout3", "trunk2", "trunk3", "snout2"),
                     ("snout4", "trunk3", "trunk4", "snout3")],
-    "coat": mam_coat, "hair": mam_hair, "card_density": 190,
-    "hair_palette": [(0.30, 0.19, 0.11), (0.42, 0.28, 0.16), (0.18, 0.12, 0.08), (0.36, 0.23, 0.13)],
-    "fur_scale": 70.0, "fur_stretch": 5.0, "bump": 0.8, "strands_per_card": 190,
-    "eyes": [((0.42, 1.995, 2.85), 0.034)], "eye_color": (0.10, 0.06, 0.04),
+    "coat": mam_coat, "hair": mam_hair, "card_density": 285,
+    "hair_palette": [(0.29, 0.19, 0.12), (0.39, 0.27, 0.18), (0.22, 0.15, 0.10), (0.34, 0.23, 0.15)],
+    "fur_scale": 70.0, "fur_stretch": 5.0, "bump": 0.8, "bump_distance": 0.008,
+    "strand_contrast": 0.34, "strands_per_card": 240,
+    "eyes": [((0.49, 2.12, 2.89), 0.038)], "eye_color": (0.035, 0.014, 0.006),
+    "eye_rough": 0.38, "eye_spec": 0.16,
     "parts": mam_parts, "attack": mam_attack, "clips": mam_clips,
     "graze_pose": {"neck": -10, "neck2": -6, "head": -12, "arm": 2, "drop": 0.04},
     "idle_extra": lambda r, t: mam_trunk(r, t, 1.0),

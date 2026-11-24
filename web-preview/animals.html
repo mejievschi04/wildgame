@@ -1,0 +1,461 @@
+<!doctype html>
+<html lang="ro">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WILDBOUND — animale 3D</title>
+  <style>
+    :root { color-scheme: dark; --ink:#17130f; --bone:#eadcc4; --muted:#ad9b80; --gold:#d69d36; --edge:rgba(219,174,105,.24); }
+    * { box-sizing: border-box; }
+    html, body { margin:0; height:100%; background:#17130f; color:var(--bone); font:14px/1.4 "Avenir Next", Avenir, "Segoe UI", sans-serif; overflow:hidden; }
+    #view { position:fixed; inset:0; }
+    .panel { position:fixed; top:16px; left:16px; width:300px; max-height:calc(100% - 32px); overflow:auto; padding:16px; border:1px solid #755531; border-radius:7px; background:#120e0bdd; backdrop-filter:blur(6px); box-shadow:0 18px 50px #0008; }
+    h1 { margin:0 0 4px; font:600 15px Georgia, serif; letter-spacing:.17em; }
+    .sub { margin:0 0 14px; color:var(--muted); font-size:11px; letter-spacing:.12em; text-transform:uppercase; }
+    .label { margin:14px 0 6px; color:#d6a74e; font-size:10px; letter-spacing:.17em; text-transform:uppercase; }
+    .row { display:flex; flex-wrap:wrap; gap:6px; }
+    button { padding:7px 11px; border:1px solid #5a4129; border-radius:3px; background:#ffffff08; color:#c4b49b; font:inherit; font-size:13px; cursor:pointer; }
+    button:hover { background:#ffffff12; color:var(--bone); }
+    button[aria-pressed="true"] { border-color:#ba8737; background:linear-gradient(180deg,#c89436,#a66d20); color:#1d160e; }
+    .stats { margin-top:14px; padding-top:12px; border-top:1px solid var(--edge); color:var(--muted); font-size:12px; font-variant-numeric:tabular-nums; }
+    .stats b { color:var(--bone); font-weight:500; }
+    input[type=range] { width:100%; accent-color:var(--gold); }
+    .hint { margin-top:12px; color:#7d6d57; font-size:11px; }
+    #status { position:fixed; left:50%; top:50%; transform:translate(-50%,-50%); color:var(--muted); pointer-events:none; }
+    .drop { outline:2px dashed var(--gold); outline-offset:-12px; }
+  </style>
+  <script type="importmap">
+    { "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+    } }
+  </script>
+</head>
+<body>
+  <div id="view"></div>
+  <div id="status">Se încarcă…</div>
+  <aside class="panel">
+    <h1>WILDBOUND</h1>
+    <p class="sub">Previzualizare animale</p>
+
+    <div class="label">Animal</div>
+    <div class="row" id="animals"></div>
+
+    <div class="label">Animație</div>
+    <div class="row" id="anims"></div>
+
+    <div class="label">Viteză <span id="speedVal">1.0×</span></div>
+    <input type="range" id="speed" min="0" max="2" step="0.05" value="1">
+
+    <div class="label">Afișare</div>
+    <div class="row">
+      <button id="tSkel" aria-pressed="false">Schelet</button>
+      <button id="tWire" aria-pressed="false">Wireframe</button>
+      <button id="tRot" aria-pressed="false">Rotire</button>
+      <button id="tHuman" aria-pressed="true">Om 1,75 m</button>
+    </div>
+
+    <div class="label">Cameră</div>
+    <div class="row">
+      <button data-view="34">3/4</button>
+      <button data-view="side">Lateral</button>
+      <button data-view="front">Față</button>
+      <button data-view="top">Sus</button>
+    </div>
+
+    <div class="label">Cadru <span id="timeVal"></span></div>
+    <div class="row" style="flex-wrap:nowrap;align-items:center">
+      <button id="tPause" aria-pressed="false" style="min-width:64px">Pauză</button>
+      <input type="range" id="scrub" min="0" max="1" step="0.001" value="0">
+    </div>
+
+    <div class="stats" id="stats"></div>
+    <div class="hint">Trage cu mouse-ul pentru rotire, scroll pentru zoom. Poți trage orice fișier .glb peste pagină.</div>
+  </aside>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+const BASE = '../assets/models/animals/';
+// All species of data/animals.json; `nou` = the recently added textured models.
+const ANIMALS = [
+  { id: 'mammoth',     name: 'Mamut',       file: 'SK_Mammoth_Textured.glb', nou: true },
+  { id: 'deer',        name: 'Cerb',        file: 'SK_Deer_Textured.glb',    nou: true },
+  { id: 'bear',        name: 'Urs',         file: 'SK_Bear_Textured.glb',    nou: true },
+  { id: 'rhino',       name: 'Rinocer',     file: 'SK_Rhino_Textured.glb',   nou: true },
+  { id: 'bison',       name: 'Bizon',       file: 'SK_Bison.gltf' },
+  { id: 'megaloceros', name: 'Megaloceros', file: 'SK_Megaloceros.gltf' },
+  { id: 'smilodon',    name: 'Smilodon',    file: 'SK_Smilodon.glb' },
+  { id: 'lion',        name: 'Leu',         file: 'SK_Lion.gltf' },
+  { id: 'wolf',        name: 'Lup',         file: 'SK_Wolf.gltf' },
+  // the player's own people: Homo sapiens man (assets/models/humans), walks and runs in place
+  { id: 'sapiens_m',   name: 'Om (Sapiens)', file: 'SK_Human_SapiensM.gltf', human: true, nou: true },
+];
+const ANIM_RO = { idle:'Repaus', walk:'Mers', run:'Alergare', graze:'Păscut', alert:'Alertă', attack:'Atac', death:'Moarte',
+  attack_trunk:'Atac: trompă', attack_stomp:'Atac: călcare', attack_thrust:'Atac: împunsătură',
+  attack_snap:'Atac: clănțănit', attack_leap:'Atac: salt', attack_hamstring:'Atac: tendon',
+  gesture:'Gest', sit:'Șezut',
+  combat_guard:'Luptă: gardă', combat_thrust:'Luptă: împunsătură', combat_feint:'Luptă: fentă', combat_throw:'Luptă: aruncare',
+  combat_hit_l:'Lovit (piept)', combat_hit_r:'Lovit (cap)', combat_strafe_l:'Pas lateral stânga', combat_strafe_r:'Pas lateral dreapta',
+  life_sleep:'Somn', life_work:'Muncă', life_step:'Pas pe loc' };
+const ANIM_ORDER = ['idle', 'walk', 'run', 'graze', 'alert', 'attack', 'attack_trunk', 'attack_stomp', 'attack_thrust', 'attack_snap', 'attack_leap', 'attack_hamstring', 'gesture', 'sit', 'death',
+  'combat_guard', 'combat_thrust', 'combat_feint', 'combat_throw', 'combat_hit_l', 'combat_hit_r', 'combat_strafe_l', 'combat_strafe_r',
+  'life_sleep', 'life_work', 'life_step'];
+
+const view = document.getElementById('view');
+const statusEl = document.getElementById('status');
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.5;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+view.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x1d1712);
+scene.fog = new THREE.Fog(0x1d1712, 40, 120);
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+
+const camera = new THREE.PerspectiveCamera(40, innerWidth / innerHeight, 0.05, 400);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+
+scene.add(new THREE.HemisphereLight(0xfff1dc, 0x3a2a1a, 0.9));
+const sun = new THREE.DirectionalLight(0xffe2b8, 2.4);
+sun.castShadow = true;
+sun.shadow.mapSize.set(4096, 4096);
+scene.add(sun, sun.target);
+function aimSun(center, radius) {
+  sun.position.set(center.x + 5, 9 + radius * 0.5, center.z + 6);
+  sun.target.position.copy(center);
+  const r = radius + 2;
+  Object.assign(sun.shadow.camera, { left: -r, right: r, top: r, bottom: -r, near: 0.5, far: 40 + radius * 3 });
+  sun.shadow.camera.updateProjectionMatrix();
+}
+
+const ground = new THREE.Mesh(new THREE.CircleGeometry(120, 96), new THREE.MeshStandardMaterial({ color: 0x3a2d20, roughness: 1 }));
+ground.rotation.x = -Math.PI / 2;
+ground.receiveShadow = true;
+scene.add(ground);
+const grid = new THREE.GridHelper(80, 80, 0x8a6a3e, 0x4a3a28);
+grid.material.transparent = true; grid.material.opacity = 0.3;
+grid.position.y = 0.002;
+scene.add(grid);
+
+// 1.75 m human silhouette for scale
+const human = new THREE.Group();
+const hMat = new THREE.MeshStandardMaterial({ color: 0x8c7a62, roughness: 0.9, transparent: true, opacity: 0.55 });
+const hBody = new THREE.Mesh(new THREE.CapsuleGeometry(0.2, 1.1, 4, 12), hMat); hBody.position.y = 0.75;
+const hHead = new THREE.Mesh(new THREE.SphereGeometry(0.12, 16, 12), hMat); hHead.position.y = 1.63;
+human.add(hBody, hHead);
+scene.add(human);
+
+function label(text, sub) {
+  const c = document.createElement('canvas'); c.width = 512; c.height = 128;
+  const g = c.getContext('2d');
+  g.font = '600 52px Georgia, serif'; g.textAlign = 'center'; g.fillStyle = '#eadcc4';
+  g.shadowColor = '#000'; g.shadowBlur = 12; g.fillText(text, 256, 60);
+  g.font = '30px Avenir, sans-serif'; g.fillStyle = '#d6a74e'; g.fillText(sub, 256, 108);
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), depthWrite: false, transparent: true }));
+  s.scale.set(2.4, 0.6, 1);
+  return s;
+}
+
+const loader = new GLTFLoader();
+const clock = new THREE.Clock();
+// Each loaded animal: { def, root, mixer, actions, skel, label, active, stats }
+let loaded = [], clipName = 'idle', loadToken = 0;
+let speed = 1, wire = false, paused = false, frame = null;
+
+// rendered animals face -Z
+// Places the loaded animals. In a group they stand in a row seen from the front (-X is screen right);
+// `profile` turns each one sideways (head to the right) and spaces them by body length instead of width.
+let profile = false;
+function layout(prof) {
+  profile = prof;
+  const multi = loaded.length > 1;
+  let x = 0;
+  for (const e of loaded) {
+    const size = e.box.getSize(new THREE.Vector3()), c = e.box.getCenter(new THREE.Vector3());
+    const w = Math.max(prof ? size.z : size.x, 0.6);
+    const slot = -(x + w / 2);
+    e.root.rotation.y = prof ? Math.PI / 2 : 0;
+    // rotation.y = +90°: local (x, z) -> world (z, -x)
+    if (prof) e.root.position.set(slot - c.z, 0, c.x);
+    else e.root.position.set(slot - c.x, 0, -c.z);
+    x += w + (multi ? 0.9 : 0);
+    e.label.position.set(slot, size.y + 0.55, 0);
+  }
+  const all = new THREE.Box3();
+  loaded.forEach(e => { e.root.updateMatrixWorld(true); all.union(new THREE.Box3().setFromObject(e.root)); });
+  const size = all.getSize(new THREE.Vector3()), center = all.getCenter(new THREE.Vector3());
+  human.position.set(multi ? all.max.x + 0.9 : all.min.x - 0.9, 0, 0);
+  frame = multi
+    ? { center, size, dist: (() => {
+        // distance at which the row (plus margin) fills the area right of the panel
+        const free = 1 - document.querySelector('.panel').getBoundingClientRect().right / innerWidth;
+        const t = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+        return Math.max((size.x + 2) / (2 * t * camera.aspect * free), (size.y + 1.5) / (2 * t * 0.7));
+      })() }
+    : { center, size, dist: Math.max(size.x, size.y, size.z) * 1.9 + 1 };
+  aimSun(center, Math.max(size.x, size.z) / 2);
+}
+
+function setView(kind) {
+  if (!frame) return;
+  if (loaded.length > 1) {
+    // A row of animals: "side" shows every animal in profile, the others look at the row from the front.
+    if ((kind === 'side') !== profile) layout(kind === 'side');
+    const { center: c, size, dist: d } = frame;
+    controls.target.set(c.x, size.y * 0.4, c.z);
+    camera.position.set(c.x, size.y * 0.6 + d * (kind === 'top' ? 0.9 : kind === '34' ? 0.35 : 0.15), c.z - d);
+    // keep the row clear of the side panel: slide the view so the row centres in the free area
+    const panel = document.querySelector('.panel').getBoundingClientRect().right;
+    const dx = (panel / 2) / innerWidth * 2 * d * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.aspect;
+    camera.position.x += dx; controls.target.x += dx;
+    controls.update();
+    return;
+  }
+  const { center: c, size, dist: d } = frame;
+  controls.target.set(c.x, size.y * 0.45, c.z);
+  const pos = {
+    '34':   [c.x + d * 0.85, size.y * 0.75 + 0.4, c.z - d * 0.75],
+    side:   [c.x + d * 1.15, size.y * 0.5, c.z],
+    front:  [c.x, size.y * 0.6, c.z - d * 1.15],
+    top:    [c.x + 0.01, size.y * 0.5 + d * 1.2, c.z],
+  }[kind];
+  camera.position.set(...pos);
+  controls.update();
+}
+document.querySelectorAll('[data-view]').forEach(b => b.onclick = () => setView(b.dataset.view));
+
+const animRow = document.getElementById('anims');
+const animalRow = document.getElementById('animals');
+const stats = document.getElementById('stats');
+
+function addButton(row, text, onclick, title) {
+  const b = document.createElement('button');
+  b.textContent = text; if (title) b.title = title;
+  b.onclick = () => onclick(b);
+  row.appendChild(b);
+  return b;
+}
+const groupRow = document.createElement('div');
+groupRow.className = 'row'; groupRow.style.marginBottom = '6px';
+animalRow.before(groupRow);
+const bAll = addButton(groupRow, 'Toți (' + ANIMALS.length + ')', b => show(ANIMALS, b));
+addButton(groupRow, 'Noi (4)', b => show(ANIMALS.filter(a => a.nou), b));
+// Model files come from data/animals.json, so the page always shows what the game loads.
+fetch('../data/animals.json?t=' + Date.now()).then(r => r.json()).then(data => {
+  for (const a of ANIMALS) {
+    const model = data[a.id]?.model;
+    if (model && !a.human) { a.file = model.split('/').pop(); a.nou = /_Textured\.glb$|\.glb$/.test(a.file); }
+  }
+}).catch(() => {}).finally(() => {
+  ANIMALS.forEach(a => addButton(animalRow, a.name + (a.nou ? ' •' : ''), b => show([a], b), a.file));
+  groupRow.children[1].textContent = `Noi (${ANIMALS.filter(a => a.nou).length})`;
+  bAll.click();
+});
+
+function setPressed(btn) {
+  document.querySelectorAll('#animals button, .panel .row button').forEach(x => {
+    if (x.parentElement === animalRow || x.parentElement === groupRow) x.setAttribute('aria-pressed', x === btn);
+  });
+}
+function setAnimPressed() { animRow.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x.dataset.clip === clipName)); }
+
+function clearAll() {
+  for (const e of loaded) {
+    e.mixer.stopAllAction();
+    scene.remove(e.root, e.skel, e.label);
+  }
+  loaded = [];
+}
+
+function measure(root) {
+  let verts = 0, tris = 0, bones = 0;
+  const mats = new Set(), tex = new Set();
+  root.traverse(o => {
+    if (o.isMesh) {
+      o.castShadow = true; o.receiveShadow = true; o.frustumCulled = false;
+      verts += o.geometry.attributes.position.count;
+      tris += (o.geometry.index ? o.geometry.index.count : o.geometry.attributes.position.count) / 3;
+      (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => {
+        mats.add(m.name || '(fără nume)');
+        ['map', 'normalMap', 'roughnessMap'].forEach(k => m[k]?.image && tex.add(m[k].image.width + '×' + m[k].image.height));
+      });
+    }
+    if (o.isBone) bones++;
+  });
+  return { verts, tris: Math.round(tris), bones, mats: [...mats], tex: [...tex] };
+}
+
+// Mocap walk/run carry the body forward on the Root bone (the game moves the person itself): keep it on the spot.
+function inPlace(clips) {
+  for (const clip of clips) {
+    for (const t of clip.tracks) {
+      if (t.name !== 'Root.position') continue;
+      const v = t.values, x0 = v[0], z0 = v[2];
+      for (let i = 0; i < v.length; i += 3) { v[i] = x0; v[i + 2] = z0; }
+    }
+  }
+}
+
+async function show(defs, btn) {
+  setPressed(btn);
+  const token = ++loadToken;
+  statusEl.style.display = '';
+  let done = 0;
+  statusEl.textContent = `Se încarcă… 0 / ${defs.length}`;
+  const results = await Promise.all(defs.map(def => loader.loadAsync((def.human ? '../assets/models/humans/' : BASE) + def.file + '?t=' + Date.now())
+    .then(g => { statusEl.textContent = `Se încarcă… ${++done} / ${defs.length}`; return { def, gltf: g }; })
+    .catch(err => { console.error(def.file, err); return { def, error: err }; })));
+  if (token !== loadToken) return;
+  clearAll();
+  statusEl.style.display = 'none';
+  const errors = results.filter(r => r.error);
+  for (const { def, gltf } of results.filter(r => !r.error)) {
+    // human models face +Z, the animals -Z: turn the person round inside a holder
+    if (def.human) gltf.scene.rotation.y = Math.PI;
+    const root = def.human ? new THREE.Group().add(gltf.scene) : gltf.scene;
+    const st = measure(root);
+    const mixer = new THREE.AnimationMixer(root);
+    if (def.human) inPlace(gltf.animations);
+    const actions = {};
+    gltf.animations.forEach(clip => { actions[clip.name] = mixer.clipAction(clip); });
+    root.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(root);
+    const skel = new THREE.SkeletonHelper(root);
+    skel.visible = document.getElementById('tSkel').getAttribute('aria-pressed') === 'true';
+    loaded.push({ def, root, mixer, actions, skel, box, stats: st, clips: gltf.animations, active: null });
+  }
+  // Line them up smallest first. Labels are built once; layout() places them.
+  loaded.sort((a, b) => a.box.getSize(new THREE.Vector3()).y - b.box.getSize(new THREE.Vector3()).y);
+  const multi = loaded.length > 1;
+  for (const e of loaded) {
+    const size = e.box.getSize(new THREE.Vector3());
+    e.label = label(e.def.name, `${size.y.toFixed(2)} m · ${(e.stats.tris / 1000).toFixed(1)}k tri`);
+    e.label.visible = multi;
+    scene.add(e.root, e.skel, e.label);
+  }
+  applyWire();
+  layout(false);
+  setView(multi ? 'front' : '34');
+
+  // Clip buttons: union of all clips, standard ones first.
+  const names = [...new Set(loaded.flatMap(e => e.clips.map(c => c.name)))]
+    .sort((a, b) => (ANIM_ORDER.indexOf(a) + 1 || 99) - (ANIM_ORDER.indexOf(b) + 1 || 99));
+  animRow.innerHTML = '';
+  names.forEach(n => {
+    const clip = !multi && loaded[0].clips.find(c => c.name === n);
+    const b = addButton(animRow, ANIM_RO[n] || n, () => playAll(n), clip ? `${n} · ${clip.duration.toFixed(2)} s` : n);
+    b.dataset.clip = n;
+  });
+  if (!names.length) animRow.innerHTML = '<span style="color:#7d6d57;font-size:12px">Fără animații</span>';
+  playAll(names.includes(clipName) ? clipName : (names.includes('idle') ? 'idle' : names[0]));
+
+  if (multi) {
+    const tris = loaded.reduce((s, e) => s + e.stats.tris, 0);
+    stats.innerHTML = `<div>Animale: <b>${loaded.length}</b> · triunghiuri total: <b>${tris.toLocaleString('ro')}</b></div>` +
+      loaded.map(e => `<div>${e.def.name}${e.def.nou ? ' •' : ''}: <b>${e.stats.tris.toLocaleString('ro')}</b> tri · ${e.stats.bones} oase · ${e.clips.length} clipuri</div>`).join('') +
+      (errors.length ? `<div style="color:#e07a5f">Nu s-au încărcat: ${errors.map(r => r.def.name).join(', ')}</div>` : '');
+  } else if (loaded.length) {
+    const e = loaded[0], s = e.box.getSize(new THREE.Vector3());
+    stats.innerHTML = `
+      <div>Dimensiuni: <b>${s.x.toFixed(2)} × ${s.y.toFixed(2)} × ${s.z.toFixed(2)} m</b> (L×Î×A)</div>
+      <div>Vârfuri: <b>${e.stats.verts.toLocaleString('ro')}</b> · triunghiuri: <b>${e.stats.tris.toLocaleString('ro')}</b></div>
+      <div>Oase: <b>${e.stats.bones}</b> · animații: <b>${e.clips.length}</b></div>
+      <div>Materiale: <b>${e.stats.mats.join(', ')}</b></div>
+      <div>Texturi: <b>${e.stats.tex.join(', ') || '—'}</b></div>`;
+  } else {
+    stats.innerHTML = `<div style="color:#e07a5f">Eroare la încărcare: ${errors.map(r => r.def.name).join(', ')}</div>`;
+  }
+}
+
+function playAll(name) {
+  clipName = name;
+  for (const e of loaded) {
+    const next = e.actions[name] || e.actions.idle;
+    if (!next) continue;
+    next.reset();
+    const once = next.getClip().name === 'death';
+    next.setLoop(once ? THREE.LoopOnce : THREE.LoopRepeat, Infinity);
+    next.clampWhenFinished = once;
+    if (e.active && e.active !== next) next.crossFadeFrom(e.active, 0.25, false);
+    next.play();
+    e.active = next;
+  }
+  setAnimPressed();
+}
+
+function applyWire() {
+  loaded.forEach(e => e.root.traverse(o => { if (o.isMesh) (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => m.wireframe = wire); }));
+}
+
+function toggle(id, fn) {
+  const b = document.getElementById(id);
+  b.onclick = () => { const v = b.getAttribute('aria-pressed') !== 'true'; b.setAttribute('aria-pressed', v); fn(v); };
+}
+toggle('tSkel', v => loaded.forEach(e => e.skel.visible = v));
+toggle('tWire', v => { wire = v; applyWire(); });
+toggle('tRot', v => { controls.autoRotate = v; });
+toggle('tHuman', v => { human.visible = v; });
+toggle('tPause', v => { paused = v; });
+const scrub = document.getElementById('scrub');
+const timeVal = document.getElementById('timeVal');
+function seek(f) {
+  for (const e of loaded) {
+    if (!e.active) continue;
+    e.mixer.stopAllAction(); e.active.reset().play(); e.active.setEffectiveWeight(1);
+    e.active.time = f * e.active.getClip().duration;
+    e.mixer.update(0);
+  }
+}
+scrub.oninput = () => {
+  paused = true; document.getElementById('tPause').setAttribute('aria-pressed', true);
+  seek(+scrub.value);
+};
+window.preview = { THREE, renderer, scene, camera, controls, get loaded() { return loaded; },
+  get mixer() { return loaded[0]?.mixer; }, setView, play: playAll, seek };
+
+const speedEl = document.getElementById('speed');
+speedEl.oninput = () => { speed = +speedEl.value; document.getElementById('speedVal').textContent = speed.toFixed(2) + '×'; };
+
+// Drag-and-drop any .glb
+addEventListener('dragover', e => { e.preventDefault(); document.body.classList.add('drop'); });
+addEventListener('dragleave', () => document.body.classList.remove('drop'));
+addEventListener('drop', e => {
+  e.preventDefault(); document.body.classList.remove('drop');
+  const f = e.dataTransfer.files[0];
+  if (!f) return;
+  const url = URL.createObjectURL(f);
+  show([{ name: f.name, url }], null);
+});
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+renderer.setAnimationLoop(() => {
+  const dt = clock.getDelta();
+  if (!paused) loaded.forEach(e => e.mixer.update(dt * speed));
+  const a = loaded[0]?.active;
+  if (a) {
+    const d = a.getClip().duration, t = a.time % d;
+    if (!paused) scrub.value = t / d;
+    timeVal.textContent = loaded.length > 1 ? '' : `${Math.round(t * 24)} / ${Math.round(d * 24)}`;
+  }
+  controls.update();
+  renderer.render(scene, camera);
+});
+</script>
+</body>
+</html>
