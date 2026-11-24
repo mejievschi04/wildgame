@@ -2,7 +2,6 @@ class_name ResourceNode
 extends StaticBody3D
 ## Harvestable world node (tree, rock, bush, ...). Behaviour comes from data/resource_nodes.json:
 ##  hand_yield → gathered with [interact] (hold); hit_yield → LMB swing with a tool having hit_tag.
-## Visuals are PLACEHOLDER graybox primitives.
 
 var node_id: String
 var kind: StringName
@@ -16,6 +15,10 @@ var _full_parts: Array[Node3D] = []
 var _depleted_parts: Array[Node3D] = []
 var _shape: CollisionShape3D
 var _visual: Node3D
+var _scattered_mesh: Mesh
+var _scattered_basis := Basis.IDENTITY
+var _scattered_scale := Vector3.ONE
+var _scattered_bounds := AABB()
 
 
 func setup(p_id: String, p_kind: StringName, size_scale: float = 1.0, yaw: float = 0.0) -> void:
@@ -30,16 +33,45 @@ func setup(p_id: String, p_kind: StringName, size_scale: float = 1.0, yaw: float
 	collision_mask = 0
 	add_to_group("interactable")
 	add_to_group("persistent")
-	add_to_group("time_sim")
-	add_to_group("slow_sim")
+	if regrow_seconds > 0.0:
+		add_to_group("time_sim")
+		add_to_group("slow_sim")
 	add_to_group("resource_node")
 	if kind in [&"sticks", &"stones"]:
 		add_to_group("gather_pile")
 	_visual = Node3D.new()
 	_visual.rotation.y = yaw
 	add_child(_visual)
-	_build(size_scale)
+	if _scattered_mesh:
+		_build_scattered()
+	else:
+		_build(size_scale)
 	_refresh()
+
+
+## Keep the exact mesh, orientation and scale of the generated object.
+func setup_scattered(id: String, resource_kind: StringName, mesh: Mesh, xf: Transform3D) -> void:
+	add_to_group("scattered_resource")
+	_scattered_mesh = mesh
+	_scattered_basis = xf.basis.orthonormalized()
+	_scattered_scale = xf.basis.get_scale()
+	var bounds := mesh.get_aabb()
+	_scattered_bounds = AABB(bounds.position * _scattered_scale, bounds.size * _scattered_scale)
+	position = xf.origin
+	setup(id, resource_kind)
+
+
+func _build_scattered() -> void:
+	var art := MeshInstance3D.new()
+	art.mesh = _scattered_mesh
+	art.basis = _scattered_basis.scaled_local(_scattered_scale)
+	art.visibility_range_end = 160.0 if kind != &"wild_grass" else 75.0
+	if kind == &"wild_grass":
+		art.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_visual.add_child(art)
+	_full(art)
+	_shape = Graybox.add_shape(self, Graybox.box_shape(Vector3.ONE))
+	_shape.basis = _scattered_basis
 
 
 func get_save_id() -> String:
@@ -96,7 +128,7 @@ func perform_interaction(player: Node, action: StringName) -> void:
 		if randf() < float(extra[id]):
 			player.give_item(StringName(id), 1)
 	_consume_one()
-	Sfx.play(&"stone_knock" if kind == &"stones" else &"rustle", global_position + Vector3.UP * 0.3, -4.0)
+	Sfx.play(&"stone_knock" if kind in [&"stones", &"loose_stone"] else &"rustle", global_position + Vector3.UP * 0.3, -4.0)
 
 
 ## LMB swing with the equipped item. Returns true when the hit landed (tool wears).
@@ -147,8 +179,11 @@ func _consume_one() -> void:
 
 func _refresh() -> void:
 	var depleted := remaining <= 0
-	for p in _full_parts:
-		p.visible = not depleted
+	var visible_parts := _full_parts.size()
+	if kind == &"stones":
+		visible_parts = ceili(float(visible_parts * remaining) / capacity)
+	for i in _full_parts.size():
+		_full_parts[i].visible = not depleted and i < visible_parts
 	for p in _depleted_parts:
 		p.visible = depleted
 	if kind in [&"rock", &"flint", &"clay"]:
@@ -156,8 +191,12 @@ func _refresh() -> void:
 		for p in _full_parts:
 			p.scale = p.get_meta("base_scale", Vector3.ONE) * k
 	if _shape:
-		var hide_when_empty := kind in [&"sticks", &"stones", &"mushroom", &"rock", &"flint", &"clay", &"wild_grain", &"wild_carrot", &"herbs", &"flax", &"reeds"]
-		_shape.disabled = depleted and hide_when_empty
+		var hide_when_empty := _scattered_mesh != null or kind in [&"sticks", &"stones", &"mushroom", &"rock", &"flint", &"clay", &"wild_grain", &"wild_carrot", &"herbs", &"flax", &"reeds"]
+		_shape.set_deferred("disabled", depleted and hide_when_empty)
+		if _scattered_mesh and not depleted:
+			var ratio := lerpf(0.45, 1.0, float(remaining) / float(capacity)) if kind == &"rock" else 1.0
+			_shape.position = _scattered_basis * (_scattered_bounds.get_center() * ratio)
+			(_shape.shape as BoxShape3D).size = (_scattered_bounds.size * ratio).max(Vector3(0.32, 0.30, 0.32))
 		if kind in [&"tree_pine", &"tree_birch"]:
 			_shape.shape = _get_meta_shape("stump_shape") if depleted else _get_meta_shape("trunk_shape")
 			_shape.position.y = (_shape.shape as CylinderShape3D).height * 0.5

@@ -102,6 +102,64 @@ func test_wilderness_resources_survive_streaming() -> void:
 	await _teardown(s)
 
 
+func test_generated_stones_and_grass_can_be_harvested() -> void:
+	var s: GameSession = await _boot()
+	var w := s.world
+	var v := w.get_node("Vegetation") as Vegetation
+	var stone: ResourceNode
+	var grass: ResourceNode
+	var boulder: ResourceNode
+	for n: ResourceNode in tree.get_nodes_in_group("scattered_resource"):
+		if not n.node_id.begins_with("region_"):
+			continue
+		match n.kind:
+			&"loose_stone": stone = n
+			&"wild_grass": grass = n
+			&"rock": boulder = n
+	check(stone != null and grass != null and boulder != null, "chunks contain harvestable stones, grass and boulders")
+	check(not w.meadow_grass.is_in_group("interactable"), "meadow grass is decorative")
+	if stone and grass and boulder:
+		var stone_id := stone.node_id
+		var grass_id := grass.node_id
+		var grass_time := grass.regrow_seconds
+		var stones_before := s.player.inventory.count_of(&"stone")
+		var fiber_before := s.player.inventory.count_of(&"fiber")
+		stone.perform_interaction(s.player, &"interact")
+		grass.perform_interaction(s.player, &"interact")
+		eq(s.player.inventory.count_of(&"stone"), stones_before + 1, "a loose stone yields one stone")
+		eq(s.player.inventory.count_of(&"fiber"), fiber_before + 1, "wild grass yields one fiber")
+		eq(stone.remaining, 0, "loose stone is used up")
+		eq(grass.remaining, 0, "tuft is cut")
+		check(boulder.on_hit(s.player, ItemDB.get_item(&"stone")), "boulder can be mined with a hammer tool")
+		eq(boulder.remaining, boulder.capacity - 1, "boulder loses one charge")
+		v._stream_near(ForestWorld.SPAWN + Vector2(900, 0))
+		var saved := w.collect_save()
+		check(saved.nodes.has(stone_id) and saved.nodes.has(grass_id), "unloaded scatter state is saved")
+		w.apply_save(saved)
+		v._stream_near(ForestWorld.SPAWN)
+		eq((w.get_node_by_save_id(stone_id) as ResourceNode).remaining, 0, "stone stays depleted")
+		var restored := w.get_node_by_save_id(grass_id) as ResourceNode
+		eq(restored.remaining, 0, "grass depletion survives streaming and load")
+		restored.simulate(grass_time)
+		eq(restored.remaining, restored.capacity, "grass grows back")
+	# A water surface obscures the normal ray, but the player can still target a stone below it.
+	var origin := Vector3(0, 150, 0)
+	var water := WaterBody.new()
+	water.setup(2.0, origin.y)
+	w.add_child(water)
+	var mesh := BoxMesh.new()
+	w.spawn_scattered_resource(w, "test_submerged_stone", &"loose_stone", mesh,
+		Transform3D(Basis.IDENTITY, origin - Vector3.UP * 0.65))
+	await tree.physics_frame
+	await tree.physics_frame
+	s.player.ray.global_transform = Transform3D(Basis(Vector3.RIGHT, -PI * 0.5), origin + Vector3.UP * 0.6)
+	s.player.ray.force_raycast_update()
+	check(s.player.ray.get_collider() == water, "the normal ray hits water first")
+	s.player._update_interaction(0.0)
+	check(s.player.look_target == w.get_node_by_save_id("test_submerged_stone"), "the underwater stone gets the gather prompt")
+	await _teardown(s)
+
+
 func test_terrain_and_tree_textures() -> void:
 	for suffix in ["albedo", "normal", "arm"]:
 		var atlas := load("res://assets/textures/terrain/T_Terrain_%s.jpg" % suffix) as TextureLayered

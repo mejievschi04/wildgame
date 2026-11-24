@@ -14,12 +14,6 @@ func _ready() -> void:
 	collision_mask = 0
 	add_to_group("interactable")
 	add_to_group("persistent")
-	for i in 5:
-		var a := TAU * i / 5.0
-		var st := AssetLib.instance(AssetLib.ROCKS[&"small"][i % 3])
-		st.scale = Vector3.ONE * 2.4
-		st.position = Vector3(cos(a) * 0.5, 0.0, sin(a) * 0.5)
-		add_child(st)
 	_cover = Graybox.part_mat(self, Graybox.sphere(0.45, 12), Graybox.tex("Leather", Color.WHITE, 1.5), Vector3(0, 0.12, 0), Vector3.ZERO, Vector3(1.25, 0.45, 1.05))
 	Graybox.add_shape(self, Graybox.box_shape(Vector3(1.2, 0.5, 1.2)), Vector3(0, 0.2, 0))
 	_refresh()

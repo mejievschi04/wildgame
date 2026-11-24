@@ -1,11 +1,9 @@
 class_name Vegetation
 extends Node3D
-## Streamed harvestable trees and gather piles, with batched grass, ferns and shrubs.
+## Streamed harvestable trees, plants and stones, with batched decorative ferns and shrubs.
 
 const CHUNK := 48.0
 const LOAD_RADIUS := 2  # real (fellable) trees within ~100–170 m; FarForest impostors take over beyond
-const GRASS_DENSITY := 0.9  # candidates per m²
-const GRASS_RANGE := 42.0
 const FERN_DENSITY := 0.16
 const FERN_RANGE := 75.0
 const ROCK_RANGE := 160.0
@@ -111,7 +109,7 @@ func _add_chunk(key: Vector2i, origin: Vector2) -> void:
 	add_child(root)
 	_active[key] = root
 	_rng.seed = int(hash(Vector3i(key.x, key.y, ForestWorld.SEED + 77)))
-	_chunk(key, origin, _grass_meshes, _fern_meshes, world.forest_mask, root)
+	_chunk(key, origin, _fern_meshes, world.forest_mask, root)
 
 
 func _mask_at(mask: Image, x: float, z: float) -> float:
@@ -126,10 +124,7 @@ func _ok_ground(x: float, z: float) -> bool:
 		and absf(x) < ForestWorld.PLAYABLE and absf(z) < ForestWorld.PLAYABLE
 
 
-func _chunk(key: Vector2i, origin: Vector2, grass: Array[Mesh], ferns: Array[Mesh], mask: Image, root: Node3D) -> void:
-	var g_xf: Array = []
-	for i in grass.size():
-		g_xf.append([])
+func _chunk(key: Vector2i, origin: Vector2, ferns: Array[Mesh], mask: Image, root: Node3D) -> void:
 	var f_xf: Array = []
 	for i in ferns.size():
 		f_xf.append([])
@@ -210,16 +205,6 @@ func _chunk(key: Vector2i, origin: Vector2, grass: Array[Mesh], ferns: Array[Mes
 		var prop_xf := Transform3D(Basis(Vector3.UP, _rng.randf() * TAU).scaled(Vector3.ONE * scale),
 			world.ground_point(x, z) - Vector3(0.0, 0.02, 0.0))
 		p_xf[index].append(prop_xf)
-	var n_grass := 0  # meadow grass is drawn by MeadowGrass (card clumps around the camera)
-	for i in n_grass:
-		var x := origin.x + _rng.randf() * CHUNK
-		var z := origin.y + _rng.randf() * CHUNK
-		var forest := _mask_at(mask, x, z)
-		if _rng.randf() < forest * 1.4 or not _ok_ground(x, z) or _within_clearance(x, z, pile_positions):
-			continue
-		var xf := Transform3D(Basis(Vector3.UP, _rng.randf() * TAU).scaled(Vector3.ONE * _rng.randf_range(2.2, 3.4)),
-			world.ground_point(x, z) + Vector3(0, -0.03, 0))
-		g_xf[_rng.randi() % grass.size()].append(xf)
 	var n_fern := int(CHUNK * CHUNK * FERN_DENSITY)
 	if region == &"meyra":
 		n_fern = int(CHUNK * CHUNK * 0.18)
@@ -235,9 +220,8 @@ func _chunk(key: Vector2i, origin: Vector2, grass: Array[Mesh], ferns: Array[Mes
 		f_xf[_rng.randi() % ferns.size()].append(xf)
 	var center := Vector3(origin.x + CHUNK * 0.5, 0, origin.y + CHUNK * 0.5)
 	_place_rocks(key, origin, root, pile_positions)
+	_place_wild_grass(key, origin, mask, root, pile_positions)
 	_place_groves(key, origin, region, species, tree_density, root, occupied)
-	for i in grass.size():
-		_multimesh(grass[i], g_xf[i], center, GRASS_RANGE, root)
 	for i in ferns.size():
 		_multimesh(ferns[i], f_xf[i], center, FERN_RANGE, root)
 	for i in _ground_prop_meshes.size():
@@ -311,32 +295,21 @@ func _place_groves(key: Vector2i, origin: Vector2, region: StringName, species: 
 	_multimesh(_log_mesh, xfs, Vector3(origin.x + CHUNK * 0.5, 0, origin.y + CHUNK * 0.5), ROCK_RANGE, root)
 
 
-## Mossy boulders in groups out in the meadows and forest, and stones along and in the river (half sunk in the
-## shallows). Own RNG, so nothing else in the chunk (trees, piles, save ids) shifts. Visual MultiMeshes; boulders
-## big enough to block the way get a collision box.
+## Mossy boulders and loose river stones. Preserve the scatter RNG and use stable IDs for depletion.
 func _place_rocks(key: Vector2i, origin: Vector2, root: Node3D, avoid: Array[Vector2]) -> void:
 	if _rock_meshes.is_empty():
 		for path: String in AssetLib.ROCKS[&"medium"] + AssetLib.ROCKS[&"big"]:
 			_rock_meshes.append(AssetLib.mesh(path))
 	var rng := RandomNumberGenerator.new()
 	rng.seed = int(hash(Vector3i(key.x, key.y, ForestWorld.SEED + 1313)))
-	var xfs: Array = []
-	for i in _rock_meshes.size():
-		xfs.append([])
-	var add := func(x: float, z: float, sc: float, sink: float, solid: bool) -> void:
+	var add := func(id: String, x: float, z: float, sc: float, sink: float, solid: bool) -> void:
 		if _within_clearance(x, z, avoid) or not world.is_scatter_site_free(x, z, 0.8):
 			return
 		var k := rng.randi() % _rock_meshes.size()
 		var basis := Basis(Vector3.UP, rng.randf() * TAU) * Basis(Vector3.RIGHT, rng.randf_range(-0.15, 0.15))
 		var at := world.ground_point(x, z) - Vector3(0, sink * sc, 0)
-		xfs[k].append(Transform3D(basis.scaled(Vector3.ONE * sc), at))
-		if solid:
-			var body := StaticBody3D.new()
-			body.collision_layer = 1
-			body.collision_mask = 0
-			body.position = at + Vector3(0, 0.35 * sc, 0)
-			Graybox.add_shape(body, Graybox.box_shape(Vector3(1.1, 0.7, 1.1) * sc), Vector3.ZERO)
-			root.add_child(body)
+		var kind := &"rock" if solid else &"loose_stone"
+		world.spawn_scattered_resource(root, id, kind, _rock_meshes[k], Transform3D(basis.scaled(Vector3.ONE * sc), at))
 	# groups of boulders
 	for g in rng.randi_range(1, 3):
 		var cx := origin.x + rng.randf_range(4.0, CHUNK - 4.0)
@@ -347,7 +320,8 @@ func _place_rocks(key: Vector2i, origin: Vector2, root: Node3D, avoid: Array[Vec
 			var a := rng.randf() * TAU
 			var d := rng.randf_range(0.0, 3.5)
 			var sc := rng.randf_range(0.35, 1.0) if r > 0 else rng.randf_range(0.9, 1.6)
-			add.call(cx + cos(a) * d, cz + sin(a) * d, sc, 0.15, sc > 0.8)
+			var id := "region_%d_%d_boulder_%d_%d" % [key.x, key.y, g, r]
+			add.call(id, cx + cos(a) * d, cz + sin(a) * d, sc, 0.15, sc > 0.8)
 	# the river: stones on the banks and in the shallows
 	for i in 160:
 		var x := origin.x + rng.randf() * CHUNK
@@ -355,11 +329,26 @@ func _place_rocks(key: Vector2i, origin: Vector2, root: Node3D, avoid: Array[Vec
 		var h := world.height_at(x, z)
 		if h < -0.9 or h > 1.0 or absf(x) > ForestWorld.PLAYABLE or absf(z) > ForestWorld.PLAYABLE:
 			continue
-		add.call(x, z, rng.randf_range(0.25, 0.9), 0.25, false)
-	var center := Vector3(origin.x + CHUNK * 0.5, 0, origin.y + CHUNK * 0.5)
-	for i in _rock_meshes.size():
-		if not (xfs[i] as Array).is_empty():
-			_multimesh(_rock_meshes[i], xfs[i], center, ROCK_RANGE, root)
+		var id := "region_%d_%d_river_stone_%d" % [key.x, key.y, i]
+		add.call(id, x, z, rng.randf_range(0.25, 0.9), 0.25, false)
+
+
+## Discrete tufts yield fibre. MeadowGrass still draws the decorative field.
+func _place_wild_grass(key: Vector2i, origin: Vector2, mask: Image, root: Node3D, avoid: Array[Vector2]) -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = int(hash(Vector3i(key.x, key.y, ForestWorld.SEED + 5819)))
+	for i in 18:
+		var x := origin.x + rng.randf() * CHUNK
+		var z := origin.y + rng.randf() * CHUNK
+		if not _ok_ground(x, z) or ForestWorld.tundra_at(x, z) > 0.6 \
+				or rng.randf() < _mask_at(mask, x, z) * 0.8 \
+				or not world.is_scatter_site_free(x, z, 0.65) or _within_clearance(x, z, avoid):
+			continue
+		var mesh := _grass_meshes[rng.randi() % _grass_meshes.size()]
+		var size := rng.randf_range(2.8, 3.6)
+		var basis := Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3.ONE * size)
+		var id := "region_%d_%d_wild_grass_%d" % [key.x, key.y, i]
+		world.spawn_scattered_resource(root, id, &"wild_grass", mesh, Transform3D(basis, world.ground_point(x, z)))
 
 
 ## Flint outcrops beyond the start valley (which has its own hand-placed flint): river banks everywhere, and the
@@ -482,7 +471,7 @@ func _multimesh(mesh: Mesh, xfs: Array, center: Vector3, vis_range: float, root:
 	mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if vis_range == ROCK_RANGE \
 		else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	var q := Settings.quality()
-	mmi.visibility_range_end = q.grass_range if vis_range == GRASS_RANGE else (ROCK_RANGE if vis_range == ROCK_RANGE else q.fern_range)
+	mmi.visibility_range_end = ROCK_RANGE if vis_range == ROCK_RANGE else q.fern_range
 	mmi.visibility_range_end_margin = 8.0
 	mmi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
 	root.add_child(mmi)
@@ -495,6 +484,8 @@ func _scatter_decor(mask: Image) -> void:
 		[AssetLib.ROCKS[&"medium"], 80, 0.5, 1.2, true],
 		[AssetLib.PLANTS[&"shrub"], 60, 2.0, 3.0, false],
 	]
+	var rock_paths: Array = AssetLib.ROCKS[&"medium"]
+	var rock_meshes: Dictionary = {}
 	for set: Array in sets:
 		var placed := 0
 		var tries := 0
@@ -507,11 +498,21 @@ func _scatter_decor(mask: Image) -> void:
 			if _rng.randf() > 0.25 + _mask_at(mask, x, z):
 				continue
 			var path: String = (set[0] as Array)[_rng.randi() % (set[0] as Array).size()]
-			var node := AssetLib.instance(path)
 			var sc := _rng.randf_range(set[2], set[3])
+			var yaw := _rng.randf() * TAU
+			var at := world.ground_point(x, z) + Vector3(0, -0.06, 0)
+			if path in rock_paths:
+				if not rock_meshes.has(path):
+					rock_meshes[path] = AssetLib.mesh(path)
+				var id := "scatter_rock_%03d" % placed
+				var xf := Transform3D(Basis(Vector3.UP, yaw).scaled(Vector3.ONE * sc), at)
+				world.spawn_scattered_resource(self, id, &"rock", rock_meshes[path], xf)
+				placed += 1
+				continue
+			var node := AssetLib.instance(path)
 			node.scale = Vector3.ONE * sc
-			node.rotation.y = _rng.randf() * TAU
-			node.position = world.ground_point(x, z) + Vector3(0, -0.06, 0)
+			node.rotation.y = yaw
+			node.position = at
 			if bool(set[4]):
 				var body := StaticBody3D.new()
 				body.collision_layer = 1

@@ -699,6 +699,17 @@ func spawn_region_resource(root: Node3D, id: String, kind: StringName, at: Vecto
 		n = ResourceNode.new()
 	n.setup(id, kind, size_scale, yaw)
 	n.position = ground_point(at.x, at.y)
+	_register_resource(root, n)
+
+
+func spawn_scattered_resource(root: Node3D, id: String, kind: StringName, mesh: Mesh, xf: Transform3D) -> void:
+	var n := ResourceNode.new()
+	n.setup_scattered(id, kind, mesh, xf)
+	_register_resource(root, n)
+
+
+func _register_resource(root: Node3D, n: ResourceNode) -> void:
+	var id := n.node_id
 	root.add_child(n)
 	_nodes[id] = n
 	if _pending_region_states.has(id):
@@ -709,6 +720,11 @@ func spawn_region_resource(root: Node3D, id: String, kind: StringName, at: Vecto
 func unload_region_resources(root: Node3D) -> void:
 	for child in root.get_children():
 		if child is ResourceNode:
+			if child.is_in_group("scattered_resource"):
+				if child.is_modified():
+					_pending_region_states[child.node_id] = child.save_state()
+				_nodes.erase(child.node_id)
+				continue
 			if child.is_modified():
 				# Keep felling, branch drops and regrowth running outside the loaded area.
 				child.reparent(nodes_root)
@@ -905,18 +921,25 @@ func _build_pois() -> void:
 			Vector3(-1.6 + i * 0.65, 1.1, -1.2), Vector3(-35, 0, 4.0 * (i % 3)))
 	Graybox.part_mat(camp, Graybox.cylinder(0.06, 0.06, 4.2, 7), wood, Vector3(0, 1.9, -0.3), Vector3(0, 0, 90))
 	Graybox.part_mat(camp, Graybox.box(Vector3(2.4, 1.8, 0.04)), Graybox.tex("Leather", Color(0.7, 0.62, 0.55), 0.8), Vector3(0.3, 1.25, -1.0), Vector3(-35, 0, 6))
+	var hearth_stones: Array[Mesh] = []
+	for path: String in AssetLib.ROCKS[&"small"]:
+		hearth_stones.append(AssetLib.mesh(path))
 	for i in 7:
 		var a := TAU * i / 7.0
-		var hs := AssetLib.instance(AssetLib.ROCKS[&"small"][i % 3])
-		hs.scale = Vector3.ONE * 2.2
-		hs.position = Vector3(2.5 + cos(a) * 0.5, 0.0, 1.5 + sin(a) * 0.5)
-		camp.add_child(hs)
+		var pos := Vector3(2.5 + cos(a) * 0.5, 0.0, 1.5 + sin(a) * 0.5)
+		var xf := Transform3D(Basis.IDENTITY.scaled(Vector3.ONE * 2.2), pos)
+		spawn_scattered_resource(camp, "old_camp_stone_%d" % i, &"loose_stone", hearth_stones[i % hearth_stones.size()], xf)
 	Graybox.part(camp, Graybox.cylinder(0.4, 0.4, 0.02, 10), Color(0.1, 0.1, 0.1), Vector3(2.5, 0.02, 1.5))
 	var stash := Stash.new()
 	stash.name = "Stash"
 	stash.position = Vector3(-1.2, 0.0, -0.4)
 	camp.add_child(stash)
 	_nodes[stash.save_id] = stash
+	for i in 5:
+		var a := TAU * i / 5.0
+		var pos := stash.position + Vector3(cos(a) * 0.75, 0.0, sin(a) * 0.75)
+		var xf := Transform3D(Basis.IDENTITY.scaled(Vector3.ONE * 2.4), pos)
+		spawn_scattered_resource(camp, "old_camp_stash_stone_%d" % i, &"loose_stone", hearth_stones[i % hearth_stones.size()], xf)
 
 	# Fresh kill on the near river bank.
 	var cz := 26.0

@@ -589,10 +589,22 @@ func _find_interactable(n: Node) -> Node:
 	return null
 
 
+func _stone_below_water() -> ResourceNode:
+	# Water has its own interaction surface. Check for a loose stone along the same sight line.
+	var query := PhysicsRayQueryParameters3D.create(ray.global_position, ray.to_global(ray.target_position), 1 | 4, [get_rid()])
+	var hit := get_world_3d().direct_space_state.intersect_ray(query)
+	var stone := hit.get("collider") as ResourceNode
+	return stone if stone and stone.kind == &"loose_stone" else null
+
+
 func _update_interaction(delta: float) -> void:
 	var target: Node = null
 	if input_enabled and not dead and not is_sleeping and not placement.active and not build.active and ray.is_colliding():
 		target = _find_interactable(ray.get_collider() as Node)
+		if target is WaterBody:
+			var stone := _stone_below_water()
+			if stone:
+				target = stone
 	look_target = target
 	look_options = target.get_interactions(self) if target else []
 	look_track = {}

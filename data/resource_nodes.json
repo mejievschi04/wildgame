@@ -74,6 +74,19 @@
 		"regrow": 0,
 		"blocking": false
 	},
+	"loose_stone": {
+		"hand_yield": {"stone": 1},
+		"capacity": 1,
+		"hold": 0.35,
+		"blocking": false
+	},
+	"wild_grass": {
+		"hand_yield": {"fiber": 1},
+		"capacity": 1,
+		"hold": 0.45,
+		"regrow": 1200,
+		"blocking": false
+	},
 	"mushroom": {
 		"hand_yield": {
 			"mushroom": 1
