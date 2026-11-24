@@ -7,7 +7,8 @@ signal caption(text: String)
 const NAMES := [
 	&"step_grass", &"step_wood", &"step_water", &"step_snow", &"rustle", &"chop", &"stone_knock", &"whoosh", &"pop",
 	&"craft", &"place", &"build", &"dismantle", &"collapse", &"door", &"eat", &"drink", &"fire_ignite",
-	&"tree_creak", &"tool_break", &"hurt", &"ui_click", &"axe_chop", &"axe_glance", &"fire_loop", &"wind_loop", &"birds_loop", &"crickets_loop", &"rain_loop",
+	&"tree_creak", &"tree_rush", &"tree_landing", &"tool_break", &"hurt", &"ui_click", &"axe_chop", &"axe_glance",
+	&"fire_loop", &"wind_loop", &"birds_loop", &"crickets_loop", &"rain_loop",
 ]
 const FILES := {
 	&"step_grass": [
@@ -84,11 +85,9 @@ const FILES := {
 		"res://assets/audio/SFX_Dismantle_002.wav",
 		"res://assets/audio/SFX_Dismantle_003.wav",
 	],
-	&"tree_creak": [
-		"res://assets/audio/SFX_Tree_Creak_001.wav",
-		"res://assets/audio/SFX_Tree_Creak_002.wav",
-		"res://assets/audio/SFX_Tree_Creak_003.wav",
-	],
+	&"tree_creak": ["res://assets/audio/SFX_Timber_Snap.wav"],
+	&"tree_rush": ["res://assets/audio/SFX_Timber_Rush.wav"],
+	&"tree_landing": ["res://assets/audio/SFX_Timber_Landing.wav"],
 	&"collapse": ["res://assets/audio/SFX_Collapse_001.wav"],
 	&"door": [
 		"res://assets/audio/SFX_Door_001.wav",
@@ -125,18 +124,18 @@ const FILES := {
 		"res://assets/audio/SFX_UI_Click_005.wav",
 	],
 	&"axe_chop": [
-		"res://assets/audio/SFX_Axe_Chop_000.wav",
-		"res://assets/audio/SFX_Axe_Chop_001.wav",
-		"res://assets/audio/SFX_Axe_Chop_002.wav",
-		"res://assets/audio/SFX_Axe_Chop_003.wav",
-		"res://assets/audio/SFX_Axe_Chop_004.wav",
+		"res://assets/audio/SFX_Axe_Field_001.wav",
+		"res://assets/audio/SFX_Axe_Field_002.wav",
+		"res://assets/audio/SFX_Axe_Field_003.wav",
+		"res://assets/audio/SFX_Axe_Field_004.wav",
+		"res://assets/audio/SFX_Axe_Field_005.wav",
 	],
 	&"axe_glance": [
 		"res://assets/audio/SFX_Axe_Glance_000.wav",
 		"res://assets/audio/SFX_Axe_Glance_001.wav",
 		"res://assets/audio/SFX_Axe_Glance_002.wav",
 	],
-	&"fire_loop": ["res://assets/audio/AMB_Campfire_Crackle.wav"],
+	&"fire_loop": ["res://assets/audio/AMB_Campfire_Field_Loop.wav"],
 	&"wind_loop": ["res://assets/audio/AMB_Wind_Loop.wav"],
 	&"birds_loop": ["res://assets/audio/AMB_Birds_Loop.wav"],
 	&"crickets_loop": ["res://assets/audio/AMB_Crickets_Loop.wav"],
@@ -145,6 +144,7 @@ const FILES := {
 const CAPTIONS := {
 	&"fire_ignite": "CAPTION_FIRE", &"tool_break": "CAPTION_TOOL_BREAK",
 	&"collapse": "CAPTION_COLLAPSE", &"hurt": "CAPTION_HURT", &"door": "CAPTION_DOOR",
+	&"tree_landing": "CAPTION_COLLAPSE",
 }
 ## Animal voices: dropped into ANIMAL_DIR as <species>_<event>[_NN].(wav|ogg|mp3), e.g. wolf_howl_01.ogg,
 ## mammoth_stamp.wav; "any_<event>" serves every species without its own. Found at start-up, no code changes needed.
@@ -187,7 +187,8 @@ func _ready() -> void:
 			var ambience := streams[n] as AudioStreamWAV
 			ambience.loop_mode = AudioStreamWAV.LOOP_FORWARD
 			ambience.loop_begin = 0
-			ambience.loop_end = ambience.data.size() / 2
+			# Imported WAVs may be compressed or stereo. The loop uses sample frames.
+			ambience.loop_end = roundi(ambience.get_length() * ambience.mix_rate)
 	_load_animal_sounds()
 	print_verbose("Sfx: prepared %d sounds in %d ms" % [streams.size(), Time.get_ticks_msec() - t0])
 	for i in POOL_3D:

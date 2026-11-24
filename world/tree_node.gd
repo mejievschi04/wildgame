@@ -11,6 +11,7 @@ extends ResourceNode
 enum Stage { STANDING, FALLING, FALLEN, CLEARED }
 const DEFAULT_CUT := 0.6
 const CREAK_TIME := 0.9
+const FALL_RUSH_LEAD := 0.94
 const FALL_DAMAGE := 45.0
 
 var stage: Stage = Stage.STANDING
@@ -32,6 +33,7 @@ var _notch: MeshInstance3D
 var _log_shape: CollisionShape3D
 var _creak_t := 0.0
 var _bounced := false
+var _fall_rush_played := false
 var _wobble := 0.0
 var _wobble_t := 0.0
 var _trunk_r := 0.3  # real bark radius at the cut height (from the model, see _trunk_at)
@@ -944,6 +946,7 @@ func _start_fall() -> void:
 	fall_angle = 0.0
 	fall_vel = 0.0
 	_bounced = false
+	_fall_rush_played = false
 	final_angle = _landing_angle()
 	Sfx.play(&"tree_creak", global_position + Vector3.UP * 3.0, 2.0, 0.0)
 	Events.toast(Loc.t("MSG_TIMBER"), &"warn")
@@ -978,6 +981,12 @@ func _physics_process(delta: float) -> void:
 		return
 	var length := maxf(height - cut_h, 2.0)
 	var alpha := 1.5 * 9.8 / length * sin(fall_angle)
+	if not _fall_rush_played and not _bounced:
+		var reach := fall_vel * FALL_RUSH_LEAD + 0.5 * alpha * FALL_RUSH_LEAD * FALL_RUSH_LEAD
+		if final_angle - fall_angle <= reach:
+			_fall_rush_played = true
+			var crown := global_position + Vector3.UP * cut_h + Basis(_axis(), fall_angle) * Vector3.UP * length * 0.7
+			Sfx.play(&"tree_rush", crown, 1.0, 0.0)
 	fall_vel += alpha * delta
 	fall_angle += fall_vel * delta
 	if fall_angle >= final_angle:
@@ -997,7 +1006,7 @@ func _impact() -> void:
 	var base := global_position + Vector3.UP * cut_h
 	var b := Basis(_axis(), final_angle)
 	var tip := base + b * Vector3(0, height - cut_h, 0)
-	Sfx.play(&"collapse", base.lerp(tip, 0.5))
+	Sfx.play(&"tree_landing", base.lerp(tip, 0.6), 2.0, 0.04)
 	for k in [0.35, 0.6, 0.85]:
 		_dust(base.lerp(tip, k), k > 0.5)
 	if world and world.player:

@@ -285,7 +285,7 @@ func _refresh() -> void:
 	_light.visible = lit
 	if _crackle and _crackle.is_inside_tree() and _crackle.playing != lit:
 		if lit:
-			_crackle.play(randf() * 2.0)
+			_crackle.play(randf() * _crackle.stream.get_length() if _crackle.stream else 0.0)
 		else:
 			_crackle.stop()
 	_flames.emitting = lit
