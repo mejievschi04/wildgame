@@ -9,7 +9,7 @@
 		"blocking": true,
 		"fell_hits": 6,
 		"branches": {
-			"stick": 3
+			"stick": 20
 		}
 	},
 	"tree_birch": {
@@ -22,7 +22,7 @@
 		"blocking": true,
 		"fell_hits": 5,
 		"branches": {
-			"stick": 2
+			"stick": 20
 		}
 	},
 	"rock": {

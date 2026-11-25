@@ -1242,14 +1242,21 @@ func _drop_branches() -> void:
 		return
 	var b := Basis(_axis(), final_angle)
 	var base := global_position + Vector3.UP * cut_h
+	var span := height - cut_h
+	var side := fall_dir.cross(Vector3.UP)
+	if side.length_squared() < 0.0001:
+		side = Vector3.RIGHT
+	side = side.normalized()
 	var branches: Dictionary = cfg.get("branches", {})
-	var i := 0
 	for id: String in branches.keys():
-		for n in int(branches[id]):
-			var at := base + b * Vector3(0, (height - cut_h) * (0.45 + 0.12 * i), 0)
-			at.y = world.height_at(at.x, at.z) + 0.6
-			world.spawn_pickup(ItemStack.new(StringName(id), 1), at + fall_dir.cross(Vector3.UP) * (0.8 if i % 2 == 0 else -0.8))
-			i += 1
+		var count := int(branches[id])
+		for n in count:
+			var along := 0.2 + 0.75 * (float(n) + 0.5) / float(maxi(count, 1))
+			var lateral := sin(float(n) * 2.399) * randf_range(0.35, 1.7)
+			var at := base + b * Vector3(0, span * along, 0)
+			at += side * lateral + fall_dir * randf_range(-0.35, 0.55)
+			at.y = world.height_at(at.x, at.z) + 0.35
+			world.spawn_pickup(ItemStack.new(StringName(id), 1), at)
 
 
 func _clear() -> void:
