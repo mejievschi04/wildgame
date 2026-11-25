@@ -29,6 +29,15 @@ var head: Node3D
 var camera: Camera3D
 var ray: RayCast3D
 var hand_root: Node3D
+## Between the camera and hand_root: the held item's sway, bob and sprint pose (hand_root keeps its own tweens).
+var view_root: Node3D
+var _sway := Vector2.ZERO       # recent look motion (radians), eased back to rest
+var _sway_v := Vector2.ZERO
+var _sprinting := false
+var _moving := false
+var _aim_w := 0.0
+var _aim_applied := false
+var body: PlayerBody
 ## Rest position of the held item / hand in camera space: low on the right, the fist in view.
 const HAND_REST := Vector3(0.33, -0.33, -0.6)
 var placement: PlacementController
@@ -101,11 +110,14 @@ func _ready() -> void:
 	ray.collide_with_areas = true
 	ray.add_exception(self)
 	camera.add_child(ray)
+	view_root = Node3D.new()
+	view_root.name = "ViewRoot"
+	camera.add_child(view_root)
 	hand_root = Node3D.new()
 	hand_root.position = HAND_REST
 	hand_root.rotation_degrees = Vector3(-8, -12, 0)
 	hand_root.scale = Vector3.ONE * 0.75
-	camera.add_child(hand_root)
+	view_root.add_child(hand_root)
 	_torch_light = OmniLight3D.new()
 	_torch_light.light_color = Color(1.0, 0.65, 0.35)
 	_torch_light.omni_range = 9.0
@@ -113,6 +125,9 @@ func _ready() -> void:
 	_torch_light.position = Vector3(0.0, 0.35, 0.0)
 	_torch_light.visible = false
 	hand_root.add_child(_torch_light)
+	body = PlayerBody.new()
+	add_child(body)
+	body.setup(self)
 	placement = PlacementController.new()
 	placement.player = self
 	add_child(placement)
@@ -202,6 +217,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _look(rel: Vector2) -> void:
 	var inv := -1.0 if bool(Settings.get_value("gameplay", "invert_y")) else 1.0
+	_sway += Vector2(rel.x, rel.y * inv)
 	rotate_y(-rel.x)
 	head.rotation.x = clampf(head.rotation.x - rel.y * inv, deg_to_rad(-88.0), deg_to_rad(88.0))
 
@@ -269,6 +285,8 @@ func _physics_process(delta: float) -> void:
 		_fall_speed = 0.0
 
 	_update_head(delta, move.length() > 0.1 and is_on_floor(), sprinting)
+	_sprinting = sprinting and move.length() > 0.1
+	_moving = move.length() > 0.1 and is_on_floor()
 	if not dead:
 		stats.tick(delta, survival_env(is_sleeping, sprinting and move.length() > 0.1))
 	_tick_torch(delta)
@@ -297,9 +315,9 @@ func _begin_charge() -> void:
 	_charge_t = 0.0
 	# Draw the weapon back while charging.
 	var st: Array = SWING_STYLES[_swing_style()]
-	var v := _hand_visual if _hand_visual else hand_root
-	var tw := create_tween()
-	tw.tween_property(v, "rotation_degrees", (st[0] as Vector3) * 0.6, HEAVY_CHARGE).set_trans(Tween.TRANS_SINE)
+	_swing_tw = _new_swing_tween()
+	_swing_tw.tween_property(self, "swing_rot", (st[0] as Vector3) * 0.6, HEAVY_CHARGE).set_trans(Tween.TRANS_SINE)
+	_swing_tw.parallel().tween_property(self, "swing_pos", (st[1] as Vector3) * 0.6, HEAVY_CHARGE).set_trans(Tween.TRANS_SINE)
 
 
 func _release_charge() -> void:
@@ -433,6 +451,7 @@ var drawing := false
 var _draw_t := 0.0
 var _draw_w := 0.0  # eased draw (0..1): nock offset and bow blend shape
 var _nocked: Node3D
+var _renock_t := 0.0
 
 
 func _hand_is(id: StringName) -> bool:
@@ -453,7 +472,7 @@ func _begin_draw() -> void:
 	drawing = true
 	aiming = true
 	_draw_t = 0.0
-	if _hand_visual:
+	if _hand_visual and (_nocked == null or not is_instance_valid(_nocked)):
 		_nocked = HandModels.nock_arrow(_hand_visual)
 
 
@@ -476,9 +495,9 @@ func _cancel_draw() -> void:
 	drawing = false
 	_draw_t = 0.0
 	aiming = Input.is_action_pressed("secondary_action") and _hand_is(&"bow")
+	# let down: the arrow stays on the string (as the bow is carried), back at rest
 	if _nocked and is_instance_valid(_nocked):
-		_nocked.queue_free()
-	_nocked = null
+		_nocked.position.z = HandModels.NOCK.z
 	if _hand_visual and is_instance_valid(_hand_visual) and _draw_w > 0.0:
 		var bow := _hand_visual
 		create_tween().tween_method(func(w: float) -> void:
@@ -492,6 +511,10 @@ func _release_draw() -> void:
 	_cancel_draw()
 	if k < BOW_MIN_DRAW or not _hand_is(&"bow") or not inventory.remove_item(&"arrow", 1):
 		return
+	if _nocked and is_instance_valid(_nocked):
+		_nocked.queue_free()  # it is the one flying now; a new one is taken from the quiver shortly
+	_nocked = null
+	_renock_t = 0.45
 	var arrow := ThrownSpear.new()
 	world.pickups_root.add_child(arrow)
 	var data := ItemDB.get_item(&"arrow")
@@ -559,6 +582,76 @@ func _update_head(delta: float, moving: bool, sprinting: bool) -> void:
 			_footstep(sprinting)
 		_last_step_sign = sgn
 	head.position.y = lerpf(head.position.y, target + bob, 1.0 - exp(-12.0 * delta))
+
+
+## The held item lives: it lags a little behind the look and swings back (sway), rises and falls with the steps
+## (bob, a figure of eight in time with the head), drops and turns aside while sprinting, and blends into its
+## aiming pose (HandModels.AIM). Reduce-motion keeps it still.
+func _process(delta: float) -> void:
+	if view_root == null:
+		return
+	var calm := 0.0 if bool(Settings.get_value("accessibility", "reduce_motion")) else 1.0
+	# look sway: a spring pulling the lag back to zero
+	var target := -_sway * 0.9
+	_sway = _sway.lerp(Vector2.ZERO, 1.0 - exp(-14.0 * delta))
+	_sway_v = _sway_v.lerp(target, 1.0 - exp(-10.0 * delta))
+	var sway := _sway_v.clamp(Vector2(-0.12, -0.1), Vector2(0.12, 0.1)) * calm
+	var steady := 0.35 if aiming else 1.0
+	var bob := Vector3.ZERO
+	if _moving:
+		var k := (1.6 if _sprinting else 1.0) * steady
+		bob = Vector3(sin(_bob_t * 0.5) * 0.014, -absf(cos(_bob_t * 0.5)) * 0.012, 0.0) * k * calm
+	var sprint_w := 1.0 if _sprinting and not aiming and not _swinging else 0.0
+	var pos := Vector3(sway.x * 0.12, -sway.y * 0.12, 0.0) * steady + bob + Vector3(0.03, -0.07, 0.04) * sprint_w
+	var rot := Vector3(-sway.y * 18.0, -sway.x * 22.0, sway.x * 10.0) * steady \
+		+ Vector3(-14.0, 28.0, -8.0) * sprint_w * calm
+	view_root.position = view_root.position.lerp(pos, 1.0 - exp(-12.0 * delta))
+	view_root.rotation_degrees = view_root.rotation_degrees.lerp(rot, 1.0 - exp(-9.0 * delta))
+	_apply_swing_pose()
+	if _hand_item_id == &"bow":
+		_place_bow(delta)
+		return
+	# aiming pose of the held item's model
+	_aim_w = move_toward(_aim_w, 1.0 if aiming and not drawing else 0.0, delta / 0.18)
+	if _hand_visual and is_instance_valid(_hand_visual) and HandModels.AIM.has(_hand_item_id) \
+			and (_aim_w > 0.0 or _aim_applied):
+		_aim_applied = _aim_w > 0.0
+		var m := _hand_visual.get_node_or_null("Model") as Node3D
+		if m:
+			var hold: Array = HandModels.HOLD.get(_hand_item_id, [Vector3.ZERO, Vector3.ZERO, 1.0])
+			var aim: Array = HandModels.AIM[_hand_item_id]
+			var e := _aim_w * _aim_w * (3.0 - 2.0 * _aim_w)
+			m.position = (hold[0] as Vector3).lerp(aim[0], e)
+			m.rotation_degrees = (hold[1] as Vector3).lerp(aim[1], e)
+
+
+## The bow in the view: raised before the eye while aiming or drawing, lowered on the left otherwise. The hands
+## follow: the bow hand's forearm toward the lower left, the draw hand's back toward the cheek on the right.
+func _place_bow(delta: float) -> void:
+	if _hand_visual == null or not is_instance_valid(_hand_visual):
+		return
+	var m := _hand_visual.get_node_or_null("Model") as Node3D
+	if m == null:
+		return
+	_aim_w = move_toward(_aim_w, 1.0 if aiming or drawing else 0.0, delta / 0.22)
+	# carried with an arrow on the string while there are arrows (as in Far Cry Primal)
+	_renock_t = maxf(_renock_t - delta, 0.0)
+	var has_arrow := inventory.count_of(&"arrow") > 0
+	if (_nocked == null or not is_instance_valid(_nocked)) and has_arrow and _renock_t <= 0.0:
+		_nocked = HandModels.nock_arrow(_hand_visual)
+	elif _nocked and is_instance_valid(_nocked) and not has_arrow and not drawing:
+		_nocked.queue_free()
+		_nocked = null
+	var view := HandModels.bow_view_transform(_aim_w, _draw_w)
+	m.transform = (hand_root.transform * _hand_visual.transform).affine_inverse() * view
+	var left := m.get_node_or_null("HandL") as Node3D
+	if left:
+		left.basis = Basis(Vector3.UP, deg_to_rad(HandModels.forearm_yaw_in(view.basis.orthonormalized(),
+			Vector3(-0.35, -0.75, 0.55)))).scaled(Vector3.ONE * HandModels.BOW_HAND_SCALE / HandModels.BOW_VIEW_SCALE)
+	var draw := m.get_node_or_null("Nock/DrawHand") as Node3D
+	if draw:
+		draw.basis = Basis(Vector3.UP, deg_to_rad(HandModels.forearm_yaw_in(view.basis.orthonormalized(),
+			Vector3(0.55, -0.35, 0.75)))).scaled(Vector3.ONE * HandModels.BOW_HAND_SCALE / HandModels.BOW_VIEW_SCALE)
 
 
 func _footstep(sprinting: bool) -> void:
@@ -657,17 +750,23 @@ func give_item(id: StringName, count: int, durability: int = -1) -> void:
 			world.spawn_pickup(ItemStack.new(id, leftover, durability), global_position + Vector3(0, 0.6, 0) - transform.basis.z * 0.6)
 
 
-## Swing styles: [windup rot, windup pos, strike rot, strike pos, windup s, strike s, recover s]
+## Swing styles: [windup rot, windup pos, strike rot, strike pos, windup s, strike s, recover s]. Rotations turn
+## the held item and the hand round the elbow (HandModels.swing_pivot), as an arm does: the forearm stays rooted
+## in the corner of the view and only small shifts of the whole arm are added on top.
 const SWING_STYLES := {
-	# Over the right shoulder, then a diagonal strike that brings the head to the crosshair.
-	&"chop": [Vector3(38, -18, -28), Vector3(0.06, 0.3, 0.14), Vector3(-78, 14, 38), Vector3(-0.32, 0.04, -0.34), 0.26, 0.1, 0.34],
-	&"slash": [Vector3(20, 35, 20), Vector3(0.1, 0.06, 0.05), Vector3(-30, -45, -20), Vector3(-0.14, -0.04, -0.12), 0.14, 0.08, 0.22],
-	&"thrust": [Vector3(6, 0, 0), Vector3(0.0, -0.02, 0.22), Vector3(-4, 0, 0), Vector3(0.0, 0.03, -0.42), 0.22, 0.09, 0.3],
+	# Raised over the right shoulder, then a diagonal blow down and in that brings the head to the crosshair.
+	&"chop": [Vector3(42, -12, -18), Vector3(0.03, 0.05, 0.05), Vector3(-10, 30, 22), Vector3(-0.05, -0.01, -0.06), 0.26, 0.1, 0.34],
+	&"slash": [Vector3(14, 32, 14), Vector3(0.05, 0.03, 0.03), Vector3(-18, -38, -14), Vector3(-0.06, -0.02, -0.05), 0.14, 0.08, 0.22],
+	&"thrust": [Vector3(6, 0, 0), Vector3(0.0, -0.02, 0.16), Vector3(-4, 0, 0), Vector3(0.0, 0.03, -0.24), 0.22, 0.09, 0.3],
 	&"punch": [Vector3(10, 0, 0), Vector3(0.0, -0.05, 0.1), Vector3(-10, 0, 0), Vector3(0.0, 0.0, -0.25), 0.12, 0.07, 0.18],
 }
 
 var _swinging := false
 var _heavy := false
+## Current swing pose of the held item: rotation (degrees, round the elbow) and shift, applied every frame.
+var swing_rot := Vector3.ZERO
+var swing_pos := Vector3.ZERO
+var _swing_tw: Tween
 
 
 func _swing_style() -> StringName:
@@ -681,46 +780,80 @@ func _swing_style() -> StringName:
 	return &"punch"
 
 
-## Phased swing: wind-up → fast strike → impact (hit resolved NOW, not on click) → recoil → recover.
+## One tween drives the swing pose at a time (a new phase replaces the old one, they never fight).
+func _new_swing_tween() -> Tween:
+	if _swing_tw and _swing_tw.is_valid():
+		_swing_tw.kill()
+	_swing_tw = create_tween()
+	return _swing_tw
+
+
+## The held item turned round the elbow by swing_rot and shifted by swing_pos.
+func _apply_swing_pose() -> void:
+	if _hand_visual == null or not is_instance_valid(_hand_visual):
+		return
+	var pivot := HandModels.swing_pivot(_hand_item_id)
+	var b := Basis.from_euler(swing_rot * (PI / 180.0))
+	_hand_visual.transform = Transform3D(b, pivot - b * pivot + swing_pos)
+
+
+## Phased swing: wind-up → fast strike → impact (hit resolved NOW, not on click) → the blade stops in what it hit
+## and rebounds a little, or follows through past it on a miss → recover.
 func swing(heavy: bool = false) -> void:
 	if _swing_cd > 0.0 or dead or _swinging:
 		return
 	_heavy = heavy
 	if not stats.use_stamina(SWING_COST * (1.8 if heavy else 1.0)):
 		Events.toast(Loc.t("MSG_NO_STAMINA"), &"warn")
+		var back := _new_swing_tween()  # lower a weapon drawn back while charging
+		back.tween_property(self, "swing_rot", Vector3.ZERO, 0.2).set_trans(Tween.TRANS_SINE)
+		back.parallel().tween_property(self, "swing_pos", Vector3.ZERO, 0.2).set_trans(Tween.TRANS_SINE)
 		return
 	var st: Array = SWING_STYLES[_swing_style()]
 	var windup: float = st[4] * (0.6 if heavy else 1.0)  # already drawn back while charging
 	var strike: float = st[5] * (1.15 if heavy else 1.0)
 	var recover: float = st[6] * (1.3 if heavy else 1.0)
-	_swing_cd = windup + strike + recover + 0.05
+	_swing_cd = windup + strike + recover + 0.12
 	_swinging = true
 	_noise_burst = maxf(_noise_burst, 0.7)
-	var v := _hand_visual if _hand_visual else hand_root
-	var rest_rot := Vector3.ZERO if _hand_visual else hand_root.rotation_degrees
-	var rest_pos := Vector3.ZERO if _hand_visual else hand_root.position
-	var tw := create_tween()
-	tw.tween_property(v, "rotation_degrees", rest_rot + st[0], windup).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
-	tw.parallel().tween_property(v, "position", rest_pos + st[1], windup).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	var tw := _new_swing_tween()
+	tw.tween_property(self, "swing_rot", st[0], windup).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	tw.parallel().tween_property(self, "swing_pos", st[1], windup).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 	tw.tween_callback(func() -> void: Sfx.play(&"whoosh", null, -8.0, 0.1))
-	tw.tween_property(v, "rotation_degrees", rest_rot + st[2], strike).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
-	tw.parallel().tween_property(v, "position", rest_pos + st[3], strike).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tw.tween_property(self, "swing_rot", st[2], strike).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tw.parallel().tween_property(self, "swing_pos", st[3], strike).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 	tw.tween_callback(func() -> void:
-		if _resolve_swing():
-			_kick(v, rest_rot, st)
-		else:
+		var hit := _resolve_swing()
+		if not hit:
 			var held := inventory.hand.get_data() if inventory.hand else null
 			if held and held.has_tag(&"tool_axe"):
-				Sfx.play(&"axe_glance", global_position + Vector3.UP, -8.0, 0.05))
-	tw.tween_property(v, "rotation_degrees", rest_rot, recover).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-	tw.parallel().tween_property(v, "position", rest_pos, recover).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+				Sfx.play(&"axe_glance", global_position + Vector3.UP, -8.0, 0.05)
+		_after_impact(hit, st, recover))
+
+
+## After the blow: on a hit the tool stops dead in the wood or body, jolts back a touch and is pulled free; on a miss
+## the arm carries on past the target before it comes back.
+func _after_impact(hit: bool, st: Array, recover: float) -> void:
+	var strike_rot: Vector3 = st[2]
+	var strike_pos: Vector3 = st[3]
+	var windup_rot: Vector3 = st[0]
+	var tw := _new_swing_tween()
+	if hit:
+		var back := strike_rot.lerp(windup_rot, 0.07)
+		tw.tween_property(self, "swing_rot", back, 0.05).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+		tw.tween_interval(0.07)
+		_kick()
+	else:
+		var through := strike_rot + (strike_rot - windup_rot) * 0.18
+		tw.tween_property(self, "swing_rot", through, 0.08).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+		tw.parallel().tween_property(self, "swing_pos", strike_pos * 1.15, 0.08).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	tw.tween_property(self, "swing_rot", Vector3.ZERO, recover).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	tw.parallel().tween_property(self, "swing_pos", Vector3.ZERO, recover).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	tw.tween_callback(func() -> void: _swinging = false)
 
 
-## Impact: the tool stops in the wood/body — small rebound and a camera nudge.
-func _kick(v: Node3D, rest_rot: Vector3, st: Array) -> void:
-	var tw := create_tween()
-	tw.tween_property(v, "rotation_degrees", rest_rot + (st[2] as Vector3) * 0.82, 0.05)
+## Impact: a camera nudge as the blow lands.
+func _kick() -> void:
 	if not bool(Settings.get_value("accessibility", "reduce_motion")):
 		_shake = maxf(_shake, 0.25)
 		var base_pitch := head.rotation.x
@@ -878,10 +1011,14 @@ func _refresh_hand() -> void:
 		_hand_visual.queue_free()
 		_hand_visual = null
 	_torch_light.visible = id == &"torch"
+	# the held item draws its own hand: the body's arm makes way (the bow is held in the left hand)
+	if body:
+		body.set_hidden_arms(id != &"" and id not in HandModels.NO_HAND or id == &"bow", id == &"bow")
 	if id == &"":
 		return
 	_hand_visual = HandModels.build(id)
 	hand_root.add_child(_hand_visual)
+	_apply_swing_pose()
 
 
 func _tick_torch(delta: float) -> void:

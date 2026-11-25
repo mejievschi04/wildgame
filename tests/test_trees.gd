@@ -59,6 +59,15 @@ func test_fall_is_physical_and_lands() -> void:
 	check(t.limbed(), "limbing takes %d blows" % TreeNode.LIMB_HITS)
 	check(tree.get_nodes_in_group("pickup").size() >= before + 2, "the branches drop as sticks")
 	check(t._bark_mi.mesh.get_surface_count() == 1, "leaving a bare trunk")
+	var ghost := t.find_child("LoppedCrown", true, false) as MeshInstance3D
+	check(ghost != null, "the lopped crown fades where it lies")
+	if ghost:
+		check(ghost.mesh.get_surface_count() < t._bark_orig.get_surface_count() + 1 and ghost.mesh.get_aabb().size.y > 0.0, "only the crown and twigs, not a copy of the tree")
+		var at := ghost.global_position
+		for i in 30:
+			await tree.physics_frame
+		check(not is_instance_valid(ghost) or ghost.global_position.distance_to(at) < 0.01, "the crown does not sink into the ground")
+	check(t._stump_bark.mesh != null and t._stump_bark.visible, "the stump is the model's own base")
 	await _teardown(s)
 
 
@@ -162,14 +171,26 @@ func test_chop_effects_sit_on_the_real_bark() -> void:
 	var axe := _axe(p)
 	t.on_hit(p, axe)
 	t.on_hit(p, axe)
-	# The cut is real geometry now: the model's lower trunk is removed and a carved section takes its place.
-	check(t._cut_mode and t._cut_upper.mesh.get_surface_count() == 2, "carved section: bark + fresh-wood faces")
+	# The cut is carved into the model's own bark: nothing of it is left inside the notch wedge, the rest is intact.
+	check(t._cut_mode and t._cut_upper.mesh.get_surface_count() == 1, "fresh-wood faces close the notch")
 	var d2 := t.notch_depth()
 	check(d2 > 0.0 and d2 < t._trunk_r, "notch bites into the trunk (%.2f of r %.2f)" % [d2, t._trunk_r])
+	var root := Vector3(t._trunk_c.x, t.cut_h, t._trunk_c.y) + t._toward() * t._notch_off(d2)
+	var inside := 0
+	var above := 0
+	var bark: PackedVector3Array = t._bark_mi.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+	for v: Vector3 in bark:
+		var q := t._mesh_xf * v
+		if q.y > t.cut_h + 0.005 and (q - root).dot(t._slope_normal()) > 0.005 and q.y < t.cut_h + d2 * TreeNode.NOTCH_SLOPE:
+			inside += 1
+		if q.y > t.cut_h + 1.0:
+			above += 1
+	eq(inside, 0, "no bark left inside the notch")
+	check(above > 0 and t._bark_mi.mesh.get_surface_count() == t._bark_orig.get_surface_count(), "the rest of the tree is the original model")
 	var lowest := INF
-	for v: Vector3 in t._bark_mi.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]:
-		lowest = minf(lowest, v.y)
-	check(lowest >= (t._clip_top + TreeNode.SINK) / t._size - 0.001, "original trunk cut away below the section")
+	for v: Vector3 in bark:
+		lowest = minf(lowest, (t._mesh_xf * v).y)
+	check(lowest < t.cut_h - 0.2, "the trunk below the cut is still the model's own (no seam above the notch)")
 	t.on_hit(p, axe)
 	check(t.notch_depth() > d2, "each blow deepens the notch")
 	check(t._debris.get_child_count() == 9, "chips pile up at the foot of the tree (%d)" % t._debris.get_child_count())

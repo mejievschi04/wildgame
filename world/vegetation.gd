@@ -121,7 +121,7 @@ func _mask_at(mask: Image, x: float, z: float) -> float:
 func _ok_ground(x: float, z: float) -> bool:
 	var h := world.height_at(x, z)
 	return h > 0.55 and h < 125.0 and world.normal_at(x, z).y > 0.86 \
-		and absf(x) < ForestWorld.PLAYABLE and absf(z) < ForestWorld.PLAYABLE
+		and absf(x) < ForestWorld.PLAYABLE and absf(z) < ForestWorld.PLAYABLE and world.creek_distance(x, z) > 4.5 and not world.in_cave_cut(x, z, 2.0)
 
 
 func _chunk(key: Vector2i, origin: Vector2, ferns: Array[Mesh], mask: Image, root: Node3D) -> void:
@@ -158,7 +158,7 @@ func _chunk(key: Vector2i, origin: Vector2, ferns: Array[Mesh], mask: Image, roo
 	for i in tree_count:
 		var x := origin.x + _rng.randf() * CHUNK
 		var z := origin.y + _rng.randf() * CHUNK
-		if Vector2(x, z).distance_to(ForestWorld.SPAWN) < 135.0 or world.river_distance(x, z) < 20.0:
+		if Vector2(x, z).distance_to(ForestWorld.SPAWN) < 135.0 or world.water_distance(x, z) < 20.0:
 			continue
 		if not _ok_tree_ground(x, z):
 			continue
@@ -198,7 +198,7 @@ func _chunk(key: Vector2i, origin: Vector2, ferns: Array[Mesh], mask: Image, roo
 	for i in prop_count:
 		var x := origin.x + _rng.randf() * CHUNK
 		var z := origin.y + _rng.randf() * CHUNK
-		if world.river_distance(x, z) < 11.0 or not _ok_ground(x, z) or _within_clearance(x, z, pile_positions):
+		if world.water_distance(x, z) < 11.0 or not _ok_ground(x, z) or _within_clearance(x, z, pile_positions):
 			continue
 		var index := _rng.randi_range(0, _ground_prop_meshes.size() - 1)
 		var scale := _rng.randf_range(0.8, 1.5)
@@ -244,7 +244,7 @@ func _place_groves(key: Vector2i, origin: Vector2, region: StringName, species: 
 		var x := origin.x + rng.randf() * CHUNK
 		var z := origin.y + rng.randf() * CHUNK
 		var g := FarForest.grove_at(x, z)
-		if rng.randf() > g * g or Vector2(x, z).distance_to(ForestWorld.SPAWN) < 135.0 or world.river_distance(x, z) < 20.0:
+		if rng.randf() > g * g or Vector2(x, z).distance_to(ForestWorld.SPAWN) < 135.0 or world.water_distance(x, z) < 20.0:
 			continue
 		if not _ok_tree_ground(x, z) or not world.is_scatter_site_free(x, z, 1.0):
 			continue
@@ -378,7 +378,7 @@ func _place_flint(key: Vector2i, origin: Vector2, region: StringName, root: Node
 			var at := origin + Vector2(r.randf_range(2.0, CHUNK - 2.0), r.randf_range(2.0, CHUNK - 2.0))
 			if absf(at.x) >= ForestWorld.PLAYABLE or absf(at.y) >= ForestWorld.PLAYABLE:
 				continue
-			var rd := world.river_distance(at.x, at.y)
+			var rd := world.water_distance(at.x, at.y)
 			if want == "river" and (rd < 6.0 or rd > 24.0):
 				continue
 			if world.height_at(at.x, at.y) <= 0.6 or world.normal_at(at.x, at.y).y < (0.86 if want == "river" else 0.78):
@@ -426,7 +426,7 @@ func _place_plants(key: Vector2i, origin: Vector2, region: StringName, root: Nod
 			var at := origin + Vector2(r.randf_range(2.0, CHUNK - 2.0), r.randf_range(2.0, CHUNK - 2.0))
 			if absf(at.x) >= ForestWorld.PLAYABLE or absf(at.y) >= ForestWorld.PLAYABLE:
 				continue
-			var rd := world.river_distance(at.x, at.y)
+			var rd := world.water_distance(at.x, at.y)
 			var bank := want in [&"reeds", &"clay"]
 			if (bank and (rd < 9.0 or rd > 22.0)) or (not bank and rd < 20.0):
 				continue
@@ -452,7 +452,7 @@ func _within_clearance(x: float, z: float, positions: Array[Vector2]) -> bool:
 func _ok_tree_ground(x: float, z: float) -> bool:
 	var h := world.height_at(x, z)
 	return h > 1.5 and h < 135.0 and world.normal_at(x, z).y > 0.72 \
-		and absf(x) < ForestWorld.PLAYABLE and absf(z) < ForestWorld.PLAYABLE
+		and absf(x) < ForestWorld.PLAYABLE and absf(z) < ForestWorld.PLAYABLE and world.creek_distance(x, z) > 5.5 and not world.in_cave_cut(x, z, 4.0)
 
 
 func _multimesh(mesh: Mesh, xfs: Array, center: Vector3, vis_range: float, root: Node3D) -> void:

@@ -11,7 +11,7 @@ const FOG_RES := 128  # exploration grid
 const REVEAL_RADIUS := 110.0
 const START_REVEAL := 170.0
 const CONTOUR := 12.0  # metres between contour lines
-const CACHE_VERSION := 2
+const CACHE_VERSION := 3
 
 
 static func extent() -> float:
@@ -30,7 +30,7 @@ static func from_uv(uv: Vector2) -> Vector2:
 
 
 static func cache_path() -> String:
-	return "user://map_%d_v%d.png" % [ForestWorld.SEED, CACHE_VERSION]
+	return "user://map_%d_v%d_%08x.png" % [ForestWorld.SEED, CACHE_VERSION, ForestWorld.bake_hash & 0xFFFFFFFF]
 
 
 ## Returns the cached map, or null when it still has to be painted.
@@ -43,7 +43,8 @@ static func cached() -> Image:
 
 
 ## Paints the map from the world's terrain grid (safe to call from a worker thread: only reads arrays).
-static func paint(heights: PackedFloat32Array, grid: int, size: float, forest: Image, water_level: float) -> Image:
+static func paint(heights: PackedFloat32Array, grid: int, size: float, forest: Image, water_level: float,
+		creeks: Array = []) -> Image:
 	var img := Image.create(RES, RES, false, Image.FORMAT_RGB8)
 	var e := extent()
 	var row := grid + 1
@@ -108,6 +109,22 @@ static func paint(heights: PackedFloat32Array, grid: int, size: float, forest: I
 			var g := paper_noise.get_noise_2d(x, y)
 			c = c.lightened(maxf(g, 0.0) * 0.08).darkened(maxf(-g, 0.0) * 0.12)
 			img.set_pixel(x, y, c)
+	# Creeks: thin ink-blue lines, widening downstream.
+	for pts: PackedVector3Array in creeks:
+		for i in pts.size() - 1:
+			var a := to_uv(pts[i].x, pts[i].z) * RES
+			var b := to_uv(pts[i + 1].x, pts[i + 1].z) * RES
+			var r := lerpf(0.6, 1.4, float(i) / pts.size())
+			var steps := maxi(ceili(a.distance_to(b) * 2.0), 1)
+			for k in steps + 1:
+				var p := a.lerp(b, float(k) / steps)
+				for oy in range(floori(p.y - r), ceili(p.y + r) + 1):
+					for ox in range(floori(p.x - r), ceili(p.x + r) + 1):
+						if ox < 0 or oy < 0 or ox >= RES or oy >= RES:
+							continue
+						var cover := clampf(r + 0.5 - Vector2(ox + 0.5, oy + 0.5).distance_to(p), 0.0, 1.0)
+						if cover > 0.0:
+							img.set_pixel(ox, oy, img.get_pixel(ox, oy).lerp(water.darkened(0.15), cover * 0.85))
 	# A worn, darker rim like the edge of a stretched hide.
 	for y in RES:
 		for x in RES:

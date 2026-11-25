@@ -13,10 +13,15 @@ uniform sampler2D forest_mask : hint_default_black, filter_linear;
 uniform sampler2D grove_tex : hint_default_black, filter_linear;  // FarForest.grove_at: stands of trees
 uniform sampler2D biome_tint : source_color, filter_linear;
 uniform sampler2D macro_noise : hint_default_white, filter_linear_mipmap, repeat_enable;
+// tools/gen_terrain.py: R creek bed · G runoff gullies · B sediment
+uniform sampler2D terrain_masks : hint_default_black, filter_linear;
 uniform float map_size = 260.0;
 uniform float tile = 0.3;
 uniform float water_level = 0.0;
 uniform float rain_wetness = 0.0;
+// TerrainLod's far mesh: drop its pixels inside the window the full-resolution chunks cover (xz min, xz max)
+uniform bool far_mesh = false;
+uniform vec4 hole = vec4(0.0);
 
 varying vec3 wpos;
 varying vec3 wnrm;
@@ -27,6 +32,9 @@ void vertex() {
 }
 
 void fragment() {
+	if (far_mesh && wpos.x > hole.x && wpos.z > hole.y && wpos.x < hole.z && wpos.z < hole.w) {
+		discard;
+	}
 	float n1 = texture(macro_noise, wpos.xz * 0.013).r;
 	float n2 = texture(macro_noise, wpos.xz * 0.07 + vec2(0.37, 0.11)).r;
 	float forest = max(texture(forest_mask, wpos.xz / map_size + 0.5).r,
@@ -38,10 +46,15 @@ void fragment() {
 	float grass = clamp(1.0 - forest * 1.45 + (n1 - 0.5) * 0.42, 0.0, 1.0);
 	w[0] = 1.0 - grass;
 	w[1] = grass;
-	float mud = 1.0 - smoothstep(0.25, 1.3, h + (n2 - 0.5) * 0.7);
-	float pebbles = 1.0 - smoothstep(-0.75, -0.2, h + (n2 - 0.5) * 0.3);
-	float rock = max(smoothstep(0.38, 0.62, slope + (n2 - 0.5) * 0.06), smoothstep(76.0, 102.0, h + n1 * 3.0));
-	float snow = smoothstep(126.0, 154.0, h + n1 * 4.0) * (1.0 - smoothstep(0.4, 0.58, slope));
+	vec4 tm = texture(terrain_masks, wpos.xz / map_size + 0.5);
+	float creek = tm.r + (n2 - 0.5) * 0.25;
+	float mud = max(1.0 - smoothstep(0.25, 1.3, h + (n2 - 0.5) * 0.7), smoothstep(0.15, 0.45, creek));
+	float pebbles = max(1.0 - smoothstep(-0.75, -0.2, h + (n2 - 0.5) * 0.3), smoothstep(0.55, 0.85, creek));
+	// steep ground and the scree of eroded gullies are bare rock; the highest summits too
+	float gully = smoothstep(0.45, 0.85, tm.g) * smoothstep(0.12, 0.3, slope) * smoothstep(25.0, 60.0, h);
+	float rock = max(max(smoothstep(0.22, 0.42, slope + (n2 - 0.5) * 0.06), gully),
+		smoothstep(128.0, 160.0, h + n1 * 6.0));
+	float snow = smoothstep(165.0, 195.0, h + n1 * 6.0) * (1.0 - smoothstep(0.4, 0.58, slope));
 	// Apply in priority order (each layer covers the ones below it).
 	for (int i = 0; i < 2; i++) { w[i] *= (1.0 - mud); }
 	w[2] = mud * (1.0 - pebbles);
@@ -93,7 +106,7 @@ void fragment() {
 	vec3 biome = texture(biome_tint, wpos.xz / map_size + 0.5).rgb;
 	alb *= mix(0.96, 1.04, n1) * mix(vec3(1.0), biome, 0.14);
 	// Wet darkening near the waterline.
-	float wet = max(1.0 - smoothstep(-0.1, 0.5, h), rain_wetness * 0.75);
+	float wet = max(max(1.0 - smoothstep(-0.1, 0.5, h), smoothstep(0.35, 0.8, tm.r) * 0.85), rain_wetness * 0.75);
 	// ---- climate bands
 	float tn = tundra_at(wpos.xz);
 	float jg = jungle_at(wpos.xz);

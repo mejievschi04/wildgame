@@ -311,27 +311,33 @@ func _lens(a: float, half_angle: float, h: float, r: float, row: int) -> Vector3
 
 
 # ---------------------------------------------------------------- the real cut
-# Like chopping in The Forest: every blow takes a chunk out of the trunk. Once a tree is first hit, its model's
-# lower trunk is cut out of a per-tree copy of its mesh (_clipped_mesh) and replaced by a procedural section built
-# from the measured trunk profile, with the original bark texture and UVs. A V notch is carved into it on the
-# chopper's side: a flat lower cut and a sloped upper cut that deepen with each blow, fresh wood on the faces.
-# When it goes over, the stump keeps a flat cut top and the falling trunk carries a cut butt end.
+# Every blow takes a chunk out of the tree's own trunk. The model's bark mesh is carved by the notch's two planes
+# (a flat lower cut and a sloped upper cut that deepen with each blow): everything around the notch is still the
+# original geometry with its own texture and UVs, so the trunk looks exactly as before except for the wedge that
+# is really gone. Flat fresh-wood faces close the notch. When it goes over, the same mesh is split at the lower
+# cut: the stump keeps the base with a flat cut top, the falling trunk carries the sloped face and the torn hinge.
 
 ## Notch depth when the tree goes over, in trunk radii (just past the heart; the rest tears as it falls).
 const NOTCH_MAX := 1.1
 ## Height of the sloped upper face per unit of depth (~45 degree face).
 const NOTCH_SLOPE := 0.95
 const CUT_SEGS := 32
+## Cut faces reach a hair past the bark, so no sliver of the hollow inside ever shows at their edge.
+const FACE_PAD := 1.015
+const FACE_SEGS := 40
 
 var _cut_mode := false
-var _cut_lower: MeshInstance3D  # stump + trunk up to the cut (stays)
-var _cut_upper: MeshInstance3D  # cut band above it (falls with the tree)
-var _clip_top := 0.0  # node-space height above which the original model is shown again
+var _cut_lower: MeshInstance3D  # felled: flat cut top of the stump (stays)
+var _stump_bark: MeshInstance3D  # felled: the model's own trunk base below the cut (stays)
+var _cut_upper: MeshInstance3D  # fresh-wood faces that move with the tree: the notch, then the butt end
 var _bark_mi: MeshInstance3D
 var _bark_src: Material
 var _bark_orig: Mesh
+var _surf_mats: Array[Material] = []
 var _cut_end: MeshInstance3D  # fresh-cut top of the felled trunk where the last log came off
 var _bare_for := -1  # remaining-logs count the bare trunk mesh was built for
+var _mesh_xf := Transform3D()  # bark mesh space -> node space, tree standing
+var _upper_arrays: Array = []  # bark above the lower cut, notch removed (the part that falls)
 
 
 ## Current notch depth (metres into the trunk from the chopper's side).
@@ -344,16 +350,20 @@ func _enter_cut_mode() -> void:
 	if _cut_mode:
 		return
 	_cut_mode = true
-	_clip_top = cut_h + NOTCH_MAX * _trunk_r * NOTCH_SLOPE + 0.02
 	var meshes := _tree.find_children("*", "MeshInstance3D", true, false)
 	if not meshes.is_empty():
 		_bark_mi = meshes[0]
 		_bark_src = _bark_mi.get_active_material(0)
 		_bark_orig = _bark_mi.mesh
-		_bark_mi.mesh = _clipped_mesh(_bark_mi, (_clip_top + SINK) / _size)
+		_surf_mats.clear()
+		for si in _bark_orig.get_surface_count():
+			_surf_mats.append(_bark_mi.get_active_material(si))
 	_cut_lower = MeshInstance3D.new()
 	_cut_lower.name = "CutStump"
 	add_child(_cut_lower)
+	_stump_bark = MeshInstance3D.new()
+	_stump_bark.name = "StumpBark"
+	_cut_lower.add_child(_stump_bark)
 	_cut_upper = MeshInstance3D.new()
 	_cut_upper.name = "CutButt"
 	_pivot.add_child(_cut_upper)
@@ -373,38 +383,270 @@ func _exit_cut_mode() -> void:
 		if m and is_instance_valid(m):
 			m.queue_free()
 	_cut_lower = null
+	_stump_bark = null
 	_cut_upper = null
 	_cut_end = null
+	_upper_arrays = []
 	_stump_post.visible = true
 	_stump_top.visible = true
 
 
-## A copy of the tree mesh with the bark (surface 0) cut off below clip_y (mesh space): triangles crossing the
-## line are clipped and their attributes interpolated, so the trunk ends exactly where our cut section begins.
-## Keeps the model's own materials, so the bark looks identical. Other surfaces (foliage) are copied as-is.
-static func _clipped_mesh(mi: MeshInstance3D, clip_y: float, src: Mesh = null, top_y: float = INF, bark_only := false) -> ArrayMesh:
-	if src == null:
-		src = mi.mesh
+## Bark mesh space -> node space with the tree standing upright (the fall pivot's rotation left out).
+func _bark_xf() -> Transform3D:
+	var xf := Transform3D()
+	var n: Node = _bark_mi
+	while n != null and n != _pivot:
+		xf = (n as Node3D).transform * xf
+		n = n.get_parent()
+	return Transform3D(Basis(), _pivot.position) * xf
+
+
+## A node-space plane (normal n through point p) expressed in bark mesh space.
+func _mesh_plane(n: Vector3, p: Vector3) -> Plane:
+	return Plane((_mesh_xf.basis.transposed() * n).normalized(), _mesh_xf.affine_inverse() * p)
+
+
+func _toward() -> Vector3:
+	return Vector3(-fall_dir.x, 0, -fall_dir.z).normalized()
+
+
+## Distance from the trunk centre (along the chopper's direction) of the notch's inner edge.
+func _notch_off(depth: float) -> float:
+	return _trunk_r / 0.96 - depth
+
+
+## The sloped upper cut faces down and out of the notch.
+func _slope_normal() -> Vector3:
+	return (_toward() - Vector3.UP / NOTCH_SLOPE).normalized()
+
+
+## Bark above the lower cut with the notch wedge taken out: the wedge is above the flat cut and beyond the
+## sloped one. Only the trunk is notched: branch wood above the notch or far out beside it is kept.
+func _minus_notch(above: Array, depth: float) -> Array:
+	if depth <= 0.0:
+		return above
+	var tw := _toward()
+	var c := Vector3(_trunk_c.x, cut_h, _trunk_c.y)
+	var root := c + tw * _notch_off(depth)
+	var keep := _clip_arrays(above, _mesh_plane(_slope_normal(), root), false)
+	var gone := _clip_arrays(above, _mesh_plane(_slope_normal(), root), true)
+	var top := _mesh_plane(Vector3.UP, c + Vector3.UP * (depth * NOTCH_SLOPE + 0.01))
+	keep = _concat(keep, _clip_arrays(gone, top, true))
+	var low := _clip_arrays(gone, top, false)
+	return _concat(keep, _clip_arrays(low, _mesh_plane(tw, c + tw * (_trunk_r / 0.96 * 1.12)), true))
+
+
+## The bark surface (arrays) plus the model's other surfaces (the crown), with the model's own materials.
+func _with_crown(bark: Array, crown := true) -> ArrayMesh:
 	var out := ArrayMesh.new()
-	for si in src.get_surface_count():
-		if bark_only and si > 0:
-			continue  # felled: the crown is gone, only the bare trunk lies there
-		var arrays := src.surface_get_arrays(si)
-		if si == 0:
-			arrays = _clip_arrays(arrays, clip_y)
-			if top_y < INF:
-				arrays = _clip_arrays(arrays, top_y, true)
-		out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
-		out.surface_set_material(out.get_surface_count() - 1, mi.get_active_material(si))
+	out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, bark)
+	out.surface_set_material(0, _surf_mats[0])
+	if crown:
+		for si in range(1, _bark_orig.get_surface_count()):
+			out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, _bark_orig.surface_get_arrays(si))
+			out.surface_set_material(si, _surf_mats[si])
 	return out
 
 
-## Drops branch geometry (triangles well away from the trunk axis) so the felled trunk is a clean log.
-static func _strip_branches(mesh: ArrayMesh, prof: Array) -> ArrayMesh:
-	var arrays := mesh.surface_get_arrays(0)
+## Point on the trunk's faceted outline at angle a (node space, around the trunk centre at height y).
+func _section_pt(a: float, y: float) -> Vector3:
+	var t := _trunk_at(y)
+	var r := _poly_r(a - _visual.rotation.y, t.z / 0.96, _facets(y)) * FACE_PAD
+	return Vector3(t.x + sin(a) * r, y, t.y + cos(a) * r)
+
+
+## How far the outline at angle a reaches past the notch's inner edge (> 0: inside the notch).
+func _past_edge(a: float, off: float) -> float:
+	return (_section_pt(a, cut_h) - Vector3(_trunk_c.x, cut_h, _trunk_c.y)).dot(_toward()) - off
+
+
+## Angles across the notch, edge to edge, where the cut planes meet the bark (empty: the notch is still too
+## shallow to reach past the flat facets).
+func _notch_arc(off: float) -> Array[float]:
+	var best_a := 0.0
+	var best := -INF
+	for i in 96:
+		var a := TAU * i / 96.0
+		var f := _past_edge(a, off)
+		if f > best:
+			best = f
+			best_a = a
+	var arc: Array[float] = []
+	if best <= 0.0:
+		return arc
+	var edges: Array[float] = []
+	for sgn: float in [-1.0, 1.0]:
+		var lo := 0.0
+		var hi := PI
+		for k in 22:
+			var mid := (lo + hi) * 0.5
+			if _past_edge(best_a + sgn * mid, off) > 0.0:
+				lo = mid
+			else:
+				hi = mid
+		edges.append(best_a + sgn * lo)
+	for i in FACE_SEGS + 1:
+		arc.append(lerpf(edges[0], edges[1], float(i) / FACE_SEGS))
+	return arc
+
+
+## Outline of the notch's sloped face: each bark point lifted onto the sloped cut plane.
+func _slope_pts(arc: Array[float], off: float) -> Array:
+	var c := Vector3(_trunk_c.x, cut_h, _trunk_c.y)
+	var tw := _toward()
+	var pts := []
+	for a in arc:
+		var p := _section_pt(a, cut_h)
+		for it in 2:  # the trunk tapers a little over the face's height: settle onto it
+			var y := cut_h + NOTCH_SLOPE * maxf((p - c).dot(tw) - off, 0.0)
+			p = _section_pt(a, y)
+		p.y = cut_h + NOTCH_SLOPE * maxf((p - c).dot(tw) - off, 0.0)
+		pts.append(p)
+	return pts
+
+
+## Outline at the cut height over the angles in arc (the flat floor of the notch).
+func _flat_pts(arc: Array[float]) -> Array:
+	var pts := []
+	for a in arc:
+		pts.append(_section_pt(a, cut_h))
+	return pts
+
+
+## The rest of the cross-section outside the notch (the torn hinge on the butt); the whole ring if no notch.
+func _hinge_pts(arc: Array[float]) -> Array:
+	var a0 := 0.0
+	var a1 := TAU
+	if not arc.is_empty():
+		a0 = arc[arc.size() - 1]
+		a1 = arc[0] + TAU
+	var ring: Array[float] = []
+	for i in FACE_SEGS + 1:
+		ring.append(lerpf(a0, a1, float(i) / FACE_SEGS))
+	return _flat_pts(ring)
+
+
+func _rebuild_cut() -> void:
+	if not _cut_mode or _bark_mi == null:
+		return
+	_mesh_xf = _bark_xf()
+	var depth := notch_depth()
+	var off := _notch_off(depth)
+	var src := _bark_orig.surface_get_arrays(0)
+	var at_cut := _mesh_plane(Vector3.UP, Vector3(_trunk_c.x, cut_h, _trunk_c.y))
+	var below := _clip_arrays(src, at_cut, false)
+	_upper_arrays = _minus_notch(_clip_arrays(src, at_cut, true), depth)
+	var arc: Array[float] = []
+	if depth > 0.0:
+		arc = _notch_arc(off)
+	var wood := Graybox.tex("CutWood", Color(1.22, 1.1, 0.94), 4.0)
+	var faces := _CutMesh.new(_section_bark(), wood)
+	_bare_for = -1
+	if stage == Stage.STANDING:
+		_bark_mi.mesh = _with_crown(_concat(below, _upper_arrays))
+		if not arc.is_empty():
+			faces.fan(_flat_pts(arc), Vector3.UP)
+			faces.fan(_slope_pts(arc, off), _slope_normal())
+		_stump_bark.mesh = null
+		_cut_lower.mesh = null
+	else:
+		if not limbed():
+			_bark_mi.mesh = _with_crown(_upper_arrays)  # a limbed trunk is rebuilt bare by _make_bare_trunk
+		faces.fan(_hinge_pts(arc), Vector3.DOWN)
+		if not arc.is_empty():
+			faces.fan(_slope_pts(arc, off), _slope_normal())
+		var stump := ArrayMesh.new()
+		stump.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, below)
+		stump.surface_set_material(0, _surf_mats[0])
+		_stump_bark.mesh = stump
+		_stump_bark.transform = _mesh_xf
+		var cap := _CutMesh.new(_section_bark(), wood)
+		var whole: Array[float] = []
+		cap.fan(_hinge_pts(whole), Vector3.UP)
+		_cut_lower.mesh = cap.commit()
+	_cut_upper.mesh = faces.commit()
+	_cut_upper.position = Vector3(0, -cut_h, 0)
+
+
+## Triangles on the kept side of a plane (over it = the side its normal points to); triangles crossing it are
+## clipped and their attributes interpolated, so the cut edge lies exactly on the plane. Output is unindexed.
+static func _clip_arrays(arrays: Array, plane: Plane, keep_over: bool) -> Array:
+	var pos: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	var nrm: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL] if arrays[Mesh.ARRAY_NORMAL] != null else PackedVector3Array()
+	var tan: PackedFloat32Array = arrays[Mesh.ARRAY_TANGENT] if arrays[Mesh.ARRAY_TANGENT] != null else PackedFloat32Array()
+	var uv: PackedVector2Array = arrays[Mesh.ARRAY_TEX_UV] if arrays[Mesh.ARRAY_TEX_UV] != null else PackedVector2Array()
+	var idx: PackedInt32Array = arrays[Mesh.ARRAY_INDEX] if arrays[Mesh.ARRAY_INDEX] != null else PackedInt32Array()
+	if idx.is_empty():
+		for i in pos.size():
+			idx.append(i)
+	var dist := PackedFloat32Array()
+	dist.resize(pos.size())
+	for i in pos.size():
+		dist[i] = plane.distance_to(pos[i]) * (1.0 if keep_over else -1.0)
+	var o_pos := PackedVector3Array()
+	var o_nrm := PackedVector3Array()
+	var o_tan := PackedFloat32Array()
+	var o_uv := PackedVector2Array()
+	var emit := func(i: int, j: int, t: float) -> void:
+		o_pos.append(pos[i].lerp(pos[j], t))
+		if not nrm.is_empty():
+			o_nrm.append(nrm[i].lerp(nrm[j], t).normalized())
+		if not tan.is_empty():
+			for k in 4:
+				o_tan.append(lerpf(tan[i * 4 + k], tan[j * 4 + k], t) if k < 3 else tan[i * 4 + 3])
+		if not uv.is_empty():
+			o_uv.append(uv[i].lerp(uv[j], t))
+	for f in range(0, idx.size(), 3):
+		var tri := [idx[f], idx[f + 1], idx[f + 2]]
+		if dist[tri[0]] >= 0.0 and dist[tri[1]] >= 0.0 and dist[tri[2]] >= 0.0:
+			for k in 3:
+				emit.call(tri[k], tri[k], 0.0)
+			continue
+		# Sutherland-Hodgman against the plane, keeping the positive side; then fan back to triangles.
+		var poly: Array = []  # [i, j, t] = point at lerp(vertex i, vertex j, t)
+		for k in 3:
+			var a: int = tri[k]
+			var b: int = tri[(k + 1) % 3]
+			var ia := dist[a] >= 0.0
+			var ib := dist[b] >= 0.0
+			if ia:
+				poly.append([a, a, 0.0])
+			if ia != ib:
+				poly.append([a, b, dist[a] / (dist[a] - dist[b])])
+		for k in range(1, poly.size() - 1):
+			for e: Array in [poly[0], poly[k], poly[k + 1]]:
+				emit.call(e[0], e[1], e[2])
+	var out := []
+	out.resize(Mesh.ARRAY_MAX)
+	out[Mesh.ARRAY_VERTEX] = o_pos
+	if not nrm.is_empty():
+		out[Mesh.ARRAY_NORMAL] = o_nrm
+	if not tan.is_empty():
+		out[Mesh.ARRAY_TANGENT] = o_tan
+	if not uv.is_empty():
+		out[Mesh.ARRAY_TEX_UV] = o_uv
+	return out
+
+
+## Two unindexed surfaces (from _clip_arrays) joined into one.
+static func _concat(a: Array, b: Array) -> Array:
+	var out := a.duplicate()
+	for k in [Mesh.ARRAY_VERTEX, Mesh.ARRAY_NORMAL, Mesh.ARRAY_TANGENT, Mesh.ARRAY_TEX_UV]:
+		if a[k] == null and b[k] == null:
+			continue
+		var v = a[k].duplicate() if a[k] != null else b[k].duplicate()
+		if a[k] != null and b[k] != null:
+			v.append_array(b[k])
+		out[k] = v
+	return out
+
+
+## Branch geometry (triangles well away from the trunk axis) dropped, so the felled trunk is a clean log; with
+## `invert`, only those branch triangles (what is lopped off). Unindexed arrays in, unindexed arrays out.
+static func _strip_branches(arrays: Array, prof: Array, invert := false) -> Array:
 	var pos: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
 	var keep := PackedInt32Array()
-	for f in range(0, pos.size(), 3):
+	for f in range(0, pos.size() - 2, 3):
 		var c := (pos[f] + pos[f + 1] + pos[f + 2]) / 3.0
 		var ring: Array = prof[0]
 		for e: Array in prof:
@@ -412,7 +654,7 @@ static func _strip_branches(mesh: ArrayMesh, prof: Array) -> ArrayMesh:
 				ring = e
 		# Above the measured rings (they stop at 4 m) keep a generous core so the upper trunk is not dropped.
 		var lim := maxf(float(ring[3]), 0.08) * 1.45
-		if Vector2(c.x - float(ring[1]), c.z - float(ring[2])).length() <= lim:
+		if (Vector2(c.x - float(ring[1]), c.z - float(ring[2])).length() <= lim) != invert:
 			keep.append(f)
 	var out := []
 	out.resize(Mesh.ARRAY_MAX)
@@ -436,68 +678,7 @@ static func _strip_branches(mesh: ArrayMesh, prof: Array) -> ArrayMesh:
 				for q in 4:
 					td.append(ts[(f + j) * 4 + q])
 		out[Mesh.ARRAY_TANGENT] = td
-	var m := ArrayMesh.new()
-	m.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, out)
-	m.surface_set_material(0, mesh.surface_get_material(0))
-	return m
-
-
-static func _clip_arrays(arrays: Array, clip_y: float, keep_below := false) -> Array:
-	var pos: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
-	var nrm: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL] if arrays[Mesh.ARRAY_NORMAL] != null else PackedVector3Array()
-	var tan: PackedFloat32Array = arrays[Mesh.ARRAY_TANGENT] if arrays[Mesh.ARRAY_TANGENT] != null else PackedFloat32Array()
-	var uv: PackedVector2Array = arrays[Mesh.ARRAY_TEX_UV] if arrays[Mesh.ARRAY_TEX_UV] != null else PackedVector2Array()
-	var idx: PackedInt32Array = arrays[Mesh.ARRAY_INDEX] if arrays[Mesh.ARRAY_INDEX] != null else PackedInt32Array()
-	if idx.is_empty():
-		for i in pos.size():
-			idx.append(i)
-	var o_pos := PackedVector3Array()
-	var o_nrm := PackedVector3Array()
-	var o_tan := PackedFloat32Array()
-	var o_uv := PackedVector2Array()
-	var emit := func(i: int, j: int, t: float) -> void:
-		o_pos.append(pos[i].lerp(pos[j], t))
-		if not nrm.is_empty():
-			o_nrm.append(nrm[i].lerp(nrm[j], t).normalized())
-		if not tan.is_empty():
-			for k in 4:
-				o_tan.append(lerpf(tan[i * 4 + k], tan[j * 4 + k], t) if k < 3 else tan[i * 4 + 3])
-		if not uv.is_empty():
-			o_uv.append(uv[i].lerp(uv[j], t))
-	for f in range(0, idx.size(), 3):
-		var tri := [idx[f], idx[f + 1], idx[f + 2]]
-		# Sutherland-Hodgman against the plane y = clip_y, keeping the part above; then fan back to triangles.
-		var poly: Array = []  # [i, j, t] = point at lerp(vertex i, vertex j, t)
-		for k in 3:
-			var a: int = tri[k]
-			var b: int = tri[(k + 1) % 3]
-			var ia := (pos[a].y >= clip_y) != keep_below
-			var ib := (pos[b].y >= clip_y) != keep_below
-			if ia:
-				poly.append([a, a, 0.0])
-			if ia != ib:
-				var t := (clip_y - pos[a].y) / (pos[b].y - pos[a].y)
-				poly.append([a, b, t])
-		for k in range(1, poly.size() - 1):
-			for e: Array in [poly[0], poly[k], poly[k + 1]]:
-				emit.call(e[0], e[1], e[2])
-	var out := []
-	out.resize(Mesh.ARRAY_MAX)
-	out[Mesh.ARRAY_VERTEX] = o_pos
-	if not o_nrm.is_empty():
-		out[Mesh.ARRAY_NORMAL] = o_nrm
-	if not o_tan.is_empty():
-		out[Mesh.ARRAY_TANGENT] = o_tan
-	if not o_uv.is_empty():
-		out[Mesh.ARRAY_TEX_UV] = o_uv
 	return out
-
-
-## Depth of the notch at height y (0 outside the notch): full at the flat lower cut, tapering up the slope.
-func _depth_at(y: float, depth: float, rise: float) -> float:
-	if depth <= 0.0 or y <= cut_h or y > cut_h + rise:
-		return 0.0
-	return depth * (1.0 - (y - cut_h) / rise)
 
 
 ## One ring of the trunk at height y, carved by the notch plane: [positions, cut flags, uvs, centre].
@@ -569,36 +750,6 @@ func _section_bark() -> Material:
 		m.normal_scale = b.normal_scale * 0.3
 		_section_mats[b] = m
 	return _section_mats[b]
-
-
-func _rebuild_cut() -> void:
-	if not _cut_mode:
-		return
-	var depth := notch_depth()
-	var rise := maxf(depth * NOTCH_SLOPE, 0.002)
-	var cut_mat := Graybox.tex("CutWood", Color(1.22, 1.1, 0.94), 4.0)
-	# Lower: underground base -> the flat lower cut, with a fresh-wood top (seen in the notch, and on the stump).
-	var lower: Array = []
-	for y: float in [-SINK, (cut_h - SINK) * 0.5, cut_h]:
-		lower.append(_cut_ring(y, 0.0))
-	var lm := _CutMesh.new(_section_bark(), cut_mat)
-	lm.lathe(lower)
-	lm.cap(lower[lower.size() - 1], Vector3.UP)
-	_cut_lower.mesh = lm.commit()
-	# Upper: from just above the lower cut, through the sloped upper cut, up past the clip line.
-	var upper: Array = []
-	var ys: Array[float] = [cut_h + 0.002]
-	for k in range(1, 25):
-		ys.append(cut_h + rise * k / 24.0)
-	ys.append((cut_h + rise + _clip_top) * 0.5)
-	ys.append(_clip_top)
-	for y in ys:
-		upper.append(_cut_ring(y, _depth_at(y, depth, rise) if y > cut_h + 0.001 else depth))
-	var um := _CutMesh.new(_section_bark(), cut_mat)
-	um.lathe(upper)
-	um.cap(upper[0], Vector3.DOWN)
-	_cut_upper.mesh = um.commit()
-	_cut_upper.position = Vector3(0, -cut_h, 0)
 
 
 ## Builds a lathed trunk section (bark outside, fresh wood where the notch cuts it) plus flat cut caps.
@@ -694,6 +845,24 @@ class _CutMesh:
 				continue
 			_tri(wood, centre, a, b, n, n, n, Vector2(centre.x, centre.z) * 3.0, Vector2(a.x, a.z) * 3.0, Vector2(b.x, b.z) * 3.0)
 
+	## Flat face over a closed convex outline (fan from its centroid), wood texture laid flat on the face.
+	func fan(pts: Array, n: Vector3) -> void:
+		if pts.size() < 3:
+			return
+		var centre := Vector3.ZERO
+		for p: Vector3 in pts:
+			centre += p
+		centre /= pts.size()
+		var ax := n.cross(Vector3.FORWARD if absf(n.dot(Vector3.FORWARD)) < 0.9 else Vector3.RIGHT).normalized()
+		var ay := n.cross(ax)
+		var uv := func(p: Vector3) -> Vector2: return Vector2(p.dot(ax), p.dot(ay)) * 3.0
+		for i in pts.size():
+			var a: Vector3 = pts[i]
+			var b: Vector3 = pts[(i + 1) % pts.size()]
+			if a.distance_to(b) < 1e-5:
+				continue
+			_tri(wood, centre, a, b, n, n, n, uv.call(centre), uv.call(a), uv.call(b))
+
 	func commit() -> ArrayMesh:
 		var mesh := ArrayMesh.new()
 		for e: Array in [[bark, bark_mat], [wood, wood_mat]]:
@@ -720,12 +889,12 @@ func _log_top(n: int) -> float:
 
 ## Felled: the crown is gone and the trunk ends in a fresh cut where the last log came off.
 func _make_bare_trunk() -> void:
-	if not _cut_mode or _bark_mi == null or _bare_for == remaining:
+	if not _cut_mode or _bark_mi == null or _bare_for == remaining or _upper_arrays.is_empty():
 		return
 	_bare_for = remaining
 	var top := _log_top(remaining)
-	var bare := _clipped_mesh(_bark_mi, (_clip_top + SINK) / _size, _bark_orig, (top + SINK) / _size, true)
-	_bark_mi.mesh = _strip_branches(bare, _trunk_profile())
+	var trunk := _clip_arrays(_upper_arrays, _mesh_plane(Vector3.UP, Vector3(0, top, 0)), false)
+	_bark_mi.mesh = _with_crown(_strip_branches(trunk, _trunk_profile()), false)
 	var ring := _cut_ring(top, 0.0)
 	var cm := _CutMesh.new(_section_bark(), Graybox.tex("CutWood", Color(1.22, 1.1, 0.94), 4.0))
 	cm.cap(ring, Vector3.UP)
@@ -890,19 +1059,49 @@ func on_hit(player: Node, item: ItemData) -> bool:
 	return true
 
 
-## The lopped crown doesn't blink out: a copy of it sags into the ground and fades while the leaves fly.
+## The lopped crown doesn't blink out: right where it lies, its leaves thin out and vanish (the foliage's alpha
+## cut rises, so the sparse leaf tips go first) while a shower of leaves bursts off it; the lopped branches and
+## the thin top fade with it. Only the crown: the trunk itself stays exactly where it is.
+const CROWN_FADE := 1.6
+
+
 func _crown_collapse() -> void:
-	if _holder == null or not is_inside_tree():
+	if _bark_mi == null or not is_inside_tree() or _upper_arrays.is_empty():
 		return
-	var ghost := _holder.duplicate() as Node3D
-	get_parent().add_child(ghost)
-	ghost.global_transform = _holder.global_transform
-	_dust(_crown_point(), true)
+	var top := _mesh_plane(Vector3.UP, Vector3(0, _log_top(remaining), 0))
+	var twigs := _concat(_clip_arrays(_upper_arrays, top, true),
+		_strip_branches(_clip_arrays(_upper_arrays, top, false), _trunk_profile(), true))
+	var m := ArrayMesh.new()
+	var mats: Array[Material] = []
+	if (twigs[Mesh.ARRAY_VERTEX] as PackedVector3Array).size() >= 3:
+		m.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, twigs)
+		mats.append(_surf_mats[0])
+	for si in range(1, _bark_orig.get_surface_count()):
+		m.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, _bark_orig.surface_get_arrays(si))
+		mats.append(_surf_mats[si])
+	if m.get_surface_count() == 0:
+		return
+	var ghost := MeshInstance3D.new()
+	ghost.name = "LoppedCrown"
+	ghost.mesh = m
+	_bark_mi.get_parent().add_child(ghost)
+	ghost.transform = _bark_mi.transform
 	var tw := ghost.create_tween()
 	tw.set_parallel(true)
-	tw.tween_property(ghost, "global_position", ghost.global_position + Vector3.DOWN * 1.2, 1.1).set_ease(Tween.EASE_IN)
-	tw.tween_property(ghost, "scale", ghost.scale * Vector3(0.9, 0.7, 0.9), 1.1)
+	for si in mats.size():
+		var mat := mats[si].duplicate() as Material if mats[si] else null
+		if mat is ShaderMaterial:
+			ghost.set_surface_override_material(si, mat)
+			tw.tween_property(mat, "shader_parameter/alpha_cut", 1.05, CROWN_FADE).set_ease(Tween.EASE_IN)
+		elif mat is BaseMaterial3D:
+			(mat as BaseMaterial3D).transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_HASH
+			ghost.set_surface_override_material(si, mat)
+			tw.tween_property(mat, "albedo_color:a", 0.0, CROWN_FADE).set_ease(Tween.EASE_IN)
 	tw.chain().tween_callback(ghost.queue_free)
+	# Leaves burst off the whole length of the crown, not only its middle.
+	var b := Basis(_axis(), final_angle)
+	for k: float in [0.45, 0.7, 0.92]:
+		_dust(to_global(_log_base() + b * Vector3(0, (height - cut_h) * k, 0)), true)
 
 
 func limbed() -> bool:

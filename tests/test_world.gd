@@ -372,6 +372,193 @@ func test_flint_regrows_and_boulders_can_yield_flint() -> void:
 	await _teardown(s)
 
 
+## Relief v3 (tools/gen_terrain.py): each region reads by its landform, creeks run downhill into the river system,
+## the fords are wadeable and the Meyra channels end in the lake.
+func test_relief_creeks_and_fords() -> void:
+	var s: GameSession = await _boot()
+	var w := s.world
+	# regions
+	var peak := 0.0
+	for i in 400:
+		var x := -2000.0 + (i % 20) * 50.0
+		var z := -600.0 + (i / 20) * 70.0
+		if w.region_at(x, z) == &"kharum":
+			peak = maxf(peak, w.height_at(x, z))
+	check(peak > 110.0, "Kharum has mountains (highest %.0f m)" % peak)
+	var plateau := w.height_at(1150.0, -1180.0)
+	check(plateau > w.height_at(0.0, 0.0) + 20.0, "Varkai plateau (%.0f m) stands over Aruun" % plateau)
+	var steepest := 0.0
+	for i in 60:  # the escarpment: somewhere on the plateau's west/south rim the ground climbs > 15 m in 40 m
+		var a := PI * 0.5 + PI * float(i) / 60.0
+		var rim := Vector2(1150.0, -1180.0) + Vector2(cos(a) * 600.0, -sin(a) * 500.0)
+		var inward := (Vector2(1150.0, -1180.0) - rim).normalized()
+		for k in 8:
+			var p := rim + inward * (k * 40.0 - 160.0)
+			var q := p + inward * 40.0
+			steepest = maxf(steepest, w.height_at(q.x, q.y) - w.height_at(p.x, p.y))
+	check(steepest > 15.0, "Varkai escarpment (%.1f m rise in 40 m)" % steepest)
+	var marsh := 0.0
+	for i in 25:
+		marsh += w.height_at(1200.0 + (i % 5) * 60.0, 700.0 + (i / 5) * 60.0)
+	check(marsh / 25.0 < 8.0, "Meyra marsh is low (mean %.1f m)" % (marsh / 25.0))
+	# creeks
+	check(w.creeks.size() >= 5, "creeks traced (%d)" % w.creeks.size())
+	var dry := 0
+	var samples := 0
+	for pts: PackedVector3Array in w.creeks:
+		for i in pts.size() - 1:
+			check(pts[i + 1].y <= pts[i].y + 0.001, "creek water only flows downhill")
+			if i % 3 == 0:
+				samples += 1
+				if w.height_at(pts[i].x, pts[i].z) >= pts[i].y:
+					dry += 1
+		var mouth := pts[pts.size() - 1]
+		check(mouth.y < 0.01 or w.creek_level_at(mouth.x, mouth.z) <= mouth.y + 0.5, "creek ends in other water")
+	check(dry <= samples / 20, "creek beds hold water (%d of %d dry)" % [dry, samples])
+	var creek_water := 0
+	for c in w.get_children():
+		if c is WaterBody and String(c.name).begins_with("Creek"):
+			creek_water += 1
+	check(creek_water > 50, "creeks are drinkable (%d water volumes)" % creek_water)
+	var mid := w.creeks[0][w.creeks[0].size() / 2]
+	check(w.creek_distance(mid.x, mid.z) < 1.0 and w.water_distance(mid.x, mid.z) < 8.0, "water_distance sees creeks")
+	var narrow := 0
+	var probes := 0
+	for pts: PackedVector3Array in w.creeks:
+		for i in range(2, pts.size() - 3, 4):
+			var t := Vector2(pts[i + 1].x - pts[i - 1].x, pts[i + 1].z - pts[i - 1].z).normalized()
+			var side := Vector2(t.y, -t.x) * 9.0
+			probes += 1
+			if w.height_at(pts[i].x + side.x, pts[i].z + side.y) > pts[i].y and w.height_at(pts[i].x - side.x, pts[i].z - side.y) > pts[i].y:
+				narrow += 1
+	check(narrow >= probes * 9 / 10, "creeks are narrow: dry ground 9 m from the centre (%d of %d)" % [narrow, probes])
+	check(absf(w.creek_level_at(mid.x, mid.z) - mid.y) < 0.5, "creek level query")
+	# fords and channels
+	for id: StringName in ForestWorld.FORDS:
+		var z: float = ForestWorld.FORDS[id].x
+		var bed := w.height_at(w.river_x(z), z)
+		check(bed > -0.3 and bed < ForestWorld.WATER_LEVEL, "%s is wadeable (bed %.2f m)" % [id, bed])
+	check(w.height_at(w.river_x(-600.0), -600.0) < -1.0, "the river is deep away from the fords")
+	check(w.get_node_or_null("POI_StoneFord") != null and w.get_node("POI_StoneFord").get_child_count() >= 8,
+		"stepping stones across the stone ford")
+	var end_a := Vector2(w._meyra_channel_a(ForestWorld.MEYRA_A_END), ForestWorld.MEYRA_A_END)
+	var lake := Vector2((end_a.x - ForestWorld.LAKE_CENTER.x) / ForestWorld.LAKE_RADIUS_X,
+		(end_a.y - ForestWorld.LAKE_CENTER.y) / ForestWorld.LAKE_RADIUS_Z)
+	check(lake.length() < 1.0, "Meyra's east channel drains into the lake")
+	var join := w._meyra_channel_b(ForestWorld.MEYRA_B_END) - w._meyra_channel_a(ForestWorld.MEYRA_B_END)
+	check(absf(join) < 1.0, "Meyra's braid rejoins the east channel (%.1f m apart)" % join)
+	await _teardown(s)
+
+
+## The terrain is drawn from the bake: full-resolution chunks around the camera over a coarse far mesh, and its
+## collision (one heightmap) agrees with height_at() everywhere, near or far from the player.
+func test_terrain_lod_and_collision() -> void:
+	var s: GameSession = await _boot()
+	var w := s.world
+	var lod := w.terrain_lod
+	check(lod != null and lod.far_mesh != null, "terrain has a far mesh")
+	var p := s.player.global_position
+	check(lod.is_full_resolution(p.x, p.z), "full-resolution terrain under the player")
+	check(not lod.is_full_resolution(p.x + 1500.0, p.z), "coarse terrain far away")
+	var space := w.get_world_3d().direct_space_state
+	var r := RandomNumberGenerator.new()
+	r.seed = 7
+	var worst := 0.0
+	for i in 200:
+		var x := r.randf_range(-1950.0, 1950.0)
+		var z := r.randf_range(-1950.0, 1950.0)
+		var q := PhysicsRayQueryParameters3D.create(Vector3(x, 400.0, z), Vector3(x, -50.0, z), 1)
+		var hit := space.intersect_ray(q)
+		if hit.is_empty() or not (hit.collider as Node).is_in_group("terrain"):
+			continue
+		worst = maxf(worst, absf(hit.position.y - w.height_at(x, z)))
+	check(worst < 0.02, "collision matches height_at (worst %.3f m)" % worst)
+	# camp sites are cut flat into the bake
+	for base: Dictionary in Camps.REGIONAL_BASES.values():
+		var c := Camps.site(base)
+		var lo := INF
+		var hi := -INF
+		for k in 8:
+			var a := TAU * k / 8.0
+			var h := w.height_at(c.x + cos(a) * 8.0, c.y + sin(a) * 8.0)
+			lo = minf(lo, h)
+			hi = maxf(hi, h)
+		check(hi - lo < 0.6, "regional base at %s is level (%.2f m)" % [c, hi - lo])
+	# walking away streams a new window in and the far mesh's hole follows it
+	s.player.global_position = w.ground_point(p.x + 400.0, p.z) + Vector3.UP
+	for i in 60:
+		await tree.process_frame
+	var cam := s.player.get_viewport().get_camera_3d()
+	check(lod.is_full_resolution(cam.global_position.x, cam.global_position.z), "chunks stream in around the camera")
+	var hole: Vector4 = lod.far_material.get_shader_parameter("hole")
+	check(cam.global_position.x > hole.x and cam.global_position.x < hole.z, "the far mesh's hole follows the camera")
+	await _teardown(s)
+
+
+## Caves (gen_terrain.py cuts the trench, Cave adds the roof): walkable inside, roofed, sheltered, dark, empty.
+func test_caves() -> void:
+	var s: GameSession = await _boot()
+	var w := s.world
+	check(w.caves.size() >= 2, "caves built (%d)" % w.caves.size())
+	var space := w.get_world_3d().direct_space_state
+	for cave in w.caves:
+		var deep: Dictionary = cave.rings[cave.rings.size() / 2]
+		var inside := Vector3(float(deep.x), float(deep.floor) + 1.2, float(deep.z))
+		var floor_y := w.height_at(inside.x, inside.z)
+		check(absf(floor_y - float(deep.floor)) < 0.3, "%s: the floor is cut (%.2f vs %.2f)" % [cave.id, floor_y, float(deep.floor)])
+		var up := space.intersect_ray(PhysicsRayQueryParameters3D.create(inside, inside + Vector3.UP * 60.0, 1))
+		check(not up.is_empty() and up.position.y < float(deep.floor) + float(deep.h) + 1.0,
+			"%s: a rock ceiling overhead" % cave.id)
+		var down := space.intersect_ray(PhysicsRayQueryParameters3D.create(
+			inside + Vector3.UP * 80.0, inside + Vector3.DOWN * 5.0, 1))
+		check(not down.is_empty() and down.position.y > inside.y + 1.0, "%s: from above, you stand on the hill" % cave.id)
+		check(cave.contains(inside) and w.cave_at(inside) == cave, "%s: inside is inside" % cave.id)
+		check(w.get_shelter_at(inside) >= 7.0, "%s: shelters from the weather" % cave.id)
+		check(cave.get_node_or_null("Darkness") is ReflectionProbe, "%s: dark inside" % cave.id)
+		var mouth: Dictionary = cave.rings[0]
+		var outside := Vector3(float(mouth.x), 0.0, float(mouth.z)) - Vector3(cave.dir.x, 0.0, cave.dir.y) * 8.0
+		outside.y = w.height_at(outside.x, outside.z) + 1.0
+		check(not cave.contains(outside) and w.get_shelter_at(outside) == 0.0, "%s: the approach is open sky" % cave.id)
+		# the way in is clear: nothing blocks a walk from the approach to the back
+		var walk := space.intersect_ray(PhysicsRayQueryParameters3D.create(outside + Vector3.UP * 0.3, inside, 1))
+		check(walk.is_empty(), "%s: open from the mouth in" % cave.id)
+	for n: Node in w.get_tree().get_nodes_in_group("resource_node"):
+		var p := (n as Node3D).global_position
+		check(w.cave_at(p + Vector3.UP) == null, "no resource node grows inside a cave (%s)" % n.name)
+	await _teardown(s)
+
+
+## The player is a Homo sapiens man: a body seen from inside (no head in the way), a full body casting the shadow,
+## clips that follow the movement, and the right arm making way for a held item's own hand.
+func test_player_body() -> void:
+	var s: GameSession = await _boot()
+	var p := s.player
+	var body := p.body
+	check(body != null and body.visible_model != null and body.shadow_model != null, "the player has a body")
+	for i in 10:
+		await tree.process_frame
+	var sk := body.visible_model.find_children("*", "Skeleton3D", true, false)[0] as Skeleton3D
+	var trim := sk.get_node("BodyTrim") as PlayerBody.BodyTrim
+	check(sk.find_bone("head") in trim.hidden, "no head in front of the camera")
+	check(body.clip == "idle", "standing still: idle (%s)" % body.clip)
+	for i in 4:
+		p.velocity = -p.global_transform.basis.z * Player.WALK_SPEED
+		body._physics_process(1.0 / 60.0)
+	check(body.clip == "run", "walking forward moves the legs (%s)" % body.clip)
+	p.velocity = Vector3.ZERO
+	p._crouching = true
+	body._physics_process(1.0 / 60.0)
+	check(body.clip == "player_crouch_idle", "crouching (%s)" % body.clip)
+	p._crouching = false
+	p.inventory.add_item(&"stone_axe")
+	p.inventory.equip_slot(p.inventory.first_slot_of(&"stone_axe"))
+	for i in 3:
+		await tree.process_frame
+	check(sk.find_bone("upperarm_r") in trim.hidden, "the held axe's hand replaces the body's right arm")
+	check(not sk.find_bone("upperarm_l") in trim.hidden, "the left arm stays")
+	await _teardown(s)
+
+
 func test_world_map_fog_and_waypoint() -> void:
 	var s: GameSession = await _boot()
 	var w := s.world

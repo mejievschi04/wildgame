@@ -174,9 +174,10 @@ FPS (calitate medie): start ~54, Meyra ~45, râu ~46, Tavren ~29.
   în grupuri lejere peste teren pe o rază de ~420 m în jurul jucătorului, bat din aripi în reprize și planează între ele;
   plus 3 răpitori (de mărimea unui vultur) care planează în cercuri mari la 90–160 m, înclinați în viraje. Un singur
   MultiMesh de siluete de 8 triunghiuri, bătaia aripilor e în shader. Doar ziua, nu pe ploaie. `--shot-scenario=birds`.
-- **Mâna jucătorului** (`tools/blender/gen_fp_hand.py` → `assets/models/humans/SM_FP_Hand_R.gltf`): antebrațul și mâna
-  dreaptă tăiate din modelul Homo sapiens, cu degetele strânse în jurul unui mâner, brățările de piele și un manșon de
-  blană, puse în convenția obiectelor (mânerul pe +Y prin pumn). `HandModels.build` atașează mâna la orice unealtă sau
+- **Mâna jucătorului** (`tools/blender/gen_fp_hand.py` → `assets/models/humans/SM_FP_Hand_R.gltf`): din 2026-11-25,
+  antebrațul și pumnul drept sunt tăiate din corpul nou al jucătorului (SapiensM pe scheletul UAL). Au aceeași piele și
+  aceleași curele ca restul corpului, iar suprafața e netezită printr-o subdivizare. Mânerul trece prin golul pe care
+  mâna sculptată îl închide în formă de C, găsit automat. Mâna e pusă în convenția obiectelor (mânerul pe +Y prin pumn). `HandModels.build` atașează mâna la orice unealtă sau
   armă (în afară de arc și piatră) și o rotește automat în jurul mânerului, ca antebrațul să vină din dreapta-jos,
   dinspre cameră. Poziția de bază a armei în mână e ceva mai sus (`Player.HAND_REST`), ca pumnul să se vadă.
 
@@ -199,8 +200,7 @@ FPS (calitate medie): start ~54, Meyra ~45, râu ~46, Tavren ~29.
     terenului, râurilor, crângurilor și constantelor (`_terrain_fingerprint`); când nu se mai potrivesc, se recalculează
     în paralel pe toate nucleele (16 benzi, ~1 s) și se salvează din nou. Mărește `VERSION` dacă schimbi regulile;
   - fișierul `.bin` e inclus explicit la export (`export_presets.cfg` include_filter).
-- **Mâna**: degetul mare e așezat geometric (`gen_fp_hand.py` `wrap_thumb`): prima falangă trece prin fața pumnului,
-  iar vârful stă pe falanga din mijloc a arătătorului; nu mai stă depărtat.
+- **Mâna** (modelul vechi, înlocuit pe 2026-11-25): degetul mare era așezat geometric în jurul mânerului.
 
 ## Pasul 12: tundră la nord, junglă la sud (2026-11-23)
 

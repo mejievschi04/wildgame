@@ -4,7 +4,7 @@ extends Node
 ## Usage: godot --path . -- --autoshot=/abs/out.png [--shot-frames=120] [--shot-hour=21.5] [--shot-scenario=inventory]
 ## Scenarios: none, inventory, journal, pause, camp (lit fire + bed in view), kit (starter items), prompt (aim at sticks),
 ## tribe (Neanderthal clan + two sapiens in a row), tribelife (a camp at work / asleep; SHOT_CAMP=hunters|clan|gatherers),
-## flow (menu → new game through the loading screen; run on main_menu.tscn), keyart (menu art, SHOT_HERD / SHOT_FIRE), build (hut + lean-to + blueprint + active ghost), buildmenu (radial menu), fauna (all species, live), spear / club / bow (weapon in hand; bow mid-draw), river (main river valley from the bank), house (3/4 view of the build demo), farm (garden beds + wild plants).
+## flow (menu → new game through the loading screen; run on main_menu.tscn), keyart (menu art, SHOT_HERD / SHOT_FIRE), build (hut + lean-to + blueprint + active ghost), buildmenu (radial menu), fauna (all species, live), spear / club / bow / axe / knife (weapon in hand; bow mid-draw unless SHOT_REST, SHOT_AIM, SHOT_HOLD), river (main river valley from the bank), house (3/4 view of the build demo), farm (garden beds + wild plants).
 
 var out_path := ""
 var frames := 120
@@ -202,6 +202,9 @@ func _ready() -> void:
 		p.global_position = pos
 		p.rotation.y = deg_to_rad(float(a[2])) if a.size() > 2 else 0.0
 		p.head.rotation.x = float(_env("pitch")) if _env("pitch") != "" else -0.05
+		if _env("alt") != "":  # SHOT_ALT=m: hover that high above the ground (player physics frozen) for relief views
+			p.global_position.y += float(_env("alt"))
+			p.set_physics_process(false)
 	if scenario == "tribe":  # the Neanderthal clan in a row with two Homo sapiens gatherers, held in their idle pose
 		session.world.wildlife.enabled = false
 		session.world.factions.change(&"clan", 100.0)
@@ -262,6 +265,28 @@ func _ready() -> void:
 		p.look_at(Vector3(notch.x, p.global_position.y, notch.z))
 		p.rotation = Vector3(0, p.rotation.y, 0)
 		p.head.rotation.x = -0.62
+	if scenario == "lop":  # an alder felled away from the camera, crown on; SHOT_LIMB=1 lops it (shot mid-fade)
+		session.world.wildlife.enabled = false
+		var tn: TreeNode = null
+		for n in session.get_tree().get_nodes_in_group("resource_node"):
+			if n is TreeNode and n.species == &"alder" and n.global_position.distance_to(p.global_position) > 6.0 \
+					and (tn == null or n.global_position.distance_to(p.global_position) < tn.global_position.distance_to(p.global_position)):
+				tn = n
+		p.global_position = tn.global_position + Vector3(1.4, 0.3, 0)
+		p.inventory.add_item(&"stone_axe")
+		for i in tn.fell_hits:
+			tn.on_hit(p, ItemDB.get_item(&"stone_axe"))
+		tn.complete_fall()
+		if _env("limb") != "":
+			for i in TreeNode.LIMB_HITS:
+				tn.on_hit(p, ItemDB.get_item(&"stone_axe"))
+		var base := tn.to_global(Vector3(tn._trunk_c.x, tn.cut_h, tn._trunk_c.y))
+		var side := tn.fall_dir.cross(Vector3.UP)
+		p.global_position = base - tn.fall_dir * 2.2 + side * float(_env("side") if _env("side") != "" else "1.6")
+		p.global_position.y = session.world.height_at(p.global_position.x, p.global_position.z) + 0.2
+		p.look_at(Vector3(base.x, p.global_position.y, base.z) + tn.fall_dir * float(_env("ahead") if _env("ahead") != "" else "1.0"))
+		p.rotation = Vector3(0, p.rotation.y, 0)
+		p.head.rotation.x = float(_env("pitch") if _env("pitch") != "" else "-0.45")
 	if scenario in ["wheel", "pouch"]:  # weapon wheel held / the pouch open, with a varied kit
 		session.world.wildlife.enabled = false
 		for id: StringName in [&"stone_axe", &"spear", &"bow", &"club", &"flint_knife", &"torch", &"sickle"]:
@@ -345,12 +370,24 @@ func _ready() -> void:
 		_chop_tree = best
 		var side := (p.global_position - best.global_position)
 		side.y = 0.0
-		p.global_position = best.global_position + side.normalized().rotated(Vector3.UP, 1.2) * 1.35 + Vector3.UP * 0.3
+		var dist := float(_env("dist")) if _env("dist") != "" else 1.35
+		p.global_position = best.global_position + side.normalized().rotated(Vector3.UP, 1.2) * dist + Vector3.UP * 0.3
 		p.look_at(Vector3(best.global_position.x, p.global_position.y, best.global_position.z))
 		p.rotation = Vector3(0, p.rotation.y + 0.18, 0)
 		p.head.rotation.x = -0.32
 		p.inventory.add_item(&"stone_axe")
 		p.inventory.equip_slot(p.inventory.first_slot_of(&"stone_axe"))
+		if _env("pose") != "":  # SHOT_POSE=windup|strike: the swing frozen at that pose (no auto swings)
+			var st: Array = p.SWING_STYLES[&"chop"]
+			var k := {"rest": -1, "windup": 0, "strike": 2}.get(_env("pose"), 2) as int
+			p.swing_rot = st[k] if k >= 0 else Vector3.ZERO
+			p.swing_pos = st[k + 1] if k >= 0 else Vector3.ZERO
+			if _env("srot") != "":  # SHOT_SROT=x,y,z / SHOT_SPOS=x,y,z: try a pose without editing the styles
+				var r := _env("srot").split_floats(",")
+				p.swing_rot = Vector3(r[0], r[1], r[2])
+			if _env("spos") != "":
+				var q := _env("spos").split_floats(",")
+				p.swing_pos = Vector3(q[0], q[1], q[2])
 	if scenario.begins_with("tribe_"):
 		var fname := scenario.substr(6)
 		var c := Camps.site(session.world.factions.def_of(StringName(fname)))
@@ -447,14 +484,21 @@ func _ready() -> void:
 		p.look_at(Vector3(wf.foot.x, p.global_position.y, wf.foot.z))
 		p.rotation = Vector3(0, p.rotation.y, 0)
 		p.head.rotation.x = float(_env("pitch")) if _env("pitch") != "" else 0.12
-	if scenario in ["spear", "club", "bow"]:
+	if scenario in ["spear", "club", "bow", "axe", "knife"]:
 		session.world.wildlife.enabled = false
-		var weapon := StringName(scenario)
+		var weapon := StringName({"axe": "stone_axe", "knife": "flint_knife"}.get(scenario, scenario))
 		p.inventory.add_item(weapon)
 		p.inventory.equip_slot(p.inventory.first_slot_of(weapon))
 		if weapon == &"bow":
 			p.inventory.add_item(&"arrow", 10)
-			p._begin_draw.call_deferred()  # caught mid-draw, arrow nocked
+			if _env("rest") == "":  # SHOT_REST=1: the bow at rest instead of mid-draw
+				p._begin_draw.call_deferred()  # caught mid-draw, arrow nocked
+		if _env("bow") != "":  # SHOT_BOW=gx,gy,gz,cant: tune the carried bow (HandModels.BOW_GRIP, BOW_CANT)
+			var b := _env("bow").split_floats(",")
+			HandModels.BOW_GRIP = Vector3(b[0], b[1], b[2])
+			HandModels.BOW_CANT = b[3]
+		if _env("aim") != "":  # SHOT_AIM=1: the aiming pose (spear over the shoulder)
+			p.set_deferred("aiming", true)
 
 
 func _apply_bench() -> void:
@@ -540,6 +584,15 @@ func _process(delta: float) -> void:
 		RenderingServer.viewport_set_measure_render_time(get_viewport().get_viewport_rid(), true)
 	if _n == 5 and not bench_off.is_empty():
 		_apply_bench()
+	# SHOT_HOLD=x,y,z,rx,ry,rz: try a hold pose on the held item (tuning HandModels.HOLD)
+	if _n >= 5 and _env("hold") != "":
+		var p: Node = get_parent().get("player")
+		var hv: Node3D = p.get("_hand_visual") if p else null
+		var m := hv.get_node_or_null("Model") as Node3D if hv else null
+		var v := _env("hold").split_floats(",")
+		if m and v.size() >= 6:
+			m.position = Vector3(v[0], v[1], v[2])
+			m.rotation_degrees = Vector3(v[3], v[4], v[5])
 	if _n > frames - 120:
 		_fps_samples.append(1.0 / maxf(delta, 0.0001))
 	var session := get_parent() as GameSession
@@ -576,7 +629,7 @@ func _process(delta: float) -> void:
 		var sk2 := b._skel
 		var head := sk2.global_transform * sk2.get_bone_global_pose(sk2.find_bone("head")).origin + Vector3.UP * 0.08
 		b.take_damage(40.0, null, head, axe)
-	if scenario == "chop" and _chop_tree and _chop_tree.stage == TreeNode.Stage.STANDING and _n > 30 and _n % 45 == 0:
+	if scenario == "chop" and _env("pose") == "" and _chop_tree and _chop_tree.stage == TreeNode.Stage.STANDING and _n > 30 and _n % 45 == 0:
 		var pl := (get_parent() as GameSession).player
 		pl.stats.stamina = 100.0
 		pl.swing()

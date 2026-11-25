@@ -57,6 +57,14 @@ game-ready versions live in `assets/`.
 
 - Homo sapiens man: generated for this project with Tripo AI (generation 8ee2127b-7dae-4b54-b063-bb30df6786f5). Adapted as `SK_Human_SapiensM.gltf` with `tools/blender/rig_sapiens.py`: scaled to 1.82 m and bound to the existing Sapiens skeleton (its clips and skin weights carried over from the earlier model), texture converted to PNG. Re-rigged with `tools/blender/rig_sapiens_ual.py` onto the Universal Animation Library skeleton (below), with a forearm twist joint.
 
+- Stone axe: generated for this project with Tripo AI (generation d8ca3629-9e47-4ffe-acec-32a984f472ff), supplied by the project owner. The raw model (1.9M triangles) is kept in `art_source/models/`. `tools/blender/prepare_tripo.py` welds it and reduces it to 60k triangles as `SK_StoneAxe_Tripo.glb`. `tools/blender/gen_items.py` then reduces it to 6k triangles, aligns the handle with the item axis (0.70 m long, grip 0.20 m from the butt) and renders the inventory icon.
+
+- Spear: generated for this project with Tripo AI (generation d5ebbe4a-a3f1-4c69-b9d9-920234ed33f2), supplied by the project owner. The raw model is in `art_source/models/` and was prepared like the axe as `SK_Spear_Tripo.glb`. In-game it has 5k triangles and is stretched to 1.91 m (lengthwise only, so the shaft stays about 3 cm thick), with the grip 0.60 m from the butt.
+
+- Bow: generated for this project with Tripo AI (generation 105e470b-630d-43af-ad24-4c3bcee905b1), supplied by the project owner. The raw model is in `art_source/models/` and was prepared like the axe as `SK_Bow_Tripo.glb`. In-game it has 5.3k triangles, is 1.32 m long and was made shallower toward the archer (string 0.195 m from the grip). Its modelled string was replaced by a procedural one, so the "Drawn" shape key can pull it into a V.
+
+- First-person hands (`SM_FP_Hand_R/L`): forearm and hand cut from a **MakeHuman** base mesh made with the MPFB add-on for Blender (MakeHuman assets are [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/)). `tools/blender/gen_fp_hand.py` closes the fingers round the handle, extends the forearm and bakes the skin maps (`T_FP_Hand_albedo/normal/rough`) from procedural detail. The wrist wrap uses Poly Haven's Brown Leather texture.
+
 ## Motion capture
 - **Universal Animation Library** and **Universal Animation Library 2** (Standard) by [Quaternius](https://quaternius.com), [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/). Skeleton and motion-captured clips of the Homo sapiens man (`SK_Human_SapiensM.gltf`): idle, walk, jog, combat stance, sword stab (spear thrust), cross punch (feint), overhand throw, hit reactions, crouch, kneeling work, interact, death.
 - **CMU Graphics Lab Motion Capture Database** — http://mocap.cs.cmu.edu — "The data used in this project was obtained from mocap.cs.cmu.edu. The database was created with funding from NSF EIA-0196217." Free for research and commercial use with this credit. BVH conversion by Bruce Hahne (cgspeed). Files in `art_source/mocap/`: 08_01, 08_02, 16_15 (walk), 09_02, 09_03 (run), 02_07, 02_08 (swordplay → spear thrust), 14_01 (boxing). Retargeted with `tools/blender/mocap_retarget.py`.
@@ -99,13 +107,14 @@ The Sonniss cuts are short phrases used inside this game. The licence allows tha
 
 ## Sketchfab (CC BY 4.0, attribution required)
 Licensed under Creative Commons Attribution 4.0 — https://creativecommons.org/licenses/by/4.0/.
-Changes: re-oriented and rescaled to the item convention, polygon count reduced (axe 200k → 5.8k triangles,
-duplicate handle removed), roughness factor raised to 1.0, inventory icons rendered. Source files in
-`tools/blender/source/`, processed by `tools/blender/gen_items.py` into `assets/models/items/SM_Item_{stone_axe,spear,club}.gltf`
+Changes: re-oriented and rescaled to the item convention, polygon count reduced, inventory icons rendered. Source
+files in `tools/blender/source/`, processed by `tools/blender/gen_items.py` into `assets/models/items/SM_Item_club.gltf`
 (club: textures downscaled 2k → 1k, metallic set to 0).
+The Stone Axe below is no longer shipped (replaced by the Tripo axe on 2026-11-25). Its source stays in
+`tools/blender/source/` for `b_stone_axe_martire`.
 
 | Asset | Used as | Author | Source |
 |---|---|---|---|
-| Stone Axe | `stone_axe` item | Alex Martire | https://sketchfab.com/3d-models/stone-axe-5222cf9dedae4a31882281f6d7bada89 |
-| Prehistoric Spear - Artifatcs Low Poly | `spear` item | jesusmolina | https://sketchfab.com/3d-models/prehistoric-spear-artifatcs-low-poly-93114e93ffb343d1a835c6ac8e699957 |
+| Stone Axe (not shipped since 2026-11-25) | formerly `stone_axe` | Alex Martire | https://sketchfab.com/3d-models/stone-axe-5222cf9dedae4a31882281f6d7bada89 |
+| Prehistoric Spear - Artifatcs Low Poly (not shipped since 2026-11-25) | formerly `spear` | jesusmolina | https://sketchfab.com/3d-models/prehistoric-spear-artifatcs-low-poly-93114e93ffb343d1a835c6ac8e699957 |
 | Neolithic Stone Club | `club` item | Asylum Nox | https://sketchfab.com/3d-models/neolithic-stone-club-4a14743e04cd46b9b5075af5997cc439 |

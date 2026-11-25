@@ -8,6 +8,10 @@ extends Node3D
 const SPACING := {0: 0.5, 1: 0.4, 2: 0.32}   # clump grid spacing by video quality (low / medium / high)
 const RADIUS := {0: 15.0, 1: 20.0, 2: 30.0}
 const BARE_SLOTS := 12
+## Grass masks sample every 4th bake sample (~8 m); they are filtered linearly in the shader.
+const MASK_STRIDE := 4
+const MASK_N := (ForestWorld.BAKE_N - 1) / MASK_STRIDE + 1
+const MASK_CELL := ForestWorld.BAKE_CELL * MASK_STRIDE
 
 var world: ForestWorld
 var _grass: MultiMeshInstance3D
@@ -20,39 +24,70 @@ var _quality := -1
 
 func build(w: ForestWorld, heights: PackedFloat32Array, forest_mask: Image, macro_tex: Texture2D) -> void:
 	world = w
-	var row := ForestWorld.GRID + 1
+	var row := ForestWorld.BAKE_N
 	var img := Image.create_from_data(row, row, false, Image.FORMAT_RF, heights.to_byte_array())
 	_material = ShaderMaterial.new()
 	_material.shader = preload("res://world/shaders/grass_cards.gdshader")
 	_material.set_shader_parameter("atlas", preload("res://assets/textures/vegetation/T_GrassCards_D.png"))
 	_material.set_shader_parameter("height_tex", ImageTexture.create_from_image(img))
-	_material.set_shader_parameter("grass_mask", ImageTexture.create_from_image(_grass_mask(heights, forest_mask, 1.15)))
+	var dry := _creek_dry(w)
+	_material.set_shader_parameter("grass_mask", ImageTexture.create_from_image(_grass_mask(heights, forest_mask, 1.15, false, dry)))
 	_material.set_shader_parameter("macro_noise", macro_tex)
 	_material.set_shader_parameter("half_size", ForestWorld.HALF)
-	_material.set_shader_parameter("cell", ForestWorld.CELL_SIZE)
-	_material.set_shader_parameter("grid", ForestWorld.GRID)
+	_material.set_shader_parameter("cell", ForestWorld.BAKE_CELL)
+	_material.set_shader_parameter("grid", ForestWorld.BAKE_N - 1)
 	_material.set_shader_parameter("map_size", ForestWorld.SIZE)
 	_material.set_shader_parameter("water_level", ForestWorld.WATER_LEVEL)
+	if ResourceLoader.exists(ForestWorld.TERRAIN_MASKS):
+		_material.set_shader_parameter("terrain_masks", load(ForestWorld.TERRAIN_MASKS))
 	# Forest floor: same field, its own atlas, where the trees stand (forest mask or a grove).
 	_floor_material = _material.duplicate() as ShaderMaterial
 	_floor_material.set_shader_parameter("atlas", preload("res://assets/textures/vegetation/T_ForestCards_D.png"))
-	_floor_material.set_shader_parameter("grass_mask", ImageTexture.create_from_image(_grass_mask(heights, forest_mask, 1.0, true)))
+	_floor_material.set_shader_parameter("grass_mask", ImageTexture.create_from_image(_grass_mask(heights, forest_mask, 1.0, true, dry)))
 	_floor_material.set_shader_parameter("forest_floor", true)
 	_floor_material.set_shader_parameter("atlas_jungle", preload("res://assets/textures/vegetation/T_JungleCards_D.png"))
 	_rebuild()
 	Settings.changed.connect(func(_s: String, _k: String) -> void: _rebuild())
 
 
-## Per terrain vertex: 1 on dry, gentle ground, 0 in water and on steep rock, thinned by the forest mask.
-static func _grass_mask(heights: PackedFloat32Array, forest: Image, thin: float, under_trees := false) -> Image:
-	var row := ForestWorld.GRID + 1
+## Per terrain vertex: 0 in a creek bed, rising to 1 on its banks (creeks run above the river's 0 m level, so the
+## height test below does not see them).
+static func _creek_dry(w: ForestWorld) -> PackedFloat32Array:
+	var row := MASK_N
+	var cell := MASK_CELL
+	var dry := PackedFloat32Array()
+	dry.resize(row * row)
+	dry.fill(1.0)
+	if w == null:
+		return dry
+	for pts: PackedVector3Array in w.creeks:
+		for i in pts.size() - 1:
+			var a := Vector2(pts[i].x, pts[i].z)
+			var b := Vector2(pts[i + 1].x, pts[i + 1].z)
+			var lo := ((a.min(b) - Vector2.ONE * 8.0) + Vector2.ONE * ForestWorld.HALF) / cell
+			var hi := ((a.max(b) + Vector2.ONE * 8.0) + Vector2.ONE * ForestWorld.HALF) / cell
+			for iz in range(maxi(floori(lo.y), 0), mini(ceili(hi.y), row - 1) + 1):
+				for ix in range(maxi(floori(lo.x), 0), mini(ceili(hi.x), row - 1) + 1):
+					var p := Vector2(-ForestWorld.HALF + ix * cell, -ForestWorld.HALF + iz * cell)
+					var d := p.distance_to(Geometry2D.get_closest_point_to_segment(p, a, b))
+					dry[iz * row + ix] = minf(dry[iz * row + ix], smoothstep(3.0, 8.0, d))
+	return dry
+
+
+## Per mask texel (every MASK_STRIDE-th bake sample, ~4 m): 1 on dry, gentle ground, 0 in water and on steep rock,
+## thinned by the forest mask.
+static func _grass_mask(heights: PackedFloat32Array, forest: Image, thin: float, under_trees := false,
+		dry := PackedFloat32Array()) -> Image:
+	var row := MASK_N
 	var img := Image.create_empty(row, row, false, Image.FORMAT_L8)
-	var cell := ForestWorld.CELL_SIZE
+	var cell := MASK_CELL
+	var bn := ForestWorld.BAKE_N
 	for iz in row:
 		for ix in row:
-			var h := heights[iz * row + ix]
-			var hx := heights[iz * row + mini(ix + 1, row - 1)]
-			var hz := heights[mini(iz + 1, row - 1) * row + ix]
+			var b := iz * MASK_STRIDE * bn + ix * MASK_STRIDE
+			var h := heights[b]
+			var hx := heights[b + MASK_STRIDE] if ix < row - 1 else h
+			var hz := heights[b + MASK_STRIDE * bn] if iz < row - 1 else h
 			var slope := Vector2(hx - h, hz - h).length() / cell
 			var f := 0.0
 			if forest:
@@ -65,6 +100,8 @@ static func _grass_mask(heights: PackedFloat32Array, forest: Image, thin: float,
 			var cover := trees if under_trees else clampf(1.0 - maxf(f * thin, trees * 0.9), 0.0, 1.0)
 			var v := cover * clampf((h - ForestWorld.WATER_LEVEL - 0.05) * 3.0, 0.0, 1.0) \
 				* (1.0 - smoothstep(0.55, 0.8, slope))
+			if not dry.is_empty():
+				v *= dry[iz * row + ix]
 			img.set_pixel(ix, iz, Color(v, v, v))
 	return img
 

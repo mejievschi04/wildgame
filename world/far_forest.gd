@@ -149,7 +149,8 @@ func _compute_band(band: int, mask: Image) -> void:
 			var p := dens * STEP * STEP * (0.3 + maxf(forest, jg)) * (0.12 + 7.0 * g * g)
 			if rng.randf() > p:
 				continue
-			if Vector2(px, pz).distance_to(ForestWorld.SPAWN) < SPAWN_CLEAR or world.river_distance(px, pz) < 20.0:
+			if Vector2(px, pz).distance_to(ForestWorld.SPAWN) < SPAWN_CLEAR or world.water_distance(px, pz) < 20.0 \
+					or world.in_cave_cut(px, pz, 6.0):
 				continue
 			var h := world.height_at(px, pz)
 			if h < 1.5 or h > 135.0 or world.normal_at(px, pz).y < 0.72:
@@ -183,7 +184,7 @@ func _terrain_fingerprint() -> int:
 		var x := -1900.0 + (i % 8) * 540.0
 		var z := -1900.0 + (i / 8) * 540.0
 		parts.append(snappedf(world.height_at(x, z), 0.01))
-		parts.append(snappedf(world.river_distance(x, z), 0.1))
+		parts.append(snappedf(world.water_distance(x, z), 0.1))
 		parts.append(snappedf(grove_at(x, z), 0.001))
 	return hash(parts)
 

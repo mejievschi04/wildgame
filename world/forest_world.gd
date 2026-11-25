@@ -6,8 +6,6 @@ extends Node3D
 
 const SIZE := 4200.0
 const HALF := SIZE * 0.5
-const GRID := 420
-const CELL_SIZE := SIZE / GRID
 const SEED := 20261121
 const WATER_LEVEL := 0.0
 const PLAYABLE := 2000.0
@@ -16,6 +14,23 @@ const OLD_CAMP := Vector2(55.0, -58.0)
 const LAKE_CENTER := Vector2(205.0, 1760.0)
 const LAKE_RADIUS_X := 170.0
 const LAKE_RADIUS_Z := 145.0
+## Relief baked offline with hydraulic erosion (tools/gen_terrain.py): the final float32 heights on a BAKE_N² grid
+## (~2 m) over the whole terrain, zlib-compressed, with the river's cut, lake, fords and camp clearings already in.
+## The visible terrain (TerrainLod), its collision (one HeightMapShape3D) and height_at() all use this grid and the
+## same triangulation. Creeks (with their water levels) and the shader masks come from the same run.
+const TERRAIN_BIN := "res://assets/terrain/terrain_height.bin"
+const TERRAIN_MASKS := "res://assets/terrain/T_Terrain_Masks.png"
+const STREAMS_JSON := "res://data/streams.json"
+const CAVES_JSON := "res://data/caves.json"
+const BAKE_N := 2049
+const BAKE_CELL := SIZE / (BAKE_N - 1)
+## Shallow crossings of the main river: river z, half-length along the river (m), bed height (water ~0.15 m deep).
+## Cut into the bake: keep in sync with tools/gen_terrain.py FORDS.
+const FORDS := {
+	&"stone_ford": Vector3(-200.0, 9.0, -0.12),  # Vadul de Piatră: quick, open, stepping stones
+	&"dry_ford": Vector3(1150.0, 15.0, -0.08),   # Vadul Secat: the southern gravel bar, hard to spot
+}
+const CREEK_HASH := 32.0
 
 ## Region centers also anchor the strategic map and future clan strongholds.
 const REGIONS := {
@@ -47,7 +62,6 @@ var far_forest: FarForest
 var waterfall: Waterfall
 var _water_mat: ShaderMaterial
 var _camp_sites: Array[Vector2] = []
-var _camp_heights: Array[float] = []
 var _camp_clearings: Array[Vector2] = []
 var journal: Array[String] = []
 ## World map: explored cells (MapData fog), the player's waypoint, the painted map (ready when map_task finishes).
@@ -61,14 +75,21 @@ var player: Node = null
 var _noise := FastNoiseLite.new()
 var _landform := FastNoiseLite.new()
 var _detail := FastNoiseLite.new()
-var _spawn_height := 0.0
-var _terrain_heights := PackedFloat32Array()
+var terrain_lod: TerrainLod
+var caves: Array[Cave] = []
 var _nodes: Dictionary = {}  # id -> Node
 var _pending_region_states: Dictionary = {}
 var _structure_counter := 0
 var _sim_accum := 0.0
 var _occupied: Dictionary = {}  # Vector2i cell -> Array[Vector3] (x, z, radius)
 var _rng := RandomNumberGenerator.new()
+static var _bake := PackedFloat32Array()
+## Hash of the baked relief file: caches derived from the terrain (the painted map) are keyed by it.
+static var bake_hash := 0
+## Creeks: per creek the centre line as (x, water level, z), its width class 0..1, and a 32 m grid of nearby segments.
+var creeks: Array[PackedVector3Array] = []
+var creek_widths: PackedFloat32Array = []
+var _creek_hash: Dictionary = {}  # Vector2i -> PackedInt32Array of (creek << 16 | segment)
 
 var nodes_root: Node3D
 var forest_mask: Image
@@ -92,7 +113,8 @@ func _ready() -> void:
 	_landform.fractal_octaves = 3
 	_detail.seed = SEED + 1
 	_detail.frequency = 0.012
-	_spawn_height = _base_height_at(SPAWN.x, SPAWN.y) - 2.0
+	_load_bake()
+	_load_creeks()
 	_rng.seed = SEED
 	_load_camp_sites()
 	nodes_root = _child_root("Nodes")
@@ -107,6 +129,7 @@ func _ready() -> void:
 	weather.world = self
 	add_child(weather)
 	_build_terrain()
+	_build_caves()
 	_build_water()
 	_build_bounds()
 	_build_pois()
@@ -172,7 +195,7 @@ func _ready() -> void:
 	meadow_grass.add_to_group("far_scenery")  # positioned around the camera in its shader
 	meadow_grass.name = "MeadowGrass"
 	add_child(meadow_grass)
-	meadow_grass.build(self, _terrain_heights, forest_mask, _terrain_mat.get_shader_parameter("macro_noise"))
+	meadow_grass.build(self, _bake, forest_mask, _terrain_mat.get_shader_parameter("macro_noise"))
 	if menu_mode:
 		day_night.frozen = true
 	else:
@@ -185,10 +208,11 @@ func _start_map_paint() -> void:
 	map_image = MapData.cached()
 	if map_image:
 		return
-	var heights := _terrain_heights.duplicate()
+	var heights := _bake
 	var forest := forest_mask.duplicate() as Image
+	var creek_lines := creeks.duplicate()
 	_map_task = WorkerThreadPool.add_task(func() -> void:
-		var img := MapData.paint(heights, GRID, SIZE, forest, WATER_LEVEL)
+		var img := MapData.paint(heights, BAKE_N - 1, SIZE, forest, WATER_LEVEL, creek_lines)
 		img.save_png(MapData.cache_path())
 		_set_map_image.call_deferred(img))
 
@@ -246,10 +270,16 @@ func river_x(z: float) -> float:
 
 func river_distance(x: float, z: float) -> float:
 	var d := _channel_distance(x, z, -PLAYABLE, LAKE_CENTER.y - LAKE_RADIUS_Z + 20.0, Callable(self, "river_x"))
-	# The main river splits into slow channels through Meyra's eastern marsh.
-	d = minf(d, _channel_distance(x, z, 180.0, 1450.0, Callable(self, "_meyra_channel_a")))
-	d = minf(d, _channel_distance(x, z, 430.0, 1450.0, Callable(self, "_meyra_channel_b")))
+	# The main river splits into slow channels through Meyra's eastern marsh; they braid and drain into the lake.
+	d = minf(d, _channel_distance(x, z, 180.0, MEYRA_A_END, Callable(self, "_meyra_channel_a")))
+	d = minf(d, _channel_distance(x, z, 430.0, MEYRA_B_END, Callable(self, "_meyra_channel_b")))
 	return d
+
+
+## Distance to running water of any size: the river and its channels, or a creek. A creek's waterline is ~2–3.5 m
+## from its centre (the river's ~10 m), so its distance is offset to read like the river's on the banks.
+func water_distance(x: float, z: float) -> float:
+	return minf(river_distance(x, z), creek_distance(x, z) + 7.0)
 
 
 func _channel_distance(x: float, z: float, start_z: float, end_z: float, center_x: Callable) -> float:
@@ -258,14 +288,21 @@ func _channel_distance(x: float, z: float, start_z: float, end_z: float, center_
 	return Vector2(dx, z - nearest_z).length()
 
 
+## Keep the Meyra channels in sync with tools/gen_terrain.py (meyra_a / meyra_b).
+const MEYRA_A_END := 1700.0
+const MEYRA_B_END := 1300.0
+
+
 func _meyra_channel_a(z: float) -> float:
 	var bend := 35.0 * (sin(z * 0.003) - sin(180.0 * 0.003))
-	return river_x(z) + 250.0 * smoothstep(180.0, 520.0, z) + bend
+	var out := 250.0 * smoothstep(180.0, 520.0, z) + bend
+	var home := smoothstep(1250.0, 1720.0, z)  # turns back into the lake's east shore
+	return river_x(z) + out * (1.0 - home) + home * (LAKE_CENTER.x + 120.0 - river_x(z))
 
 
 func _meyra_channel_b(z: float) -> float:
 	var bend := 45.0 * (sin(z * 0.0025) - sin(430.0 * 0.0025))
-	return _meyra_channel_a(z) + 220.0 * smoothstep(430.0, 760.0, z) + bend
+	return _meyra_channel_a(z) + (220.0 * smoothstep(430.0, 760.0, z) + bend) * (1.0 - smoothstep(1050.0, 1300.0, z))
 
 
 func region_at(x: float, z: float) -> StringName:
@@ -311,108 +348,160 @@ func _load_camp_sites() -> void:
 
 func _add_camp_site(c: Vector2, flat_radius: float) -> void:
 	_camp_sites.append(c)
-	_camp_heights.append(maxf(_base_height_at(c.x, c.y), 1.5))
 	_camp_clearings.append(Vector2(flat_radius, flat_radius + 12.0))
 
 
-func _base_height_at(x: float, z: float) -> float:
-	# Three scales of broad terrain variation keep the landscape from reading as smooth blobs.
-	var h := 32.0 + _noise.get_noise_2d(x, z) * 18.0 \
-		+ _landform.get_noise_2d(x, z) * 9.0 + _detail.get_noise_2d(x, z) * 1.8
-	# Broad landforms give each territory a readable silhouette from the valley.
+## The baked terrain at (x, z): the triangle of the bake grid under the point, split like the terrain mesh and the
+## HeightMapShape3D collision (u + v <= 1). Outside the map square it continues the nearest edge value.
+static func bake_height(x: float, z: float) -> float:
+	var gx := clampf((x + HALF) / BAKE_CELL, 0.0, BAKE_N - 1.0)
+	var gz := clampf((z + HALF) / BAKE_CELL, 0.0, BAKE_N - 1.0)
+	var ix := mini(int(gx), BAKE_N - 2)
+	var iz := mini(int(gz), BAKE_N - 2)
+	var u := gx - ix
+	var v := gz - iz
+	var a := iz * BAKE_N + ix
+	var b := _bake[a + 1]
+	var c := _bake[a + BAKE_N]
+	if u + v <= 1.0:
+		return _bake[a] * (1.0 - u - v) + b * u + c * v
+	return b * (1.0 - v) + c * (1.0 - u) + _bake[a + BAKE_N + 1] * (u + v - 1.0)
+
+
+## Upward normal of the bake at a grid sample, from central differences `step` samples apart.
+static func bake_normal(bx: int, bz: int, step: int = 1) -> Vector3:
+	var x0 := maxi(bx - step, 0)
+	var x1 := mini(bx + step, BAKE_N - 1)
+	var z0 := maxi(bz - step, 0)
+	var z1 := mini(bz + step, BAKE_N - 1)
+	var dx := (_bake[bz * BAKE_N + x1] - _bake[bz * BAKE_N + x0]) / ((x1 - x0) * BAKE_CELL)
+	var dz := (_bake[z1 * BAKE_N + bx] - _bake[z0 * BAKE_N + bx]) / ((z1 - z0) * BAKE_CELL)
+	return Vector3(-dx, 1.0, -dz).normalized()
+
+
+## Loads the baked relief once per run (the menu backdrop and the game session share it).
+static func _load_bake() -> void:
+	if _bake.size() == BAKE_N * BAKE_N:
+		return
+	var packed := FileAccess.get_file_as_bytes(TERRAIN_BIN)
+	bake_hash = hash(packed) ^ hash(FileAccess.get_file_as_string(STREAMS_JSON))
+	var raw := packed.decompress(BAKE_N * BAKE_N * 4, FileAccess.COMPRESSION_DEFLATE)
+	_bake = raw.to_float32_array()
+	if _bake.size() != BAKE_N * BAKE_N:
+		push_error("ForestWorld: %s is missing or damaged (run tools/gen_terrain.py)" % TERRAIN_BIN)
+		_bake.resize(BAKE_N * BAKE_N)
+		_bake.fill(30.0)
+
+
+func _load_creeks() -> void:
+	var f := FileAccess.open(STREAMS_JSON, FileAccess.READ)
+	var d: Variant = JSON.parse_string(f.get_as_text()) if f else null
+	if not d is Dictionary:
+		return
+	for c: Dictionary in d.get("streams", []):
+		var pts := PackedVector3Array()
+		for p: Array in c.get("points", []):
+			pts.append(Vector3(float(p[0]), float(p[2]), float(p[1])))
+		if pts.size() < 2:
+			continue
+		var ci := creeks.size()
+		creeks.append(pts)
+		creek_widths.append(float(c.get("width", 0.0)))
+		for si in pts.size() - 1:
+			var a := Vector2(pts[si].x, pts[si].z)
+			var b := Vector2(pts[si + 1].x, pts[si + 1].z)
+			var lo := (a.min(b) - Vector2.ONE * 48.0) / CREEK_HASH
+			var hi := (a.max(b) + Vector2.ONE * 48.0) / CREEK_HASH
+			for gx in range(floori(lo.x), floori(hi.x) + 1):
+				for gz in range(floori(lo.y), floori(hi.y) + 1):
+					var key := Vector2i(gx, gz)
+					var list: PackedInt32Array = _creek_hash.get(key, PackedInt32Array())
+					list.append((ci << 16) | si)
+					_creek_hash[key] = list
+
+
+## Distance to the nearest creek's centre line (1e9 when none is within ~48 m).
+func creek_distance(x: float, z: float) -> float:
+	var list: PackedInt32Array = _creek_hash.get(Vector2i(floori(x / CREEK_HASH), floori(z / CREEK_HASH)), PackedInt32Array())
+	var best := 1e9
 	var p := Vector2(x, z)
-	var aru := exp(-p.length_squared() / (2.0 * 220.0 * 220.0))
-	h += 22.0 * aru
-	var kharum := exp(-Vector2(x + 1380.0, z - 96.0).length_squared() / (2.0 * 448.0 * 448.0))
-	h += 78.0 * kharum
-	# Broken mountain shoulders and separated summits instead of one rounded cone.
-	h += 58.0 * exp(-Vector2(x + 1688.0, z + 384.0).length_squared() / (2.0 * 248.0 * 248.0))
-	h += 72.0 * exp(-Vector2(x + 1416.0, z - 208.0).length_squared() / (2.0 * 280.0 * 280.0))
-	h += 54.0 * exp(-Vector2(x + 1160.0, z - 528.0).length_squared() / (2.0 * 224.0 * 224.0))
-	h += 62.0 * exp(-Vector2(x + 1832.0, z + 704.0).length_squared() / (2.0 * 264.0 * 264.0))
-	h += 76.0 * exp(-Vector2(x + 1832.0, z - 96.0).length_squared() / (2.0 * 228.0 * 228.0))
-	h += 68.0 * exp(-Vector2(x + 1448.0, z - 696.0).length_squared() / (2.0 * 256.0 * 256.0))
-	h += 60.0 * exp(-Vector2(x + 1056.0, z - 136.0).length_squared() / (2.0 * 208.0 * 208.0))
-	var western_ridge_x := -1480.0 + 108.0 * sin(z * 0.003) + 38.0 * sin(z * 0.00875)
-	var western_ridge := exp(-pow((x - western_ridge_x) / 152.0, 2.0)) \
-		* smoothstep(-840.0, -480.0, z) * (1.0 - smoothstep(680.0, 1000.0, z))
-	h += 48.0 * western_ridge
-	# A cold northern ridge feeds the main river and gives the tundra a snowy skyline.
-	h += 108.0 * exp(-Vector2(x + 1350.0, z + 1850.0).length_squared() / (2.0 * 300.0 * 300.0))
-	h += 132.0 * exp(-Vector2(x + 730.0, z + 1930.0).length_squared() / (2.0 * 330.0 * 330.0))
-	h += 138.0 * exp(-Vector2(x - 820.0, z + 1930.0).length_squared() / (2.0 * 350.0 * 350.0))
-	h += 110.0 * exp(-Vector2(x - 1380.0, z + 1800.0).length_squared() / (2.0 * 310.0 * 310.0))
-	var varkai := exp(-Vector2(x - 1176.0, z + 1240.0).length_squared() / (2.0 * 464.0 * 464.0))
-	h += 38.0 * varkai
-	var varkai_ridge_x := 576.0 + 84.0 * sin(z * 0.0026)
-	var varkai_ridge := exp(-pow((x - varkai_ridge_x) / 120.0, 2.0)) \
-		* smoothstep(-1760.0, -1480.0, z) * (1.0 - smoothstep(-680.0, -400.0, z))
-	h += 31.0 * varkai_ridge
-	var plateau_spur_x := 1176.0 + 76.0 * sin(z * 0.004 + 0.8)
-	var plateau_spur := exp(-pow((x - plateau_spur_x) / 168.0, 2.0)) \
-		* smoothstep(-1480.0, -1240.0, z) * (1.0 - smoothstep(-336.0, -96.0, z))
-	h += 34.0 * plateau_spur
-	var ossara := exp(-Vector2(x - 80.0, z - 1496.0).length_squared() / (2.0 * 600.0 * 600.0))
-	h += 5.0 * ossara
-	return h
+	for code in list:
+		var pts := creeks[code >> 16]
+		var si := code & 0xFFFF
+		var a := Vector2(pts[si].x, pts[si].z)
+		var b := Vector2(pts[si + 1].x, pts[si + 1].z)
+		best = minf(best, p.distance_to(Geometry2D.get_closest_point_to_segment(p, a, b)))
+	return best
 
 
-## River cross-section by distance from the channel centre: a bed, a long *linear* bank ramp (the waterline at
-## ~10 m falls inside the water strips, and a linear ramp keeps the 10 m terrain grid from drawing it as a
-## sawtooth), then valley sides of ~17-22 degrees blending into the land -- instead of a 60-degree canyon.
-const RIVER_BED := -1.4
-const RIVER_BANK_START := 1.0
-const RIVER_BANK_END := 23.0
-const RIVER_BANK_TOP := 2.0
-const RIVER_VALLEY_SLOPE := 0.34
+## The creek's water level near (x, z), or -INF away from creeks.
+func creek_level_at(x: float, z: float) -> float:
+	var list: PackedInt32Array = _creek_hash.get(Vector2i(floori(x / CREEK_HASH), floori(z / CREEK_HASH)), PackedInt32Array())
+	var best := 1e9
+	var level := -INF
+	var p := Vector2(x, z)
+	for code in list:
+		var pts := creeks[code >> 16]
+		var si := code & 0xFFFF
+		var a := Vector2(pts[si].x, pts[si].z)
+		var b := Vector2(pts[si + 1].x, pts[si + 1].z)
+		var q := Geometry2D.get_closest_point_to_segment(p, a, b)
+		var d := p.distance_to(q)
+		if d < best:
+			best = d
+			var t := clampf(a.distance_to(q) / maxf(a.distance_to(b), 0.001), 0.0, 1.0)
+			level = lerpf(pts[si].y, pts[si + 1].y, t)
+	return level
 
 
-func _river_profile(x: float, z: float, d: float) -> float:
-	if d <= RIVER_BANK_START:
-		return RIVER_BED
-	if d <= RIVER_BANK_END:
-		return lerpf(RIVER_BED, RIVER_BANK_TOP, (d - RIVER_BANK_START) / (RIVER_BANK_END - RIVER_BANK_START))
-	# Valley sides: steeper and gentler stretches along the river so it doesn't read as a machined trench.
-	var slope := RIVER_VALLEY_SLOPE + 0.08 * _landform.get_noise_2d(x * 0.5, z * 0.5)
-	return RIVER_BANK_TOP + (d - RIVER_BANK_END) * slope
+## Caves cut into the bake (data/caves.json): each gets its rock roof; their ground is kept clear of scatter.
+func _build_caves() -> void:
+	var f := FileAccess.open(CAVES_JSON, FileAccess.READ)
+	var d: Variant = JSON.parse_string(f.get_as_text()) if f else null
+	if not d is Dictionary:
+		return
+	for def: Dictionary in d.get("caves", []):
+		var cave := Cave.new()
+		cave.add_to_group("far_scenery")
+		add_child(cave)
+		cave.build(self, def, _terrain_mat)
+		caves.append(cave)
+		for r: Dictionary in cave.rings:
+			var c := Vector2(float(r.x), float(r.z))
+			var reach := float(r.r)
+			var l := -reach
+			while l <= reach:
+				var p := c + cave.side * l
+				_occupy(p.x, p.y, 3.0)
+				l += 3.0
+		var t := -cave.mouth - 14.0
+		while t < cave.mouth:  # the open approach
+			var p := cave.entry + cave.dir * t
+			_occupy(p.x, p.y, 6.0)
+			t += 3.0
 
 
-## Smooth minimum: like minf(a, b) but rounds the crease where the two surfaces meet (k = blend height).
-static func _smin(a: float, b: float, k: float) -> float:
-	var t := maxf(k - absf(a - b), 0.0) / k
-	return minf(a, b) - t * t * k * 0.25
+## True over a cave's cut (its approach, trench and roof), widened by `margin`.
+func in_cave_cut(x: float, z: float, margin: float = 0.0) -> bool:
+	for cave in caves:
+		if cave.covers(x, z, margin):
+			return true
+	return false
 
 
-## legacy_river: the old narrow river cut. Only the seeded scatter in _scatter_kind() uses it, so the start
-## valley's resource nodes keep the same accept/reject sequence (and save ids) they had before the valley rework.
-func _terrain_height(x: float, z: float, legacy_river := false) -> float:
-	var h := _base_height_at(x, z)
-	for i in _camp_sites.size():
-		var radii := _camp_clearings[i]
-		var dc0 := Vector2(x, z).distance_squared_to(_camp_sites[i])
-		if dc0 < radii.y * radii.y:
-			h = lerpf(h, _camp_heights[i], 1.0 - smoothstep(radii.x, radii.y, sqrt(dc0)))
-	var ds := Vector2(x, z).distance_to(SPAWN)
-	# The original 260 m graybox flattened spawn to 3.2 m inside a 20 m ring.
-	# That target created a sheer crater after the surrounding terrain gained elevation.
-	h = lerpf(h, _spawn_height, (1.0 - smoothstep(45.0, 145.0, ds)) * 0.35)
-	var dc := Vector2(x, z).distance_to(OLD_CAMP)
-	h = lerpf(h, maxf(h, 2.6), 1.0 - smoothstep(4.0, 12.0, dc))
-	if legacy_river:
-		h = lerpf(h, -1.4, 1.0 - smoothstep(8.0, 35.0, river_distance(x, z)))
-	else:
-		h = _smin(h, _river_profile(x, z, river_distance(x, z)), 8.0)
-	var lake_distance := Vector2((x - LAKE_CENTER.x) * LAKE_RADIUS_Z / LAKE_RADIUS_X, z - LAKE_CENTER.y).length()
-	var lake_basin := 1.0 - smoothstep(150.0, 260.0, lake_distance)
-	h = lerpf(h, -5.0, lake_basin)
-	var e := maxf(absf(x), absf(z))
-	if e > PLAYABLE + 4.0:
-		# Gentle rise into the border mountains (Backdrop continues it); the bounds walls stop the player.
-		h += pow((e - PLAYABLE - 4.0) / 96.0, 1.5) * 60.0
-	return h
+## The cave around `pos`, or null.
+func cave_at(pos: Vector3) -> Cave:
+	for cave in caves:
+		if cave.contains(pos):
+			return cave
+	return null
 
 
-## Interpolate the same two triangles used by the visible terrain and its collision mesh.
+## Terrain height at (x, z) (the backdrop samples it beyond the map's edge too).
+func _terrain_height(x: float, z: float) -> float:
+	return bake_height(x, z)
+
+
 ## Climate bands, north (−z) to south (+z): tundra · taiga · temperate · jungle. 0..1, with wavy borders.
 ## Keep in sync with biome.gdshaderinc.
 static func jungle_at(x: float, z: float) -> float:
@@ -429,20 +518,7 @@ func habitat_ok_for_people(p: Vector3) -> bool:
 
 
 func height_at(x: float, z: float) -> float:
-	if _terrain_heights.is_empty() or absf(x) > HALF or absf(z) > HALF:
-		return _terrain_height(x, z)
-	var gx := (x + HALF) / CELL_SIZE
-	var gz := (z + HALF) / CELL_SIZE
-	var ix := mini(floori(gx), GRID - 1)
-	var iz := mini(floori(gz), GRID - 1)
-	var u := gx - ix
-	var v := gz - iz
-	var a := iz * (GRID + 1) + ix
-	var b := _terrain_heights[a + 1]
-	var c := _terrain_heights[a + GRID + 1]
-	if u + v <= 1.0:
-		return _terrain_heights[a] * (1.0 - u - v) + b * u + c * v
-	return b * (1.0 - v) + c * (1.0 - u) + _terrain_heights[a + GRID + 2] * (u + v - 1.0)
+	return bake_height(x, z)
 
 
 func normal_at(x: float, z: float) -> Vector3:
@@ -456,51 +532,9 @@ func ground_point(x: float, z: float) -> Vector3:
 	return Vector3(x, height_at(x, z), z)
 
 
-func _terrain_color(x: float, z: float, h: float, n: Vector3) -> Color:
-	var grass := Color(0.24, 0.31, 0.16).lerp(Color(0.3, 0.34, 0.17), _detail.get_noise_2d(x * 0.5, z * 0.5) * 0.5 + 0.5)
-	var dirt := Color(0.33, 0.27, 0.19)
-	var mud := Color(0.3, 0.27, 0.2)
-	var rock := Color(0.42, 0.41, 0.39)
-	var snow := Color(0.86, 0.88, 0.9)
-	var c := grass.lerp(dirt, smoothstep(0.92, 0.75, n.y))
-	c = c.lerp(mud, 1.0 - smoothstep(0.2, 1.1, h))
-	c = c.lerp(rock, smoothstep(9.0, 14.0, h))
-	c = c.lerp(snow, smoothstep(20.0, 26.0, h))
-	return c
-
-
+## The terrain: TerrainLod draws it (full resolution near the camera, every 4th sample beyond) and one
+## HeightMapShape3D over the whole bake is its collision.
 func _build_terrain() -> void:
-	var row := GRID + 1
-	_terrain_heights.resize(row * row)
-	for iz in row:
-		for ix in row:
-			_terrain_heights[iz * row + ix] = _terrain_height(-HALF + ix * CELL_SIZE, -HALF + iz * CELL_SIZE)
-	var st := SurfaceTool.new()
-	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	for iz in row:
-		for ix in row:
-			var x := -HALF + ix * CELL_SIZE
-			var z := -HALF + iz * CELL_SIZE
-			var h := _terrain_heights[iz * row + ix]
-			var n := normal_at(x, z)
-			st.set_normal(n)
-			st.set_color(_terrain_color(x, z, h, n))
-			st.set_uv(Vector2(ix, iz) / 8.0)
-			st.add_vertex(Vector3(x, h, z))
-	for iz in GRID:
-		for ix in GRID:
-			var a := iz * row + ix
-			var b := a + 1
-			var c := a + row
-			var d := c + 1
-			st.add_index(a)
-			st.add_index(b)
-			st.add_index(c)
-			st.add_index(b)
-			st.add_index(d)
-			st.add_index(c)
-	st.generate_tangents()
-	var mesh := st.commit()
 	_terrain_mat = ShaderMaterial.new()
 	_terrain_mat.shader = preload("res://world/shaders/terrain.gdshader")
 	_terrain_mat.set_shader_parameter("albedo_tex", load("res://assets/textures/terrain/T_Terrain_albedo.jpg"))
@@ -509,6 +543,8 @@ func _build_terrain() -> void:
 	_terrain_mat.set_shader_parameter("map_size", SIZE)
 	_terrain_mat.set_shader_parameter("water_level", WATER_LEVEL)
 	_terrain_mat.set_shader_parameter("biome_tint", ImageTexture.create_from_image(_build_biome_tint()))
+	if ResourceLoader.exists(TERRAIN_MASKS):
+		_terrain_mat.set_shader_parameter("terrain_masks", load(TERRAIN_MASKS))
 	var macro := FastNoiseLite.new()
 	macro.seed = SEED + 5
 	macro.frequency = 0.02
@@ -516,20 +552,22 @@ func _build_terrain() -> void:
 	var macro_img := macro.get_seamless_image(256, 256)
 	macro_img.generate_mipmaps()
 	_terrain_mat.set_shader_parameter("macro_noise", ImageTexture.create_from_image(macro_img))
-	var mi := MeshInstance3D.new()
-	mi.name = "Terrain"
-	mi.add_to_group("far_scenery")
-	mi.mesh = mesh
-	mi.material_override = _terrain_mat
-	add_child(mi)
+	terrain_lod = TerrainLod.new()
+	terrain_lod.name = "Terrain"
+	terrain_lod.add_to_group("far_scenery")
+	add_child(terrain_lod)
+	terrain_lod.build(self, _terrain_mat, spawn_position())
 	var body := StaticBody3D.new()
 	body.name = "TerrainBody"
 	body.collision_layer = 1
 	body.collision_mask = 0
 	body.add_to_group("terrain")
-	var shape := mesh.create_trimesh_shape()
-	shape.backface_collision = true
-	Graybox.add_shape(body, shape)
+	var shape := HeightMapShape3D.new()
+	shape.map_width = BAKE_N
+	shape.map_depth = BAKE_N
+	shape.map_data = _bake
+	var cs := Graybox.add_shape(body, shape)
+	cs.scale = Vector3(BAKE_CELL, 1.0, BAKE_CELL)
 	add_child(body)
 
 
@@ -550,9 +588,64 @@ func _build_water() -> void:
 		nt.noise = fn
 		m.set_shader_parameter(key, nt)
 	_build_water_channel("MainRiver", -PLAYABLE, LAKE_CENTER.y - LAKE_RADIUS_Z + 20.0, 65.0, 14.0, Callable(self, "river_x"), m, true)
-	_build_water_channel("MeyraChannelA", 180.0, 1450.0, 60.0, 12.0, Callable(self, "_meyra_channel_a"), m, true)
-	_build_water_channel("MeyraChannelB", 430.0, 1450.0, 60.0, 11.0, Callable(self, "_meyra_channel_b"), m, true)
+	_build_water_channel("MeyraChannelA", 180.0, MEYRA_A_END, 60.0, 12.0, Callable(self, "_meyra_channel_a"), m, true)
+	_build_water_channel("MeyraChannelB", 430.0, MEYRA_B_END, 60.0, 11.0, Callable(self, "_meyra_channel_b"), m, true)
 	_build_lake(m)
+	for i in creeks.size():
+		_build_creek(i, m)
+
+
+## A creek's water: a ribbon following its descending level (so it runs downhill, unlike the river at 0 m), and
+## drinkable/fishable water volumes along it. Its bed is already cut into the baked relief.
+func _build_creek(index: int, material: ShaderMaterial) -> void:
+	var pts := creeks[index]
+	# A little past the waterline (~2.3–3.5 m from the centre), so the ribbon's own edge stays under the banks.
+	var half_width := 4.5 + 2.5 * creek_widths[index]
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var along := 0.0
+	for i in pts.size():
+		var a := pts[maxi(i - 1, 0)]
+		var b := pts[mini(i + 1, pts.size() - 1)]
+		var tangent := Vector2(b.x - a.x, b.z - a.z).normalized()
+		var side := Vector2(tangent.y, -tangent.x)
+		if i > 0:
+			along += Vector2(pts[i].x - pts[i - 1].x, pts[i].z - pts[i - 1].z).length()
+		# narrow at the source, full width after the first ~60 m
+		var w := half_width
+		for edge: float in [-1.0, 1.0]:
+			var p := Vector2(pts[i].x, pts[i].z) + side * w * edge
+			st.set_normal(Vector3.UP)
+			st.set_uv(Vector2(along / 18.0, edge * 0.5 + 0.5))
+			st.add_vertex(Vector3(p.x, pts[i].y + 0.03, p.y))
+	for i in pts.size() - 1:
+		var a := i * 2
+		st.add_index(a)
+		st.add_index(a + 1)
+		st.add_index(a + 2)
+		st.add_index(a + 1)
+		st.add_index(a + 3)
+		st.add_index(a + 2)
+	var surface := MeshInstance3D.new()
+	surface.add_to_group("far_scenery")
+	surface.name = "Creek%d_Surface" % index
+	surface.mesh = st.commit()
+	surface.material_override = material
+	surface.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(surface)
+	var i := 0
+	while i < pts.size() - 1:
+		var j := mini(i + 2, pts.size() - 1)
+		var p0 := pts[i]
+		var p1 := pts[j]
+		var segment := WaterBody.new()
+		segment.name = "Creek%d_Water_%03d" % [index, i]
+		add_child(segment)
+		var length := Vector2(p1.x - p0.x, p1.z - p0.z).length()
+		segment.setup(half_width * 1.3, (p0.y + p1.y) * 0.5 + 0.03, length + 1.0)
+		segment.position = Vector3((p0.x + p1.x) * 0.5, 0.0, (p0.z + p1.z) * 0.5)
+		segment.rotation.y = atan2(p1.x - p0.x, p1.z - p0.z)
+		i = j
 
 
 func _build_lake(material: ShaderMaterial) -> void:
@@ -756,8 +849,7 @@ func _limit_view_distance(n: Node) -> void:
 	g.visibility_range_end_margin = 60.0
 
 
-## legacy: sample the pre-valley-rework terrain (only for kinds that existed before it, to keep their save ids).
-func _scatter_kind(kind: StringName, count: int, radius: float, accept: Callable, attempts_per: int = 12, legacy: bool = true) -> void:
+func _scatter_kind(kind: StringName, count: int, radius: float, accept: Callable, attempts_per: int = 12) -> void:
 	var placed := 0
 	var attempts := 0
 	while placed < count and attempts < count * attempts_per:
@@ -766,12 +858,8 @@ func _scatter_kind(kind: StringName, count: int, radius: float, accept: Callable
 		# receive their own biome resources as those systems are added.
 		var x := _rng.randf_range(SPAWN.x - 245.0, SPAWN.x + 245.0)
 		var z := _rng.randf_range(SPAWN.y - 245.0, SPAWN.y + 245.0)
-		# Save IDs depend on this seeded acceptance sequence. Sample the original
-		# landform for distribution, then place accepted nodes on the terrain mesh.
-		var h := _terrain_height(x, z, legacy)
-		var dx := _terrain_height(x + 0.6, z, legacy) - _terrain_height(x - 0.6, z, legacy)
-		var dz := _terrain_height(x, z + 0.6, legacy) - _terrain_height(x, z - 0.6, legacy)
-		if h < 0.6 or Vector3(-dx, 1.2, -dz).normalized().y < 0.84:
+		var h := height_at(x, z)
+		if h < 0.6 or normal_at(x, z).y < 0.84 or creek_distance(x, z) < 5.0:
 			continue
 		if not accept.call(x, z, h) or not is_scatter_site_free(x, z, radius):
 			continue
@@ -821,14 +909,15 @@ func _scatter() -> void:
 		return anywhere.call(x, z, h) and river_distance(x, z) > 25.0
 	var wet_bank := func(x: float, z: float, _h: float) -> bool:
 		var d := river_distance(x, z)
-		return d > 9.0 and d < 22.0
-	_scatter_kind(&"wild_grain", 18, 1.2, meadow, 12, false)
-	_scatter_kind(&"wild_carrot", 14, 1.0, meadow, 12, false)
-	_scatter_kind(&"herbs", 16, 0.9, anywhere, 12, false)
-	_scatter_kind(&"flax", 12, 1.1, meadow, 12, false)
-	_scatter_kind(&"hazel", 12, 1.6, away_from_spawn, 12, false)
-	_scatter_kind(&"reeds", 18, 1.0, wet_bank, 12, false)
-	_scatter_kind(&"clay", 8, 1.2, wet_bank, 12, false)
+		return d > 9.0 and d < 26.0
+	_scatter_kind(&"wild_grain", 18, 1.2, meadow)
+	_scatter_kind(&"wild_carrot", 14, 1.0, meadow)
+	_scatter_kind(&"herbs", 16, 0.9, anywhere)
+	_scatter_kind(&"flax", 12, 1.1, meadow)
+	_scatter_kind(&"hazel", 12, 1.6, away_from_spawn)
+	# the dry strip of bank is only a few metres wide: many more tries for the bank plants
+	_scatter_kind(&"reeds", 18, 1.0, wet_bank, 60)
+	_scatter_kind(&"clay", 8, 1.2, wet_bank, 80)
 	# A few right by the start so the first loop shows them.
 	_spawn_node(&"wild_grain", -6.5, 9.0)
 	_spawn_node(&"herbs", 7.5, 10.5)
@@ -941,6 +1030,8 @@ func _build_pois() -> void:
 		var xf := Transform3D(Basis.IDENTITY.scaled(Vector3.ONE * 2.4), pos)
 		spawn_scattered_resource(camp, "old_camp_stash_stone_%d" % i, &"loose_stone", hearth_stones[i % hearth_stones.size()], xf)
 
+	_build_stone_ford()
+
 	# Fresh kill on the near river bank.
 	var cz := 26.0
 	var cx := river_x(cz) - 10.0
@@ -951,6 +1042,34 @@ func _build_pois() -> void:
 	add_child(carcass)
 	_occupy(cx, cz, 3.0)
 	_nodes[carcass.save_id] = carcass
+
+
+## Vadul de Piatră: a line of stepping stones across the gravel bar (solid rocks: they can be broken for stone).
+func _build_stone_ford() -> void:
+	var ford: Vector3 = FORDS[&"stone_ford"]
+	var z := ford.x
+	var c := Vector2(river_x(z), z)
+	var t := Vector2(river_x(z + 2.0) - river_x(z - 2.0), 4.0).normalized()
+	var across := Vector2(t.y, -t.x)
+	var root := Node3D.new()
+	root.name = "POI_StoneFord"
+	add_child(root)
+	var meshes: Array[Mesh] = []
+	for path: String in AssetLib.ROCKS[&"medium"]:
+		meshes.append(AssetLib.mesh(path))
+	var r := RandomNumberGenerator.new()
+	r.seed = SEED + 777
+	var off := -13.0
+	var i := 0
+	while off <= 13.0:
+		var p := c + across * off + t * r.randf_range(-0.6, 0.6)
+		var sc := r.randf_range(0.6, 0.85)
+		var basis := Basis(Vector3.UP, r.randf() * TAU).scaled(Vector3.ONE * sc)
+		var at := Vector3(p.x, minf(height_at(p.x, p.y), 0.0) - 0.12 * sc, p.y)
+		spawn_scattered_resource(root, "stone_ford_%d" % i, &"rock", meshes[i % meshes.size()], Transform3D(basis, at))
+		_occupy(p.x, p.y, 1.0)
+		off += r.randf_range(1.9, 2.4)
+		i += 1
 
 
 # ---------------------------------------------------------------- gameplay queries
@@ -1074,6 +1193,8 @@ func remove_piece(piece: BuildingPiece, ratio: float, player: Node) -> void:
 ## Extra insulation (°C) from shelters: inside a lean-to, or on a roofed foundation.
 func get_shelter_at(pos: Vector3) -> float:
 	var best := 0.0
+	for cave in caves:
+		best = maxf(best, cave.shelter_at(pos))
 	for p: BuildingPiece in pieces_near(pos, 4.0):
 		if not p.built:
 			continue

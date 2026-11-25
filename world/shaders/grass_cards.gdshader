@@ -12,6 +12,7 @@ uniform sampler2D atlas : source_color, filter_linear_mipmap_anisotropic, repeat
 uniform sampler2D atlas_jungle : source_color, filter_linear_mipmap_anisotropic, repeat_disable;  // forest floor, south
 uniform sampler2D height_tex : filter_nearest;        // (GRID+1)² terrain heights, R32F
 uniform sampler2D grass_mask : hint_default_black, filter_linear;  // baked: 0 bare … 1 full meadow
+uniform sampler2D terrain_masks : hint_default_black, filter_linear;  // tools/gen_terrain.py: R creek bed
 uniform sampler2D macro_noise : hint_default_white, filter_linear_mipmap, repeat_enable;
 uniform float half_size = 2100.0;
 uniform float cell = 10.0;
@@ -69,7 +70,8 @@ void vertex() {
 	float h = terrain_h(wrapped, grad);
 	float r1 = hash(inst.xz);
 	float r2 = hash(inst.xz + 17.0);
-	float want = texture(grass_mask, wrapped / map_size + 0.5).r;
+	float want = texture(grass_mask, wrapped / map_size + 0.5).r
+		* (1.0 - smoothstep(0.25, 0.55, texture(terrain_masks, wrapped / map_size + 0.5).r));  // not in creek beds
 	float n1 = texture(macro_noise, wrapped * 0.013).r;
 	float dryness = smoothstep(0.5, 0.85, texture(macro_noise, wrapped * 0.004).r + (n1 - 0.5) * 0.3);
 	float tall = smoothstep(0.55, 0.72, texture(macro_noise, wrapped * 0.025 + vec2(0.71, 0.13)).r);

@@ -23,12 +23,9 @@
 			"doubleSided":true,
 			"name":"M_ArrowShaft",
 			"pbrMetallicRoughness":{
-				"baseColorFactor":[
-					0.5799999833106995,
-					0.44999998807907104,
-					0.30000001192092896,
-					1
-				],
+				"baseColorTexture":{
+					"index":0
+				},
 				"metallicFactor":0,
 				"roughnessFactor":0.699999988079071
 			}
@@ -37,7 +34,7 @@
 			"doubleSided":true,
 			"name":"M_Flint",
 			"normalTexture":{
-				"index":0
+				"index":1
 			},
 			"pbrMetallicRoughness":{
 				"baseColorFactor":[
@@ -47,11 +44,11 @@
 					1
 				],
 				"baseColorTexture":{
-					"index":1
+					"index":2
 				},
 				"metallicFactor":0,
 				"metallicRoughnessTexture":{
-					"index":2
+					"index":3
 				}
 			}
 		},
@@ -139,9 +136,18 @@
 		{
 			"sampler":0,
 			"source":2
+		},
+		{
+			"sampler":0,
+			"source":3
 		}
 	],
 	"images":[
+		{
+			"mimeType":"image/jpeg",
+			"name":"T_BowTripo_12",
+			"uri":"textures/T_BowTripo_12.jpg"
+		},
 		{
 			"mimeType":"image/jpeg",
 			"name":"dark_rock_02_nor_gl_1k",
@@ -165,7 +171,7 @@
 			"count":34,
 			"max":[
 				0.0044999998062849045,
-				0.75,
+				0.9200000166893005,
 				0.0044999998062849045
 			],
 			"min":[
@@ -196,35 +202,35 @@
 		{
 			"bufferView":4,
 			"componentType":5126,
-			"count":150,
+			"count":138,
 			"max":[
-				0.01016333606094122,
-				0.7961757779121399,
-				0.003101946320384741
+				0.010607581585645676,
+				0.9659950733184814,
+				0.0032771199475973845
 			],
 			"min":[
-				-0.009385908022522926,
-				0.7396334409713745,
-				-0.0034093698486685753
+				-0.010606260038912296,
+				0.9085546135902405,
+				-0.0032288955990225077
 			],
 			"type":"VEC3"
 		},
 		{
 			"bufferView":5,
 			"componentType":5126,
-			"count":150,
+			"count":138,
 			"type":"VEC3"
 		},
 		{
 			"bufferView":6,
 			"componentType":5126,
-			"count":150,
+			"count":138,
 			"type":"VEC2"
 		},
 		{
 			"bufferView":7,
 			"componentType":5123,
-			"count":150,
+			"count":138,
 			"type":"SCALAR"
 		},
 		{
@@ -233,7 +239,7 @@
 			"count":102,
 			"max":[
 				0.005799999926239252,
-				0.7519999742507935,
+				0.921999990940094,
 				0.005799999926239252
 			],
 			"min":[
@@ -323,74 +329,74 @@
 		},
 		{
 			"buffer":0,
-			"byteLength":1800,
+			"byteLength":1656,
 			"byteOffset":1256,
 			"target":34962
 		},
 		{
 			"buffer":0,
-			"byteLength":1800,
-			"byteOffset":3056,
+			"byteLength":1656,
+			"byteOffset":2912,
 			"target":34962
 		},
 		{
 			"buffer":0,
-			"byteLength":1200,
-			"byteOffset":4856,
+			"byteLength":1104,
+			"byteOffset":4568,
 			"target":34962
 		},
 		{
 			"buffer":0,
-			"byteLength":300,
-			"byteOffset":6056,
+			"byteLength":276,
+			"byteOffset":5672,
 			"target":34963
 		},
 		{
 			"buffer":0,
 			"byteLength":1224,
-			"byteOffset":6356,
+			"byteOffset":5948,
 			"target":34962
 		},
 		{
 			"buffer":0,
 			"byteLength":1224,
-			"byteOffset":7580,
+			"byteOffset":7172,
 			"target":34962
 		},
 		{
 			"buffer":0,
 			"byteLength":816,
-			"byteOffset":8804,
+			"byteOffset":8396,
 			"target":34962
 		},
 		{
 			"buffer":0,
 			"byteLength":504,
-			"byteOffset":9620,
+			"byteOffset":9212,
 			"target":34963
 		},
 		{
 			"buffer":0,
 			"byteLength":144,
-			"byteOffset":10124,
+			"byteOffset":9716,
 			"target":34962
 		},
 		{
 			"buffer":0,
 			"byteLength":144,
-			"byteOffset":10268,
+			"byteOffset":9860,
 			"target":34962
 		},
 		{
 			"buffer":0,
 			"byteLength":96,
-			"byteOffset":10412,
+			"byteOffset":10004,
 			"target":34962
 		},
 		{
 			"buffer":0,
 			"byteLength":36,
-			"byteOffset":10508,
+			"byteOffset":10100,
 			"target":34963
 		}
 	],
@@ -402,7 +408,7 @@
 	],
 	"buffers":[
 		{
-			"byteLength":10544,
+			"byteLength":10136,
 			"uri":"SM_Item_arrow.bin"
 		}
 	]

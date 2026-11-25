@@ -2,7 +2,7 @@
 #   blender -b --python tools/blender/gen_items.py [-- item_id ...]
 # Output: assets/models/items/SM_Item_<id>.gltf  and  assets/icons/T_Icon_<id>.png
 # Convention (Blender Z-up): handheld tools point along +Z with the grip at the origin.
-import bpy, bmesh, math, os, random, sys
+import bpy, bmesh, json, math, os, random, sys
 from mathutils import Vector, Matrix, Euler
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -371,7 +371,51 @@ def world_bounds(objs):
             Vector((max(c.x for c in cs), max(c.y for c in cs), max(c.z for c in cs))))
 
 
+def thin_handle(objs, k, z0, z1):
+    """Tripo makes handles about twice as thick as real ones, so the player's fist (a ~2.7 cm grip) looks tiny on
+    them. Squeeze the cross-section (x, y) toward the item axis by k below z0, easing back to 1 by z1 (the head
+    keeps its shape); lengths are untouched."""
+    for o in objs:
+        for v in o.data.vertices:
+            p = o.matrix_world @ v.co
+            t = min(max((p.z - z0) / (z1 - z0), 0.0), 1.0)
+            f = k + (1.0 - k) * t * t * (3 - 2 * t)
+            v.co = o.matrix_world.inverted() @ Vector((p.x * f, p.y * f, p.z))
+
+
 def b_stone_axe(rng):
+    # Generated for this project with Tripo AI (docs/ASSET_CREDITS.md); reduced to a source copy by
+    # prepare_stone_axe.py. Z-up after import with the head on top and the cutting edge toward -X -- keep it there:
+    # the chop swing (player.gd SWING_STYLES) strikes forward and to the left, so -X is the head's leading side.
+    # The handle leans a little, so its axis is fitted to the shaft below the head rather than taken from the box.
+    parts = import_sketchfab("SK_StoneAxe_Tripo.glb", "T_AxeTripo")
+    for o in parts:
+        decimate(o, 6000, weld=True)  # glTF arrives split along every UV seam: weld or decimation tears holes
+    pts = [o.matrix_world @ v.co for o in parts for v in o.data.vertices]
+    mn, mx = world_bounds(parts)
+    shaft = [p for p in pts if p.z < mn.z + (mx.z - mn.z) * 0.55]
+    c = sum(shaft, Vector()) / len(shaft)
+    cov = Matrix(((0.0,) * 3,) * 3)
+    for p in shaft:
+        d = p - c
+        for i in range(3):
+            for j in range(3):
+                cov[i][j] += d[i] * d[j]
+    axis = Vector((0, 0, 1))
+    for _ in range(50):  # power iteration: the shaft's long axis
+        axis = (cov @ axis).normalized()
+    if axis.z < 0:
+        axis = -axis
+    lo = min((p - c).dot(axis) for p in pts)
+    hi = max((p - c).dot(axis) for p in pts)
+    # Same overall size and grip as the previous axe: 0.70 m long, held 0.20 m above the butt.
+    place_along_z(parts, c + axis * lo, c + axis * hi, 0.70, 0.20)
+    thin_handle(parts, 0.62, 0.22, 0.34)   # handle ~1.8 cm radius; the head (from ~0.3 m) as modelled
+    return parts
+
+
+def b_stone_axe_martire(rng):
+    """Previous axe. Not registered; kept for reference."""
     # "Stone Axe" by Alex Martire (sketchfab.com/alexmartire), CC-BY-4.0 -- see CREDITS.md.
     # Source is Z-up after import, handle along -Z, cutting edge toward -X. Keep it there: the chop swing
     # (player.gd SWING_STYLES) strikes forward and to the left, so -X is the leading side of the head.
@@ -405,6 +449,28 @@ def b_stone_axe(rng):
 
 
 def b_spear(rng):
+    # Generated for this project with Tripo AI (docs/ASSET_CREDITS.md); source copy by prepare_tripo.py.
+    # It lies along X with the flint head toward -X and feathers hanging from the binding.
+    parts = import_sketchfab("SK_Spear_Tripo.glb", "T_SpearTripo")
+    for o in parts:
+        decimate(o, 5000, weld=True)  # glTF arrives split along every UV seam: weld or decimation tears holes
+    pts = [o.matrix_world @ v.co for o in parts for v in o.data.vertices]
+    mn, mx = world_bounds(parts)
+    # the shaft's centre line from its middle stretch (clear of the head, the feathers and the butt binding)
+    mid = [p for p in pts if mn.x + 0.35 * (mx.x - mn.x) < p.x < mn.x + 0.75 * (mx.x - mn.x)]
+    cy = sorted(p.y for p in mid)[len(mid) // 2]
+    cz = sorted(p.z for p in mid)[len(mid) // 2]
+    # Same length and grip as the previous spear: 1.91 m, held 0.60 m above the butt. The source is stubby
+    # (a ~1 m spear): stretched to length only, so the shaft stays ~3 cm thick and the head a hand wide.
+    place_along_z(parts, Vector((mx.x, cy, cz)), Vector((mn.x, cy, cz)), 1.91, 0.60)
+    for o in parts:
+        o.matrix_world = Matrix.Diagonal((0.5, 0.5, 1.0, 1.0)) @ o.matrix_world
+    thin_handle(parts, 0.58, 0.95, 1.1)    # shaft ~1.6 cm radius; the head and its feathers as modelled
+    return parts
+
+
+def b_spear_jesusmolina(rng):
+    """Previous spear. Not registered; kept for reference."""
     # "Prehistoric Spear - Artifacts Low Poly" by jesusmolina (sketchfab.com/jesusmolina), CC-BY-4.0.
     # The source lies diagonally with the flint head toward -X: find the shaft axis from the head.
     parts = import_sketchfab("SK_PrehistoricSpear_JesusMolina.glb", "T_SpearSK")
@@ -472,7 +538,70 @@ BOW_TIP_IN = 0.05    # tips come closer together as the limbs bend
 
 
 def b_bow(rng):
-    """Self bow: one tapering stave bent toward the archer (-Y, i.e. +Z/camera side in Godot), leather grip,
+    """Generated for this project with Tripo AI (docs/ASSET_CREDITS.md); source copy by prepare_tripo.py.
+    The source stands along Z with the stave's back toward -X and its string at +X. It is turned so the string
+    faces the archer (-Y), scaled to the bow's length and set with the grip (the stave's middle) at the origin.
+    Its own string is a plain tube that would not bend into a V, so it is cut away and a ringed string
+    (vertex group "string", for post_bow's 'Drawn' shape key) is spanned between the tips instead."""
+    global BOW_NOCK
+    parts = import_sketchfab("SK_Bow_Tripo.glb", "T_BowTripo")
+    obj = parts[0]
+    decimate(obj, 6000, weld=True)
+    mn, mx = world_bounds(parts)
+    s = 2 * BOW_HALF / (mx.z - mn.z)
+    # the source is a deep D (string ~0.32 m from the grip at this length): flattened toward the archer, so the
+    # string sits a hand-span from the grip, as on a braced self bow
+    # and narrowed across (Tripo's stave is ~14 cm wide at the grip: a hand could not close round it)
+    obj.matrix_world = Matrix.Diagonal((0.5, 0.6, 1.0, 1.0)) @ Matrix.Scale(s, 4) @ Matrix.Rotation(-math.pi / 2, 4, "Z") @ Matrix.Translation(
+        (0, 0, -(mn.z + mx.z) / 2)) @ obj.matrix_world
+    bpy.context.view_layer.update()
+    me = obj.data
+    W = obj.matrix_world
+    pts = [W @ v.co for v in me.vertices]
+    # the string: the vertices nearest the archer side at each height, along the line between the tips
+    top = max(pts, key=lambda p: p.z)
+    bot = min(pts, key=lambda p: p.z)
+    band = [p for p in pts if abs(p.z) < 0.05]
+    string_y = min(p.y for p in band)                       # the string at mid height (most toward the archer)
+    stave = [p for p in band if p.y > string_y + 0.05]      # the grip
+    grip = Vector((sum(p.x for p in stave) / len(stave), sum(p.y for p in stave) / len(stave), 0.0))
+    widths = sorted(abs(p.x - grip.x) for p in stave)
+    half_w = widths[int(len(widths) * 0.8)]                 # the stave, not the trinkets hanging from the grip
+    a = Vector((top.x, string_y, BOW_HALF - 0.03))
+    b = Vector((bot.x, string_y, -BOW_HALF + 0.03))
+
+    def on_string(p):
+        t = (p.z - b.z) / (a.z - b.z)
+        if not 0.06 < t < 0.94:                             # keep the knots at the tips
+            return False
+        c = b.lerp(a, t)
+        return math.hypot(p.x - c.x, p.y - c.y) < 0.02
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    kill = [f for f in bm.faces if all(on_string(W @ v.co) for v in f.verts)]
+    bmesh.ops.delete(bm, geom=kill, context="FACES")
+    bmesh.ops.delete(bm, geom=[v for v in bm.verts if not v.link_faces], context="VERTS")
+    bm.to_mesh(me)
+    bm.free()
+    # grip at the origin
+    obj.matrix_world = Matrix.Translation(-grip) @ obj.matrix_world
+    a -= grip
+    b -= grip
+    # the arrow rests on the right of the stave (as games show it: the draw hand comes from the right, to the
+    # cheek, and the bow stays left of the crosshair), just above the grip; post_bow and HandModels.NOCK use it
+    BOW_NOCK = Vector((half_w + 0.004, 0.0, 0.03))
+    sinew = flat("M_BowSinew", (0.36, 0.29, 0.21), 0.6)   # twisted sinew, darkened with use
+    zs = [a.z + (BOW_NOCK.z - a.z) * i / 12 for i in range(12)] + [BOW_NOCK.z + (b.z - BOW_NOCK.z) * i / 12 for i in range(13)]
+    string = tube([Vector((0.0, a.y, z)) for z in zs], [0.0018] * len(zs), sinew, seg=5)
+    string.vertex_groups.new(name="string").add(list(range(len(string.data.vertices))), 1.0, "REPLACE")
+    print("BOW", "HandModels.NOCK = Vector3(%.3f, %.3f, %.3f)" % (BOW_NOCK.x, BOW_NOCK.z, -a.y),
+          "brace %.3f m" % -a.y)
+    return [obj, string]
+
+
+def b_bow_procedural(rng):
+    """Previous procedural self bow. Not registered; kept for reference.
+    Self bow: one tapering stave bent toward the archer (-Y, i.e. +Z/camera side in Godot), leather grip,
     sinew string. Limbs along +Z, grip at the origin."""
     n = 28
     path, radii = [], []
@@ -540,13 +669,75 @@ def post_bow(obj):
 POST = {"bow": post_bow}
 
 
-ARROW_LEN = 0.78
+ARROW_LEN = 0.95
+
+
+def bow_wood_strip():
+    """Where on the bow's own texture its stave wood is plainest: a narrow UV box (u0, v0, du, dv) on the limbs,
+    between the wraps, whose texels are closest to the limbs' median colour. The arrow shaft is mapped onto it, so it
+    is made of the same wood as the bow. None if the bow item has not been built yet."""
+    import numpy as np
+    path = os.path.join(OUT_MODELS, "SM_Item_bow.gltf")
+    if not os.path.exists(path):
+        return None
+    g = json.load(open(path))
+    mat = next(m for m in g["materials"] if m.get("pbrMetallicRoughness", {}).get("baseColorTexture"))
+    tex = g["textures"][mat["pbrMetallicRoughness"]["baseColorTexture"]["index"]]
+    img = bpy.data.images.load(os.path.join(OUT_MODELS, g["images"][tex["source"]]["uri"]), check_existing=True)
+    w, h = img.size
+    px = np.array(img.pixels[:], dtype=np.float32).reshape(h, w, 4)[:, :, :3]
+    buf = open(os.path.join(OUT_MODELS, g["buffers"][0]["uri"]), "rb").read()
+
+    def acc(i):
+        a = g["accessors"][i]
+        bv = g["bufferViews"][a["bufferView"]]
+        n = {"VEC2": 2, "VEC3": 3}[a["type"]]
+        return np.frombuffer(buf, np.float32, a["count"] * n, bv.get("byteOffset", 0) + a.get("byteOffset", 0)).reshape(-1, n)
+    prim = next(p for m in g["meshes"] for p in m["primitives"] if g["materials"][p["material"]] is mat)
+    P = acc(prim["attributes"]["POSITION"])
+    UV = acc(prim["attributes"]["TEXCOORD_0"])
+    limb = (np.abs(P[:, 1]) > 0.2) & (np.abs(P[:, 1]) < 0.5) & (P[:, 2] < 0.08)   # Godot Y = limbs, +Z = string
+    uv = UV[limb]
+    col = px[np.clip(((1 - uv[:, 1]) * h).astype(int), 0, h - 1), np.clip((uv[:, 0] * w).astype(int), 0, w - 1)]
+    med = np.median(col, axis=0)
+    du, dv = 0.012, 0.05
+    best, pick = 1e9, None
+    for k in np.argsort(np.linalg.norm(col - med, axis=1))[:200]:
+        u0, v0 = uv[k, 0] - du / 2, uv[k, 1] - dv / 2
+        x0, x1 = int(u0 * w), int((u0 + du) * w)
+        y0, y1 = int((1 - v0 - dv) * h), int((1 - v0) * h)
+        if x0 < 0 or y0 < 0 or x1 >= w or y1 >= h:
+            continue
+        box = px[y0:y1, x0:x1].reshape(-1, 3)
+        err = float(np.linalg.norm(box.mean(0) - med) + box.std(0).sum())
+        if err < best:
+            best, pick = err, (float(u0), float(v0), du, dv)
+    print("ARROW wood from the bow texture", img.name, "median", med.round(3), "strip", pick)
+    return pick, img
 
 
 def b_arrow(rng):
-    """Flint-tipped arrow. Nock at the origin, point at +Z (ARROW_LEN)."""
-    shaft = tube([Vector((0, 0, 0)), Vector((0, 0, ARROW_LEN - 0.03))], [0.0045, 0.0045],
-                 flat("M_ArrowShaft", (0.58, 0.45, 0.3), 0.7), seg=8, v_scale=4)
+    """Flint-tipped arrow. Nock at the origin, point at +Z (ARROW_LEN). The shaft is the bow's own wood: mapped onto a
+    plain strip of the bow's texture (bow_wood_strip), so arrows and bow match."""
+    wood = bow_wood_strip()
+    if wood:
+        (u0, v0, du, dv), img = wood
+        shaft_mat = bpy.data.materials.new("M_ArrowShaft")
+        shaft_mat.use_nodes = True
+        nt = shaft_mat.node_tree
+        bsdf = nt.nodes["Principled BSDF"]
+        bsdf.inputs["Roughness"].default_value = 0.7
+        tn = nt.nodes.new("ShaderNodeTexImage")
+        tn.image = img
+        nt.links.new(tn.outputs["Color"], bsdf.inputs["Base Color"])
+    else:
+        shaft_mat = flat("M_ArrowShaft", (0.58, 0.45, 0.3), 0.7)
+    shaft = tube([Vector((0, 0, 0)), Vector((0, 0, ARROW_LEN - 0.03))], [0.0045, 0.0045], shaft_mat, seg=8, v_scale=1)
+    if wood:
+        uvl = shaft.data.uv_layers.active.data
+        vmax = max(d.uv[1] for d in uvl) or 1.0
+        for d in uvl:
+            d.uv = (u0 + min(max(d.uv[0], 0.0), 1.0) * du, v0 + min(max(d.uv[1] / vmax, 0.0), 1.0) * dv)
     sq = lambda p: Vector((p.x * (1 - max(p.z, 0) / 0.032 * 0.95), p.y, p.z))
     head = hull(blob(Vector((0, 0, ARROW_LEN - 0.012)), (0.011, 0.0035, 0.03), 28, rng, 0.06, sq), FLINT(), 0.05)
     sinew = flat("M_Sinew", (0.78, 0.72, 0.6), 0.55)
