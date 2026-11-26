@@ -1,13 +1,19 @@
 class_name Camps
 extends Node3D
-## Builds faction camps and regional bases. Regional guards are active only near the player.
+## Builds small field camps and the six clan settlements. City populations stream near the player.
 
-const REGIONAL_BASES := {
-	"ossara": {"camp": [112, 1280], "level": 1, "wall_radius": 0.0, "supplies": {"meat_dried": 2, "flint": 2}},
-	"meyra": {"camp": [1032, 606], "level": 2, "wall_radius": 8.0, "supplies": {"meat_dried": 2, "rope": 2, "bandage": 1}},
-	"tavren": {"camp": [-912, -1152], "level": 3, "wall_radius": 10.0, "supplies": {"meat_dried": 3, "arrow": 6, "bandage": 1}},
-	"kharum": {"camp": [-1260, 100], "level": 4, "wall_radius": 12.0, "supplies": {"flint": 6, "arrow": 8, "bandage": 2}},
-	"varkai": {"camp": [1170, -1220], "level": 5, "wall_radius": 15.0, "supplies": {"hide": 4, "arrow": 12, "bandage": 3}},
+const Layout := preload("res://world/settlement_layout.gd")
+const Geography := preload("res://world/world_layout.gd")
+
+static var REGIONAL_BASES := {
+	"kharum": {"camp": Geography.data.stone, "level": 3, "wall_radius": 10.0,
+		"supplies": {"flint": 6, "arrow": 8, "bandage": 1}},
+	"north": {"camp": Geography.data.north, "level": 4, "wall_radius": 8.0,
+		"supplies": {"hide": 4, "meat_dried": 3, "bandage": 2}},
+	"varkai": {"camp": Geography.data.red, "level": 5, "wall_radius": 15.0,
+		"supplies": {"hide": 4, "arrow": 12, "bandage": 3}},
+	"aruun": {"camp": Geography.data.aruun, "level": 5, "wall_radius": 0.0,
+		"supplies": {"hide": 3, "flint": 6, "bandage": 2}},
 }
 const GUARD_LOAD_RADIUS := 145.0
 const GUARD_UNLOAD_RADIUS := 210.0
@@ -19,6 +25,7 @@ var groups: Dictionary = {}  # group id -> TribeGroup (one per camp / active bas
 var _regional_guards: Dictionary = {}  # base id -> Array[HumanNPC]
 var _regional_states: Dictionary = {}  # guard id -> saved health/death while inactive
 var _stream_t := 0.0
+var _city_posts: Dictionary = {}
 
 
 static func site(faction_def: Dictionary) -> Vector2:
@@ -29,6 +36,8 @@ static func site(faction_def: Dictionary) -> Vector2:
 func build_structures() -> void:
 	for f: StringName in factions.defs.keys():
 		var d: Dictionary = factions.defs[f]
+		if not d.has("camp"):
+			continue
 		var c := site(d)
 		var center := world.ground_point(c.x, c.y)
 		world.spawn_structure(&"campfire", Transform3D(Basis(), center),
@@ -46,6 +55,14 @@ func build_structures() -> void:
 		if float(d.get("territory", 0)) > 0.0:
 			_palisade(f, center, 11.0)
 	build_regional_bases()
+	for id: String in REGIONAL_BASES:
+		var def: Dictionary = REGIONAL_BASES[id]
+		var city := Node3D.new()
+		city.name = id.capitalize()
+		add_child(city)
+		_city_posts[id] = Layout.build(world, city, id, site(def), float(def.wall_radius))
+	build_city_services()
+	build_player_camp()
 
 
 func build_regional_bases(provisioned: Array = []) -> void:
@@ -71,8 +88,55 @@ func build_regional_bases(provisioned: Array = []) -> void:
 			{"piece": "storage", "built": true}, prefix + "cache") as BuildingPiece
 		for item: String in d.supplies:
 			cache.storage.add_item(StringName(item), int(d.supplies[item]))
-		if level >= 2:
+		if float(d.wall_radius) > 0.0:
 			_regional_walls(prefix, c, float(d.wall_radius), level)
+
+
+func build_player_camp() -> void:
+	var center := ForestWorld.SPAWN
+	var fire_at := world.ground_point(center.x - 1.5, center.y + 4.0)
+	world.spawn_structure(&"campfire", Transform3D(Basis(), fire_at),
+		{"fuel": 250.0, "lit": true}, "player_camp_fire")
+	var cover := world.ground_point(center.x - 5.0, center.y + 3.8)
+	world.spawn_structure(&"piece", Transform3D(Basis(Vector3.UP, PI * 0.5), cover),
+		{"piece": "lean_to", "built": true}, "player_camp_shelter")
+	var bed := world.ground_point(center.x - 5.0, center.y + 3.8)
+	world.spawn_structure(&"bed", Transform3D(Basis(Vector3.UP, PI * 0.5), bed), {}, "player_camp_bed")
+	var marker := Node3D.new()
+	marker.name = "PlayerCampMarker"
+	add_child(marker)
+	var hall_at := center + Vector2(10.0, 8.0)
+	Layout.place_shelter(world, marker, hall_at, center, Vector2(8.8, 11.8), "player", "CoastalHall")
+	Layout.place_shelter(world, marker, center + Vector2(12.0, 19.0), hall_at, Vector2(5.2, 6.4),
+		"player", "FamilyShelter")
+	Layout.Detail.tower(world, marker, center + Vector2(16.0, -7.0), "player", center)
+	Layout.Detail.canopy(world, marker, center + Vector2(6.7, -8.6), "player", -PI * 0.35)
+	Layout.banner(world, marker, center + Vector2(5.0, 6.0), "player", PI * 0.8)
+
+
+func build_city_services(provisioned: Array = []) -> void:
+	for id: String in REGIONAL_BASES:
+		if provisioned.has(id):
+			continue
+		var def: Dictionary = REGIONAL_BASES[id]
+		var center := site(def)
+		for row: Array in Layout.PLANS[id].districts:
+			var role: String = row[2]
+			if role not in ["workshops", "stores"]:
+				continue
+			var offset: Vector2 = row[1]
+			var axis := offset.normalized()
+			var side := Vector2(-axis.y, axis.x)
+			var yard := center + offset + axis * 2.0
+			var end := yard + side * 3.3
+			var cache := world.spawn_structure(&"piece",
+				Transform3D(Basis(), world.ground_point(end.x, end.y)),
+				{"piece": "storage", "built": true}, "city_%s_%s_store" % [id, row[0]]) as BuildingPiece
+			for item: String in def.supplies:
+				cache.storage.add_item(StringName(item), maxi(1, floori(float(def.supplies[item]) * 0.5)))
+			var p := yard - side * 3.3
+			world.spawn_structure(&"piece", Transform3D(Basis(), world.ground_point(p.x, p.y)),
+				{"piece": "drying_rack", "built": true}, "city_%s_%s_rack" % [id, row[0]])
 
 
 func _regional_walls(prefix: String, center: Vector2, radius: float, level: int) -> void:
@@ -107,6 +171,8 @@ func _palisade(f: StringName, center: Vector3, radius: float) -> void:
 func spawn_people() -> void:
 	for f: StringName in factions.defs.keys():
 		var d: Dictionary = factions.defs[f]
+		if not d.has("camp"):
+			continue
 		var c := site(d)
 		var center := world.ground_point(c.x, c.y)
 		var variants: Array = d.get("variants", ["M1"])
@@ -146,7 +212,10 @@ func _bake_camps() -> void:
 	for i in 2:  # new colliders reach the physics space on the next step
 		await get_tree().physics_frame
 	for f: StringName in factions.defs.keys():
-		var c := site(factions.defs[f])
+		var def: Dictionary = factions.defs[f]
+		if not def.has("camp"):
+			continue
+		var c := site(def)
 		world.npc_nav.add_site("camp_%s" % f, world.ground_point(c.x, c.y), 30.0)
 
 
@@ -173,29 +242,46 @@ func _stream_regional_guards(at: Vector3) -> void:
 					n.queue_free()
 				_regional_guards.erase(id)
 				groups.erase("base_%s" % id)
+				groups.erase("residents_%s" % id)
 				if world.npc_nav:
 					world.npc_nav.remove_site("base_%s" % id)
 		elif distance < GUARD_LOAD_RADIUS:
-			_spawn_regional_guards(id, c, int(d.level), float(d.wall_radius))
+			_spawn_regional_guards(id, c, int(d.level))
 
 
-func _spawn_regional_guards(base_id: String, c: Vector2, level: int, wall_radius: float) -> void:
+func _spawn_regional_guards(base_id: String, c: Vector2, level: int) -> void:
 	var guards: Array[HumanNPC] = []
 	var center := world.ground_point(c.x, c.y)
-	var variants: Array = factions.def_of(&"clan").variants
-	var g := _make_group("base_%s" % base_id, &"clan", c, level + 1)
+	var faction := &"varkai" if base_id == "aruun" else StringName(base_id)
+	var variants: Array = factions.def_of(faction).variants
+	var patrols: Array[Vector2] = _city_posts[base_id]
+	var guard_count := level + 1 + patrols.size()
+	var workers := 0 if base_id == "aruun" else patrols.size()
+	var radius := Layout.radius(base_id)
+	var g := _make_group("base_%s" % base_id, faction, c, level + 1)
 	g.guards = true
-	for i in level + 1:
+	var resident_group: TribeGroup
+	if workers > 0:
+		resident_group = _make_group("residents_%s" % base_id, faction, c, workers)
+	for i in guard_count + workers:
 		var a := 0.3 + TAU * i / float(level + 1)
 		var pos := c + Vector2(cos(a), sin(a)) * (3.5 if level < 4 else 5.5)
+		if i >= level + 1:
+			var post_index := (i - level - 1) % patrols.size()
+			pos = patrols[post_index] + (Vector2(1.75, 0.5) if i >= guard_count else Vector2.ZERO)
 		var id := "npc_base_%s_%d" % [base_id, i]
 		var n := HumanNPC.new()
-		n.setup(id, &"clan", str(variants[i % variants.size()]), factions, world, center,
-			world.ground_point(pos.x, pos.y) + Vector3.UP * 0.1, hash(id))
-		n.territory_radius = maxf(20.0, wall_radius + 12.0)
+		var post := world.ground_point(pos.x, pos.y)
+		var home := center if i < guard_count else post
+		n.setup(id, faction, str(variants[i % variants.size()]), factions, world, home,
+			post + Vector3.UP * 0.1, hash(id))
+		n.territory_radius = radius if i < guard_count else 18.0
 		n.warn_time = 12.0 - level * 2.0
-		n.group = g
-		g.members.append(n)
+		n.group = g if i < guard_count else resident_group
+		n.group.members.append(n)
+		if i >= guard_count:
+			n.armed = false
+			n.spears = 0
 		add_child(n)
 		n.rotation.y = atan2(c.x - pos.x, c.y - pos.y)
 		if _regional_states.has(id):
@@ -205,7 +291,7 @@ func _spawn_regional_guards(base_id: String, c: Vector2, level: int, wall_radius
 		npcs[id] = n
 	_regional_guards[base_id] = guards
 	if world.npc_nav:
-		world.npc_nav.add_site("base_%s" % base_id, center, maxf(24.0, wall_radius + 12.0))
+		world.npc_nav.add_site("base_%s" % base_id, center, radius + 9.0)
 
 
 func save_state() -> Dictionary:

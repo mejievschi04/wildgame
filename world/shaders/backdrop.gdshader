@@ -16,7 +16,7 @@ uniform sampler2D n_tex : filter_linear_mipmap, repeat_disable;     // rgb = wor
 uniform sampler2D height_tex : filter_linear, repeat_disable;       // absolute height (m), RF
 uniform sampler2D noise_tex : filter_linear_mipmap, repeat_enable;
 uniform sampler2DArray rock_tex : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
-uniform float extent = 11000.0;
+uniform float extent = 13100.0;
 uniform float texels = 1024.0;
 uniform vec3 sun_dir = vec3(0.3, 0.8, 0.4);   // toward the sun, world space
 uniform vec3 haze_color : source_color = vec3(0.64, 0.75, 0.87);
@@ -150,7 +150,7 @@ void fragment() {
 	ALBEDO = col * (1.0 - haze);
 	AO = ao;
 	AO_LIGHT_AFFECT = 0.0;
-	ROUGHNESS = mix(0.9, 0.5, snow);
+	ROUGHNESS = mix(0.9, 0.82, snow);  // old snow is matte: a glossy 0.5 read as plastic from afar
 	EMISSION = haze_color * haze * haze_energy + vec3(1.0, 0.32, 0.06) * lava * lava_glow * (1.0 - haze * 0.6);
 }
 

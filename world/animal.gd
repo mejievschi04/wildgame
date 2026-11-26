@@ -71,6 +71,10 @@ var _cur_anim := ""
 var _gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity", 9.8)
 var rng := RandomNumberGenerator.new()
 var _bleed_t := 0.0
+## Shove from a blow or a projectile (m/s, horizontal): braked on the feet, slid off by a carcass (HitPhysics).
+var _push_v := Vector3.ZERO
+## Staggered by a heavy shove: no steering and no attacking until it has its feet again.
+var _stagger_t := 0.0
 var _drip_accum := 0.0
 var _lookup_t := 0.0     # >0 while a grazing animal has its head up, scanning
 var _next_lookup := 0.0
@@ -285,6 +289,33 @@ func take_damage(amount: float, source: Node3D = null, hit_pos: Vector3 = Vector
 		_set_state(State.FLEE)
 
 
+## A blow's momentum `j` (N·s) along `dir`: shoves the body by its mass, and a hard shove staggers a living one
+## (a club knocks a wolf back; a mammoth hardly moves).
+func hit_impulse(j: float, dir: Vector3) -> void:
+	var dv := HitPhysics.push_velocity(j, dir, HitPhysics.species_mass(species))
+	_push_v = (_push_v + dv).limit_length(HitPhysics.MAX_PUSH)
+	if not is_dead() and dv.length() > HitPhysics.STAGGER_PUSH:
+		_stagger_t = maxf(_stagger_t, clampf(dv.length() * 0.18, 0.2, 0.9))
+		_bite_anim_t = 0.0
+		if state == State.ATTACK and _windup >= 0.0:
+			_windup = -1.0  # the bite or lunge is broken off before it lands
+			_lunge = {}
+			_attack_cd = maxf(_attack_cd, 0.8)
+
+
+## Knocked off balance (a parried bite or lunge): no attacking or steering for a moment.
+func stagger(seconds: float) -> void:
+	if is_dead():
+		return
+	_stagger_t = maxf(_stagger_t, seconds)
+	_bite_anim_t = 0.0
+	if state == State.ATTACK:
+		_windup = -1.0
+		_lunge = {}
+		_attack_cd = maxf(_attack_cd, seconds)
+	_flinch()
+
+
 func _flinch() -> void:
 	if _model:
 		var tw := create_tween()
@@ -375,9 +406,24 @@ func _physics_process(delta: float) -> void:
 	if not is_on_floor():
 		velocity.y -= _gravity * delta
 	if is_dead():
-		velocity.x = 0.0
-		velocity.z = 0.0
+		# a carcass keeps the momentum of the killing blow, slides off steep ground and lies along the slope
+		if world:
+			var n := HitPhysics.ground_normal(world, global_position.x, global_position.z)
+			_push_v = HitPhysics.corpse_slide(_push_v, n, delta) if is_on_floor() else _push_v
+			HitPhysics.align_to_ground(_model, self, n, 1.0, delta)
+		velocity.x = _push_v.x
+		velocity.z = _push_v.z
 		move_and_slide()
+		return
+	if _stagger_t > 0.0:
+		# knocked off its stride: carried by the shove, braking on its feet
+		_stagger_t -= delta
+		_push_v = HitPhysics.brake(_push_v, HitPhysics.FEET_BRAKE * 0.6, delta)
+		_speed = 0.0
+		velocity.x = _push_v.x
+		velocity.z = _push_v.z
+		move_and_slide()
+		_animate()
 		return
 	state_time += delta
 	_attack_cd = maxf(_attack_cd - delta, 0.0)
@@ -1163,9 +1209,12 @@ func _move(delta: float) -> void:
 		_speed = speed * align   # a lunge starts at full speed
 	else:
 		_speed = move_toward(_speed, speed * align, (8.0 if speed > _speed else 10.0) * delta)
-	velocity.x = facing.x * _speed
-	velocity.z = facing.z * _speed
+	_push_v = HitPhysics.brake(_push_v, HitPhysics.FEET_BRAKE, delta)
+	velocity.x = facing.x * _speed + _push_v.x
+	velocity.z = facing.z * _speed + _push_v.z
 	move_and_slide()
+	if world and _model:
+		HitPhysics.align_to_ground(_model, self, HitPhysics.ground_normal(world, global_position.x, global_position.z), 0.45, delta)
 	if _speed > 0.5:
 		if global_position.distance_to(_last_pos) < _speed * delta * 0.2:
 			_stuck_t += delta

@@ -186,12 +186,12 @@ func _refresh() -> void:
 		_full_parts[i].visible = not depleted and i < visible_parts
 	for p in _depleted_parts:
 		p.visible = depleted
-	if kind in [&"rock", &"flint", &"clay"]:
-		var k := lerpf(0.45, 1.0, float(remaining) / float(capacity))
+	if kind in [&"rock", &"flint", &"clay", &"deadwood"]:
+		var k := lerpf(0.45 if kind != &"deadwood" else 0.7, 1.0, float(remaining) / float(capacity))
 		for p in _full_parts:
 			p.scale = p.get_meta("base_scale", Vector3.ONE) * k
 	if _shape:
-		var hide_when_empty := _scattered_mesh != null or kind in [&"sticks", &"stones", &"mushroom", &"rock", &"flint", &"clay", &"wild_grain", &"wild_carrot", &"herbs", &"flax", &"reeds"]
+		var hide_when_empty := _scattered_mesh != null or kind in [&"sticks", &"deadwood", &"stones", &"mushroom", &"rock", &"flint", &"clay", &"wild_grain", &"wild_carrot", &"herbs", &"flax", &"reeds"]
 		_shape.set_deferred("disabled", depleted and hide_when_empty)
 		if _scattered_mesh and not depleted:
 			var ratio := lerpf(0.45, 1.0, float(remaining) / float(capacity)) if kind == &"rock" else 1.0
@@ -233,11 +233,12 @@ func _build(s: float) -> void:
 			var species: StringName = &"alder"
 			if kind == &"tree_pine":
 				species = &"pine" if absi(hash(node_id + "sp")) % 10 < 3 else &"spruce"
-			var tree := _art(AssetLib.pick(AssetLib.TREES[species], node_id), Vector3.ONE * s)
+			var tree_scale := s * AssetLib.TREE_MODEL_SCALE
+			var tree := _art(AssetLib.pick(AssetLib.TREES[species], node_id), Vector3.ONE * tree_scale)
 			_full(tree)
 			var stump := _art(AssetLib.pick(AssetLib.TREES[&"stump"], node_id), Vector3.ONE * 0.5)
 			_depleted(stump)
-			_tree_shapes(maxf(AssetLib.aabb(tree).size.y * s, 6.0))
+			_tree_shapes(maxf(AssetLib.aabb(tree).size.y * tree_scale, 6.0))
 		&"rock":
 			var rock := _art(AssetLib.pick(AssetLib.ROCKS[&"big"], node_id), Vector3.ONE * s)
 			_full(rock)
@@ -287,6 +288,20 @@ func _build(s: float) -> void:
 			b2.position = Vector3(0.15, 0.02, 0.1)
 			_full(b2)
 			_shape = Graybox.add_shape(self, Graybox.box_shape(Vector3(1.4, 0.5, 1.4)), Vector3(0, 0.2, 0))
+		&"deadwood":
+			# a dry twig bush standing out of the grass: breaking twigs off it gives sticks (TwigBush)
+			var variant := absi(hash(node_id)) % TwigBush.VARIANTS
+			var full := MeshInstance3D.new()
+			full.mesh = TwigBush.mesh(variant)
+			full.scale = Vector3.ONE * s
+			_visual.add_child(full)
+			_full(full)
+			var stubs := MeshInstance3D.new()
+			stubs.mesh = TwigBush.mesh(variant, true)
+			stubs.scale = Vector3.ONE * s
+			_visual.add_child(stubs)
+			_depleted(stubs)
+			_shape = Graybox.add_shape(self, Graybox.box_shape(Vector3(1.3, 1.2, 1.3) * s), Vector3(0, 0.6 * s, 0))
 		&"stones":
 			for i in 5:
 				var a := TAU * i / 5.0 + 0.4
@@ -356,6 +371,6 @@ func _tint(root: Node3D, c: Color) -> void:
 
 
 func _tree_shapes(h: float) -> void:
-	set_meta("trunk_shape", Graybox.cyl_shape(0.38, h))
+	set_meta("trunk_shape", Graybox.cyl_shape(0.38 * AssetLib.TREE_MODEL_SCALE, h))
 	set_meta("stump_shape", Graybox.cyl_shape(0.36, 0.6))
 	_shape = Graybox.add_shape(self, get_meta("trunk_shape"), Vector3(0, h * 0.5, 0))

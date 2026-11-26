@@ -13,6 +13,7 @@ const MAX_MARKERS := 3
 ## Set while a full-screen menu (inventory / craft) covers the game.
 var suppressed := false
 var player: Player
+var opening_cache: Stash
 
 var _health: ProgressBar
 var _stamina: ProgressBar
@@ -45,6 +46,7 @@ var _caption: Label
 var _build_title: Label
 var _build_info: Label
 var _build_keys: Label
+var _opening_goal: Label
 
 
 func _ready() -> void:
@@ -59,6 +61,12 @@ func _ready() -> void:
 	_build_hotbar()
 	_build_toasts()
 	_build_build_hint()
+	_opening_goal = UITheme.caption(Loc.t("OPENING_GOAL"), 22, UITheme.BONE_HI, 600)
+	_opening_goal.position = Vector2(32, 30)
+	_opening_goal.add_theme_color_override("font_outline_color", Color.BLACK)
+	_opening_goal.add_theme_constant_override("outline_size", 7)
+	_opening_goal.hide()
+	add_child(_opening_goal)
 	_caption = UITheme.label("", "SmallLabel")
 	_caption.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
 	_caption.offset_top = -250
@@ -75,7 +83,7 @@ func _ready() -> void:
 	add_child(_fade)
 	Events.notify.connect(_on_notify)
 	Events.item_gained.connect(_on_item_gained)
-	Events.journal_added.connect(func(_k: String) -> void: _on_notify(Loc.t("MSG_JOURNAL_UPDATED"), &"good"))
+	Events.journal_added.connect(_on_journal_added)
 	Events.game_saved.connect(func(_s: String) -> void: _on_notify(Loc.t("MSG_SAVED"), &"good"))
 	Settings.changed.connect(func(_s: String, _k: String) -> void:
 		theme = UITheme.get_theme(bool(Settings.get_value("accessibility", "high_contrast"))))
@@ -85,6 +93,12 @@ func bind(p: Player) -> void:
 	player = p
 	p.slept.connect(func(_h: float) -> void: fade_flash())
 	p.hurt.connect(func(_a: float) -> void: _hit_flash())
+
+
+func _on_journal_added(key: String) -> void:
+	var message := "OPENING_CLUE" if key == "JOURNAL_OLD_CAMP" and is_instance_valid(opening_cache) \
+		else "MSG_JOURNAL_UPDATED"
+	_on_notify(Loc.t(message), &"good")
 
 
 func _build_vignette() -> void:
@@ -168,6 +182,11 @@ func _draw_markers() -> void:
 	var size := _markers.size
 	var centre := size * 0.5
 	_draw_waypoint_marker(cam, size, centre)
+	if _opening_goal.visible:
+		var target := opening_cache.global_position
+		var distance := player.global_position.distance_to(target)
+		if distance > 4.0:
+			_draw_target_marker(cam, size, centre, target + Vector3.UP * 1.4, distance, UITheme.GOLD_HI, true)
 	var fires: Array = []
 	for f: Campfire in get_tree().get_nodes_in_group("campfire"):
 		if f.eternal or f.is_queued_for_deletion():
@@ -216,16 +235,25 @@ func _draw_waypoint_marker(cam: Camera3D, size: Vector2, centre: Vector2) -> voi
 		w.waypoint = Vector3.INF
 		Events.toast(Loc.t("MSG_WAYPOINT_REACHED"), &"good")
 		return
-	var world_pos := w.waypoint + Vector3.UP * 2.0
+	_draw_target_marker(cam, size, centre, w.waypoint + Vector3.UP * 2.0, d,
+		Color(0.85, 0.2, 0.14, 0.95))
+
+
+func _draw_target_marker(cam: Camera3D, size: Vector2, centre: Vector2, world_pos: Vector3,
+		d: float, col: Color, objective := false) -> void:
 	var p := cam.unproject_position(world_pos)
 	if cam.is_position_behind(world_pos):
 		var lp := cam.to_local(world_pos)
 		p = Vector2(centre.x + clampf(lp.x / maxf(absf(lp.z), 0.1), -1.0, 1.0) * centre.x, size.y * 2.0)
 	var at := p.clamp(Vector2(46, 46), size - Vector2(46, 150))
-	var col := Color(0.85, 0.2, 0.14, 0.95)
 	_markers.draw_circle(at, 12.0, Color(0.05, 0.04, 0.03, 0.45))
-	_markers.draw_line(at + Vector2(-6, -6), at + Vector2(6, 6), col, 3.0, true)
-	_markers.draw_line(at + Vector2(-6, 6), at + Vector2(6, -6), col, 3.0, true)
+	if objective:
+		_markers.draw_colored_polygon(PackedVector2Array([
+			at + Vector2(0, -7), at + Vector2(7, 0), at + Vector2(0, 7), at + Vector2(-7, 0),
+		]), col)
+	else:
+		_markers.draw_line(at + Vector2(-6, -6), at + Vector2(6, 6), col, 3.0, true)
+		_markers.draw_line(at + Vector2(-6, 6), at + Vector2(6, -6), col, 3.0, true)
 	if not at.is_equal_approx(p):
 		var dir := (p - centre).normalized()
 		var tip := at + dir * 24.0
@@ -494,6 +522,7 @@ func _process(_delta: float) -> void:
 	_update_prompt()
 	_update_build_hint()
 	_update_equipped()
+	_opening_goal.visible = is_instance_valid(opening_cache) and not opening_cache.looted
 	_reticle.queue_redraw()
 	_markers.queue_redraw()
 	if _hit_t > 0.0:

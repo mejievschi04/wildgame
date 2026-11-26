@@ -4,6 +4,7 @@ extends CanvasLayer
 ## stage, a progress bar and survival tips. Lives on the root so it survives the scene change.
 
 signal opened
+signal finished
 
 const BACKDROPS := [
 	"res://assets/ui/BG_Load_Camp.jpg",
@@ -122,6 +123,7 @@ func finish() -> void:
 	var tw := create_tween()
 	tw.tween_interval(0.25)
 	tw.tween_property(_root, "modulate:a", 0.0, 0.45).set_trans(Tween.TRANS_SINE)
+	tw.tween_callback(finished.emit)
 	tw.tween_callback(queue_free)
 
 

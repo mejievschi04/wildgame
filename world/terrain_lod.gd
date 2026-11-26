@@ -9,7 +9,7 @@ extends Node3D
 
 const CHUNK := 32            # cells per chunk side (~66 m)
 const RADIUS := 3            # chunks on each side of the camera's chunk: a ~460 m window at 2 m
-const FAR_STRIDE := 4        # far mesh: every 4th bake sample (~8 m)
+const FAR_STRIDE := 8        # far mesh: every 8th bake sample (~16 m on the 8 km map; must divide BAKE_N - 1)
 const BUILD_PER_FRAME := 2
 const SKIRT := 1.5           # metres the chunk edges hang down under the far mesh
 

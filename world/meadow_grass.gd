@@ -30,7 +30,7 @@ func build(w: ForestWorld, heights: PackedFloat32Array, forest_mask: Image, macr
 	_material.shader = preload("res://world/shaders/grass_cards.gdshader")
 	_material.set_shader_parameter("atlas", preload("res://assets/textures/vegetation/T_GrassCards_D.png"))
 	_material.set_shader_parameter("height_tex", ImageTexture.create_from_image(img))
-	var dry := _creek_dry(w)
+	var dry := _ground_cover(w)
 	_material.set_shader_parameter("grass_mask", ImageTexture.create_from_image(_grass_mask(heights, forest_mask, 1.15, false, dry)))
 	_material.set_shader_parameter("macro_noise", macro_tex)
 	_material.set_shader_parameter("half_size", ForestWorld.HALF)
@@ -52,7 +52,7 @@ func build(w: ForestWorld, heights: PackedFloat32Array, forest_mask: Image, macr
 
 ## Per terrain vertex: 0 in a creek bed, rising to 1 on its banks (creeks run above the river's 0 m level, so the
 ## height test below does not see them).
-static func _creek_dry(w: ForestWorld) -> PackedFloat32Array:
+static func _ground_cover(w: ForestWorld) -> PackedFloat32Array:
 	var row := MASK_N
 	var cell := MASK_CELL
 	var dry := PackedFloat32Array()
@@ -71,6 +71,16 @@ static func _creek_dry(w: ForestWorld) -> PackedFloat32Array:
 					var p := Vector2(-ForestWorld.HALF + ix * cell, -ForestWorld.HALF + iz * cell)
 					var d := p.distance_to(Geometry2D.get_closest_point_to_segment(p, a, b))
 					dry[iz * row + ix] = minf(dry[iz * row + ix], smoothstep(3.0, 8.0, d))
+	for id: String in Camps.REGIONAL_BASES:
+		var center := Camps.site(Camps.REGIONAL_BASES[id])
+		var radius := Camps.Layout.radius(id)
+		var lo := (center + Vector2.ONE * (ForestWorld.HALF - radius)) / cell
+		var hi := (center + Vector2.ONE * (ForestWorld.HALF + radius)) / cell
+		for iz in range(maxi(floori(lo.y), 0), mini(ceili(hi.y), row - 1) + 1):
+			for ix in range(maxi(floori(lo.x), 0), mini(ceili(hi.x), row - 1) + 1):
+				var p := Vector2(ix, iz) * cell - Vector2.ONE * ForestWorld.HALF
+				var cover := lerpf(0.04, 1.0, smoothstep(radius - 8.0, radius, center.distance_to(p)))
+				dry[iz * row + ix] = minf(dry[iz * row + ix], cover)
 	return dry
 
 

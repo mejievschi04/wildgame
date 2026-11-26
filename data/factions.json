@@ -10,8 +10,8 @@
 		"count": 3,
 		"armed": true,
 		"camp": [
-			92,
-			62
+			-2418,
+			1632
 		],
 		"territory": 0,
 		"wants": {
@@ -39,8 +39,8 @@
 		"count": 4,
 		"armed": true,
 		"camp": [
-			-82,
-			-72
+			-2592,
+			1498
 		],
 		"territory": 34,
 		"wants": {
@@ -56,6 +56,29 @@
 		},
 		"journal": "JOURNAL_CLAN"
 	},
+	"kharum": {
+		"start": -20,
+		"temper": "territorial",
+		"armed": true,
+		"variants": [
+			"NM2",
+			"NM3",
+			"NF1"
+		],
+		"journal": "JOURNAL_KHARUM"
+	},
+	"varkai": {
+		"start": -65,
+		"temper": "territorial",
+		"armed": true,
+		"variants": [
+			"NM1",
+			"NM3",
+			"NM2",
+			"NF1"
+		],
+		"journal": "JOURNAL_VARKAI"
+	},
 	"gatherers": {
 		"start": 20,
 		"temper": "peaceful",
@@ -67,8 +90,8 @@
 		"count": 3,
 		"armed": false,
 		"camp": [
-			-35,
-			78
+			-2545,
+			1648
 		],
 		"territory": 0,
 		"wants": {
@@ -84,5 +107,16 @@
 			"waterskin_empty": 1
 		},
 		"journal": "JOURNAL_GATHERERS"
+	},
+	"north": {
+		"start": -20,
+		"temper": "territorial",
+		"armed": true,
+		"variants": [
+			"M1",
+			"SapiensM",
+			"F1"
+		],
+		"journal": "JOURNAL_NORTH"
 	}
 }

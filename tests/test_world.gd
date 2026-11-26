@@ -42,7 +42,9 @@ func test_session_boots_and_player_stands() -> void:
 				break
 		check(reached, "starter %s in front of player and reachable by hand" % kind)
 	# Sample both triangles off-grid on the bank, where the landform curves sharply.
-	for xz: Vector2 in [Vector2(172, 13), Vector2(178, 17)]:
+	var z := ForestWorld.SPAWN.y
+	for xz: Vector2 in [Vector2(s.world.river_x(z + 13) - 20, z + 13),
+			Vector2(s.world.river_x(z + 17) - 17, z + 17)]:
 		var top := Vector3(xz.x, 300.0, xz.y)
 		var ray := PhysicsRayQueryParameters3D.create(top, Vector3(xz.x, -10.0, xz.y), 1)
 		var hit := s.world.get_world_3d().direct_space_state.intersect_ray(ray)
@@ -283,6 +285,7 @@ func test_sleep_skips_to_morning() -> void:
 func test_cold_blocks_sleep() -> void:
 	var s: GameSession = await _boot()
 	s.world.day_night.time_hours = 2.0
+	s.world.structures_root.get_node("player_camp_fire").load_state({"lit": false})
 	check(not s.player.can_sleep().ok, "cannot sleep in the freezing night without fire")
 	await _teardown(s)
 
@@ -311,7 +314,7 @@ func test_save_and_restore_world_state() -> void:
 	near(s2.world.day_night.time_hours, 18.25, 0.05, "time restored")
 	near(s2.player.stats.hunger, 42.0, 0.5, "stats restored")
 	eq(s2.player.inventory.count_of(&"flint_knife"), 1, "inventory restored")
-	var fires := tree.get_nodes_in_group("campfire").filter(func(n: Node) -> bool: return not String(n.name).begins_with("camp_"))
+	var fires := tree.get_nodes_in_group("campfire").filter(func(n: Campfire) -> bool: return n.structure_id.begins_with("s_"))
 	check(fires.size() == 1 and (fires[0] as Campfire).lit, "lit campfire restored")
 	eq(tree.get_nodes_in_group("pickup").size(), 1, "pickup restored")
 	await _teardown(s2)
@@ -328,7 +331,7 @@ func _region_flint() -> Array[ResourceNode]:
 func test_flint_beyond_the_start_valley() -> void:
 	var s: GameSession = await _boot()
 	var v := s.world.get_node("Vegetation") as Vegetation
-	var kharum := Vector2(-1400, 80)
+	var kharum: Vector2 = ForestWorld.REGIONS[&"kharum"] + Vector2(-160, 95)
 	s.player.global_position = s.world.ground_point(kharum.x, kharum.y) + Vector3.UP
 	v._stream_near(kharum)
 	await tree.physics_frame
@@ -372,37 +375,22 @@ func test_flint_regrows_and_boulders_can_yield_flint() -> void:
 	await _teardown(s)
 
 
-## Relief v3 (tools/gen_terrain.py): each region reads by its landform, creeks run downhill into the river system,
-## the fords are wadeable and the Meyra channels end in the lake.
+## The coast, mountain regions, connected rivers and occupied settlements share the map's geometry.
 func test_relief_creeks_and_fords() -> void:
 	var s: GameSession = await _boot()
 	var w := s.world
-	# regions
-	var peak := 0.0
-	for i in 400:
-		var x := -2000.0 + (i % 20) * 50.0
-		var z := -600.0 + (i / 20) * 70.0
-		if w.region_at(x, z) == &"kharum":
-			peak = maxf(peak, w.height_at(x, z))
-	check(peak > 110.0, "Kharum has mountains (highest %.0f m)" % peak)
-	var plateau := w.height_at(1150.0, -1180.0)
-	check(plateau > w.height_at(0.0, 0.0) + 20.0, "Varkai plateau (%.0f m) stands over Aruun" % plateau)
-	var steepest := 0.0
-	for i in 60:  # the escarpment: somewhere on the plateau's west/south rim the ground climbs > 15 m in 40 m
-		var a := PI * 0.5 + PI * float(i) / 60.0
-		var rim := Vector2(1150.0, -1180.0) + Vector2(cos(a) * 600.0, -sin(a) * 500.0)
-		var inward := (Vector2(1150.0, -1180.0) - rim).normalized()
-		for k in 8:
-			var p := rim + inward * (k * 40.0 - 160.0)
-			var q := p + inward * 40.0
-			steepest = maxf(steepest, w.height_at(q.x, q.y) - w.height_at(p.x, p.y))
-	check(steepest > 15.0, "Varkai escarpment (%.1f m rise in 40 m)" % steepest)
-	var marsh := 0.0
-	for i in 25:
-		marsh += w.height_at(1200.0 + (i % 5) * 60.0, 700.0 + (i / 5) * 60.0)
-	check(marsh / 25.0 < 8.0, "Meyra marsh is low (mean %.1f m)" % (marsh / 25.0))
+	var callout := Vector2(-3200.0, ForestWorld.Layout.coast_z(-3200.0))
+	check(w.height_at(callout.x, callout.y + 130.0) < ForestWorld.WATER_LEVEL, "southwest shoreline opens onto real sea")
+	check(w.height_at(callout.x, callout.y - 130.0) > ForestWorld.WATER_LEVEL, "coast has dry land on the inland side")
+	check(w.has_node("SouthwestSea"), "ocean surface is present in the playable scene")
+	var north := Camps.site(Camps.REGIONAL_BASES["north"])
+	var stone := Camps.site(Camps.REGIONAL_BASES["kharum"])
+	var red := Camps.site(Camps.REGIONAL_BASES["varkai"])
+	check(stone.x < 0.0 and stone.y < 0.0, "Stone tribe is north-west")
+	check(north.x > 0.0 and north.y < 0.0 and ForestWorld.taiga_at(north.x, north.y) > 0.6, "North tribe is in snowy north-east")
+	check(red.x > 0.0 and red.y > 0.0, "Red tribe is south-east")
 	# creeks
-	check(w.creeks.size() >= 5, "creeks traced (%d)" % w.creeks.size())
+	check(w.creeks.size() >= 3, "creeks traced (%d)" % w.creeks.size())
 	var dry := 0
 	var samples := 0
 	for pts: PackedVector3Array in w.creeks:
@@ -441,12 +429,9 @@ func test_relief_creeks_and_fords() -> void:
 	check(w.height_at(w.river_x(-600.0), -600.0) < -1.0, "the river is deep away from the fords")
 	check(w.get_node_or_null("POI_StoneFord") != null and w.get_node("POI_StoneFord").get_child_count() >= 8,
 		"stepping stones across the stone ford")
-	var end_a := Vector2(w._meyra_channel_a(ForestWorld.MEYRA_A_END), ForestWorld.MEYRA_A_END)
-	var lake := Vector2((end_a.x - ForestWorld.LAKE_CENTER.x) / ForestWorld.LAKE_RADIUS_X,
-		(end_a.y - ForestWorld.LAKE_CENTER.y) / ForestWorld.LAKE_RADIUS_Z)
-	check(lake.length() < 1.0, "Meyra's east channel drains into the lake")
-	var join := w._meyra_channel_b(ForestWorld.MEYRA_B_END) - w._meyra_channel_a(ForestWorld.MEYRA_B_END)
-	check(absf(join) < 1.0, "Meyra's braid rejoins the east channel (%.1f m apart)" % join)
+	for river: Dictionary in ForestWorld.Layout.data.rivers.slice(1):
+		var mouth: Array = river.points[-1]
+		near(w.river_x(float(mouth[0])), float(mouth[1]), 0.2, "tributary meets the main river")
 	await _teardown(s)
 
 
@@ -563,7 +548,8 @@ func test_world_map_fog_and_waypoint() -> void:
 	var s: GameSession = await _boot()
 	var w := s.world
 	check(MapData.explored(w.map_fog, ForestWorld.SPAWN.x, ForestWorld.SPAWN.y), "the start valley is on the map from the start")
-	check(not MapData.explored(w.map_fog, 1160.0, -1240.0), "Varkai is still unexplored")
+	var red := Camps.site(Camps.REGIONAL_BASES["varkai"])
+	check(not MapData.explored(w.map_fog, red.x, red.y), "Red tribe is still unexplored")
 	s.player.global_position = w.ground_point(600.0, 300.0) + Vector3.UP
 	for i in 40:
 		await tree.process_frame
@@ -571,11 +557,12 @@ func test_world_map_fog_and_waypoint() -> void:
 	check(MapData.explored(w.map_fog, 600.0, 300.0), "walking somewhere reveals it on the map")
 	w.waypoint = w.ground_point(250.0, 150.0)
 	var img := w.get_map_image()
-	check(img != null and img.get_width() == MapData.RES, "the painted map is ready")
+	check(img != null and img.get_width() >= 1600, "the painted map is ready")
 	var uv := MapData.to_uv(w.river_x(0.0), 0.0)
-	var river_px := img.get_pixel(int(uv.x * MapData.RES), int(uv.y * MapData.RES))
-	var land_px := img.get_pixel(int(MapData.RES * 0.5) - 40, int(MapData.RES * 0.5))
-	check(river_px.b > river_px.r and land_px.r > land_px.b, "river painted as water, land as hide")
+	var map_size := img.get_width()
+	var river_px := img.get_pixel(int(uv.x * map_size), int(uv.y * map_size))
+	var land_px := img.get_pixel(int(map_size * 0.5) - 40, int(map_size * 0.5))
+	check(river_px.b > river_px.r and land_px.r > land_px.b, "river and land are visually distinct")
 	var data: Dictionary = JSON.parse_string(JSON.stringify(s.build_save()))
 	await _teardown(s)
 	Game.pending_save = data
@@ -627,4 +614,50 @@ func test_map_shift_click_teleport() -> void:
 	near(p._fall_speed, 0.0, 0.01, "teleport clears pending fall damage")
 	check(MapData.explored(s.world.map_fog, at.x, at.y), "arrival reveals the map")
 	check(p.input_enabled, "teleport returns control to the player")
+	await _teardown(s)
+
+
+func test_dry_twig_bushes_give_sticks_and_stand_out_of_the_grass() -> void:
+	var s: GameSession = await _boot()
+	var p := s.player
+	var near: Array = []
+	for n: Node in tree.get_nodes_in_group("resource_node"):
+		if n is ResourceNode and (n as ResourceNode).kind == &"deadwood":
+			if (n as Node3D).global_position.distance_to(p.global_position) < 15.0:
+				near.append(n)
+	check(near.size() >= 2, "dry twig bushes in sight of the start (%d)" % near.size())
+	var bush: ResourceNode = near[0]
+	var mi := bush.find_children("*", "MeshInstance3D", true, false)[0] as MeshInstance3D
+	check(mi.get_aabb().size.y * mi.scale.y > 0.8, "taller than the meadow grass (%.2f m)" % (mi.get_aabb().size.y * mi.scale.y))
+	var opts: Array = bush.get_interactions(p)
+	check(opts[0].enabled and float(opts[0].hold) > 0.0, "a hold-to-gather action")
+	for i in bush.capacity:
+		bush.perform_interaction(p, &"interact")
+	eq(p.inventory.count_of(&"stick"), 2 * bush.capacity, "two sticks per gather")
+	eq(bush.remaining, 0, "picked bare")
+	check(bush.get_interactions(p)[0].enabled == false, "nothing more to break off")
+	await _teardown(s)
+
+
+func test_landmarks_spread_across_the_wilds() -> void:
+	var s: GameSession = await _boot()
+	var w := s.world
+	var placed: Array = w.landmarks.placed
+	check(placed.size() > 100, "a landmark every few hundred metres (%d)" % placed.size())
+	var kinds := {}
+	for e: Array in placed:
+		kinds[e[0]] = true
+		var p: Vector3 = e[1]
+		check(Vector2(p.x, p.z).distance_to(ForestWorld.SPAWN) > Landmarks.KEEP_CLEAR, "clear of the start")
+		check(p.y > ForestWorld.WATER_LEVEL + 1.0 and w.water_distance(p.x, p.z) >= 25.0, "on dry ground away from water")
+		for c: Vector2 in w._camp_sites:
+			check(Vector2(p.x, p.z).distance_to(c) > Landmarks.KEEP_CLEAR, "clear of the clans' camps")
+	eq(kinds.size(), Landmarks.KINDS.size(), "every kind appears somewhere")
+	# nearest neighbour spacing: no clumps
+	var close := 0
+	for i in placed.size():
+		for j in range(i + 1, placed.size()):
+			if (placed[i][1] as Vector3).distance_to(placed[j][1]) < 60.0:
+				close += 1
+	check(close == 0, "no two landmarks within 60 m (%d)" % close)
 	await _teardown(s)

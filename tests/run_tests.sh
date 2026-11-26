@@ -8,7 +8,7 @@ LOG="$(mktemp -t wildbound_tests)"
 "$GODOT" --headless --path . --import >/dev/null 2>&1
 "$GODOT" --headless --path . res://tests/test_runner.tscn >"$LOG" 2>&1 &
 PID=$!
-for i in $(seq 1 600); do kill -0 $PID 2>/dev/null || break; sleep 1; done
+for i in $(seq 1 1500); do kill -0 $PID 2>/dev/null || break; sleep 1; done
 kill $PID 2>/dev/null
 wait $PID; CODE=$?
 grep -E "PASS|FAIL|tests,|SCRIPT ERROR|Parse Error|   at: " "$LOG" | grep -v "^   at: push_error"

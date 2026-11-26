@@ -117,119 +117,119 @@
   {
    "bufferView": 0,
    "componentType": 5126,
-   "count": 161,
+   "count": 1296,
    "max": [
-    2.9567596912384033,
-    9.21481704711914,
-    3.0938496589660645
+    3.1362833976745605,
+    13.245748519897461,
+    2.74269437789917
    ],
    "min": [
-    -1.441443681716919,
-    -0.004830405116081238,
-    -0.8513989448547363
+    -4.132162570953369,
+    -0.0074739884585142136,
+    -3.6457271575927734
    ],
    "type": "VEC3"
   },
   {
    "bufferView": 1,
    "componentType": 5126,
-   "count": 161,
+   "count": 1296,
    "type": "VEC3"
   },
   {
    "bufferView": 2,
    "componentType": 5126,
-   "count": 161,
+   "count": 1296,
    "type": "VEC2"
   },
   {
    "bufferView": 3,
    "componentType": 5123,
-   "count": 648,
+   "count": 4620,
    "type": "SCALAR"
   },
   {
    "bufferView": 4,
    "componentType": 5126,
-   "count": 2148,
+   "count": 5736,
    "max": [
-    3.388219118118286,
-    12.403510093688965,
-    3.4740633964538574
+    4.086941242218018,
+    14.107524871826172,
+    4.224008560180664
    ],
    "min": [
-    -3.352318525314331,
-    5.607755661010742,
-    -3.3650624752044678
+    -4.806759834289551,
+    5.933990001678467,
+    -4.481760501861572
    ],
    "type": "VEC3"
   },
   {
    "bufferView": 5,
    "componentType": 5126,
-   "count": 2148,
+   "count": 5736,
    "type": "VEC3"
   },
   {
    "bufferView": 6,
    "componentType": 5126,
-   "count": 2148,
+   "count": 5736,
    "type": "VEC2"
   },
   {
    "bufferView": 7,
    "componentType": 5123,
-   "count": 4296,
+   "count": 11472,
    "type": "SCALAR"
   }
  ],
  "bufferViews": [
   {
    "buffer": 0,
-   "byteLength": 1932,
+   "byteLength": 15552,
    "byteOffset": 0,
    "target": 34962
   },
   {
    "buffer": 0,
-   "byteLength": 1932,
-   "byteOffset": 1932,
+   "byteLength": 15552,
+   "byteOffset": 15552,
    "target": 34962
   },
   {
    "buffer": 0,
-   "byteLength": 1288,
-   "byteOffset": 3864,
+   "byteLength": 10368,
+   "byteOffset": 31104,
    "target": 34962
   },
   {
    "buffer": 0,
-   "byteLength": 1296,
-   "byteOffset": 5152,
+   "byteLength": 9240,
+   "byteOffset": 41472,
    "target": 34963
   },
   {
    "buffer": 0,
-   "byteLength": 25776,
-   "byteOffset": 6448,
+   "byteLength": 68832,
+   "byteOffset": 50712,
    "target": 34962
   },
   {
    "buffer": 0,
-   "byteLength": 25776,
-   "byteOffset": 32224,
+   "byteLength": 68832,
+   "byteOffset": 119544,
    "target": 34962
   },
   {
    "buffer": 0,
-   "byteLength": 17184,
-   "byteOffset": 58000,
+   "byteLength": 45888,
+   "byteOffset": 188376,
    "target": 34962
   },
   {
    "buffer": 0,
-   "byteLength": 8592,
-   "byteOffset": 75184,
+   "byteLength": 22944,
+   "byteOffset": 234264,
    "target": 34963
   }
  ],
@@ -241,7 +241,7 @@
  ],
  "buffers": [
   {
-   "byteLength": 83776,
+   "byteLength": 257208,
    "uri": "SM_Alder_01.bin"
   }
  ]

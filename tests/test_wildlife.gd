@@ -135,6 +135,68 @@ func test_spear_throw_hits() -> void:
 	await _run(1.0)
 	check(deer.health < hp, "thrown spear damages the deer (%.1f → %.1f)" % [hp, deer.health])
 	check(not spear.flying and spear.stack.durability < 80, "spear landed and wore")
+	check(spear._host != null and spear.freeze, "the spear stays stuck in the deer")
+	var rel := spear.global_position - deer.global_position
+	deer.global_position += Vector3(2.0, 0.0, 0.0)
+	await _run(0.1)
+	check((spear.global_position - deer.global_position).distance_to(rel) < 0.3, "the stuck spear moves with the deer")
+	await _teardown(s)
+
+
+## A patch of ground a few metres in front of the player (the spawn meadow is flat).
+func _flat_ground(s: GameSession) -> Vector3:
+	var p := s.player.global_position + Vector3(0, 0, -6)
+	return s.world.ground_point(p.x, p.z)
+
+
+func test_spear_sticks_point_first_in_the_ground() -> void:
+	var s: GameSession = await _boot()
+	var g := _flat_ground(s)
+	var spear := ThrownSpear.new()
+	s.world.pickups_root.add_child(spear)
+	var from := g + Vector3(0, 3.0, 3.0)
+	spear.launch(ItemStack.new(&"spear", 1, 80), from, (g - from).normalized() * 22.0, s.player)
+	await _run(0.6)
+	check(not spear.flying, "it came down")
+	check(spear.freeze, "stuck fast, not lying loose")
+	var tip := spear.global_position + spear.global_transform.basis.z.normalized() * spear._tip
+	var ground := s.world.ground_point(tip.x, tip.z)
+	check(tip.y < ground.y - 0.05, "the point is buried (%.2f m deep)" % (ground.y - tip.y))
+	check(spear.global_position.y > ground.y, "the shaft stands out of the ground")
+	check(spear.global_transform.basis.z.normalized().y < -0.5, "point down, as it came in")
+	await _teardown(s)
+
+
+func test_grazing_spear_glances_off_and_tumbles() -> void:
+	var s: GameSession = await _boot()
+	var g := _flat_ground(s)
+	var spear := ThrownSpear.new()
+	s.world.pickups_root.add_child(spear)
+	var from := g + Vector3(0, 0.5, 6.0)
+	# skimming in at a few degrees: too flat to bite
+	spear.launch(ItemStack.new(&"spear", 1, 80), from, (g - from).normalized() * 22.0, s.player)
+	await _run(0.5)
+	check(not spear.flying, "it hit the ground")
+	check(not spear.freeze, "it glanced off as a loose rigid body instead of sticking")
+	await _run(3.0)
+	var at := spear.global_position
+	check(at.y > s.world.ground_point(at.x, at.z).y - 0.2, "it comes to rest on the ground, not in it")
+	await _teardown(s)
+
+
+func test_arrow_flies_a_ballistic_arc_with_drag() -> void:
+	var s: GameSession = await _boot()
+	var arrow := ThrownSpear.new()
+	s.world.pickups_root.add_child(arrow)
+	arrow.drag = Player.ARROW_DRAG
+	var from := s.player.global_position + Vector3(0, 30.0, 0)  # high up: nothing to hit for a while
+	arrow.launch(ItemStack.new(&"arrow", 1), from, Vector3(0, 0, -45.0), s.player)
+	await _run(0.5)
+	check(arrow.flying, "still in the air")
+	var drop := from.y - arrow.global_position.y
+	check(drop > 0.9 and drop < 1.4, "falls under gravity (%.2f m in 0.5 s)" % drop)
+	check(-arrow._vel.z < 44.0 and -arrow._vel.z > 38.0, "air drag slows it (%.1f m/s)" % -arrow._vel.z)
+	check(arrow.global_transform.basis.z.normalized().dot(arrow._vel.normalized()) > 0.99, "points along its flight")
 	await _teardown(s)
 
 
@@ -282,11 +344,14 @@ func test_start_valley_has_no_dangerous_spawns() -> void:
 func test_habitat_and_wildness_rules() -> void:
 	var s: GameSession = await _boot()
 	var w := s.world.wildlife
-	check(w.habitat_ok(&"deer", 0.0, 80.0), "deer live in the Aruun valley")
-	check(not w.habitat_ok(&"wolf", 0.0, 100.0), "wolves keep away from the start clearing")
-	check(w.habitat_ok(&"wolf", 0.0, -500.0), "wolves roam the wilder parts of Aruun")
-	check(not w.habitat_ok(&"mammoth", 0.0, -500.0), "mammoths don't live in the Aruun forest")
-	check(w.habitat_ok(&"mammoth", 180.0, -1740.0), "mammoths live on the tundra")
+	var camp := ForestWorld.SPAWN
+	var aruun: Vector2 = ForestWorld.REGIONS[&"aruun"]
+	var north: Vector2 = ForestWorld.REGIONS[&"tundra"]
+	check(w.habitat_ok(&"deer", camp.x, camp.y + 40.0), "deer live near the coastal camp")
+	check(not w.habitat_ok(&"wolf", camp.x, camp.y + 40.0), "wolves keep away from the start clearing")
+	check(w.habitat_ok(&"wolf", aruun.x, aruun.y - 90.0), "wolves roam the wilder parts of Aruun")
+	check(not w.habitat_ok(&"mammoth", aruun.x, aruun.y), "mammoths don't live in the Aruun forest")
+	check(w.habitat_ok(&"mammoth", north.x, north.y), "mammoths live on the northeastern tundra")
 	await _teardown(s)
 
 
@@ -351,4 +416,133 @@ func test_bow_needs_arrows_and_a_real_draw() -> void:
 	p._release_draw()
 	check(p.inventory.count_of(&"arrow") == 1, "a barely drawn string is let down without shooting")
 	check(not p.drawing and not p.aiming, "draw state cleared")
+	await _teardown(s)
+
+
+func test_club_blow_knocks_a_wolf_back_but_not_a_mammoth() -> void:
+	var s: GameSession = await _boot()
+	var wolf := _spawn(s, &"wolf", Vector3(0, 0, -6))
+	var mammoth := _spawn(s, &"mammoth", Vector3(14, 0, -14))
+	await tree.physics_frame
+	var club := ItemDB.get_item(&"club")
+	var j := HitPhysics.melee_impulse(club, true)
+	var w0 := wolf.global_position
+	wolf.hit_impulse(j, Vector3(0, 0, -1))
+	check(wolf._stagger_t > 0.0, "a heavy club blow staggers the wolf")
+	var m0 := mammoth.global_position
+	mammoth.hit_impulse(j, Vector3(0, 0, -1))
+	check(mammoth._stagger_t <= 0.0, "the mammoth does not even stagger")
+	await _run(0.6)
+	var wolf_back := (wolf.global_position - w0).dot(Vector3(0, 0, -1))
+	check(wolf_back > 0.5, "the wolf is shoved back along the blow (%.2f m)" % wolf_back)
+	check(Vector2(mammoth.global_position.x - m0.x, mammoth.global_position.z - m0.z).length() < 0.5 \
+		or mammoth._speed > 0.5, "the mammoth is not shoved (it may walk on its own)")
+	await _teardown(s)
+
+
+func test_carcass_keeps_the_killing_blow_and_lies_along_the_slope() -> void:
+	var s: GameSession = await _boot()
+	var deer := _spawn(s, &"deer", Vector3(0, 0, -8))
+	await tree.physics_frame
+	deer.take_damage(1000.0, s.player, deer.global_position + Vector3.UP)
+	check(deer.is_dead(), "killed")
+	var p0 := deer.global_position
+	deer.hit_impulse(HitPhysics.projectile_impulse(1.8, 24.0), Vector3(1, 0, 0))
+	await _run(1.5)
+	check(deer.global_position.x - p0.x > 0.2, "the carcass slid on with the spear's momentum (%.2f m)" % (deer.global_position.x - p0.x))
+	check(deer._push_v.length() < 0.05, "and came to rest")
+	var n := HitPhysics.ground_normal(s.world, deer.global_position.x, deer.global_position.z)
+	var up := deer._model.global_transform.basis.y.normalized()
+	check(up.dot(n) > 0.97, "the body lies along the ground (normal %.3f)" % up.dot(n))
+	await _teardown(s)
+
+
+func test_carcass_slides_down_a_steep_slope() -> void:
+	var n := Vector3(0.6, 0.8, 0.0)  # ~37°, steeper than a hide holds on grass
+	var v := Vector3.ZERO
+	for i in 60:
+		v = HitPhysics.corpse_slide(v, n, 1.0 / 60.0)
+	check(v.x > 0.5, "slides downhill (%.2f m/s)" % v.x)
+	v = Vector3.ZERO
+	n = Vector3(0.3, 0.95, 0.0).normalized()  # ~17°: it stays
+	for i in 60:
+		v = HitPhysics.corpse_slide(v, n, 1.0 / 60.0)
+	check(v.length() < 0.01, "a gentle slope holds it")
+
+
+func _shoot_arrow(s: GameSession, from: Vector3, at: Vector3) -> ThrownSpear:
+	var arrow := ThrownSpear.new()
+	s.world.pickups_root.add_child(arrow)
+	arrow.base_damage = 34.0
+	arrow.ref_speed = Player.ARROW_SPEED_MAX * 0.85
+	arrow.drag = Player.ARROW_DRAG
+	arrow.stick_speed = 11.0
+	arrow.launch(ItemStack.new(&"arrow", 1), from, (at - from).normalized() * 42.0, s.player)
+	return arrow
+
+
+func _nearest_tree(s: GameSession, around: Vector3) -> ResourceNode:
+	var best: ResourceNode = null
+	for n: Node in s.world.get_tree().get_nodes_in_group("resource_node"):
+		var r := n as ResourceNode
+		if r and String(r.kind).begins_with("tree") and r.collision_layer & 1 and r.is_inside_tree() \
+				and (best == null or r.global_position.distance_to(around) < best.global_position.distance_to(around)):
+			best = r
+	return best
+
+
+func test_arrows_stick_in_trees_animals_and_people() -> void:
+	var s: GameSession = await _boot()
+	var p := s.player
+	# a tree: shot at chest height from 8 m
+	var tree_node := _nearest_tree(s, p.global_position)
+	check(tree_node != null, "a tree to shoot at")
+	var tp := tree_node.global_position + Vector3.UP * 1.4
+	var a1 := _shoot_arrow(s, tp + Vector3(8, 0.2, 0.5), tp)
+	# a deer standing still
+	var deer := _spawn(s, &"deer", Vector3(0, 0, -10))
+	deer.set_physics_process(false)
+	await tree.physics_frame
+	var dp := deer.global_position + Vector3.UP * 1.0
+	var a2 := _shoot_arrow(s, dp + Vector3(0, 0.3, 9), dp)
+	# a person
+	var n: HumanNPC = s.world.camps.npcs["npc_hunters_0"]
+	n.set_physics_process(false)
+	var np := n.global_position + Vector3.UP * 1.2
+	var a3 := _shoot_arrow(s, np + Vector3(7, 0.2, 0), np)
+	for a: ThrownSpear in [a1, a2, a3]:
+		a.break_chance = 0.0
+	await _run(0.8)
+	for pair: Array in [[a1, "tree"], [a2, "deer"], [a3, "person"]]:
+		var a: ThrownSpear = pair[0]
+		check(is_instance_valid(a) and not a.flying and a.freeze and a.collision_layer == 4,
+			"the arrow is stuck in the %s" % pair[1])
+	check(is_instance_valid(a2) and a2._host != null, "the arrow in the deer rides on its bones")
+	check(is_instance_valid(a3) and a3._host != null, "the arrow in the person rides on their bones")
+	await _teardown(s)
+
+
+func test_arrows_stick_in_carcasses_and_dead_wood() -> void:
+	var s: GameSession = await _boot()
+	var deer := _spawn(s, &"deer", Vector3(0, 0, -9))
+	await tree.physics_frame
+	deer.take_damage(1000.0, s.player, deer.global_position + Vector3.UP)
+	await _run(2.0)  # lying down
+	var dp := deer.global_position + Vector3.UP * 0.35
+	var a1 := _shoot_arrow(s, dp + Vector3(0, 2.5, 6), dp)
+	a1.break_chance = 0.0
+	# a lone log on the ground (vegetation marks them as wood)
+	var log_body: StaticBody3D = null
+	for b: StaticBody3D in s.world.find_children("*", "StaticBody3D", true, false):
+		if b.has_meta(&"wood"):
+			log_body = b
+			break
+	check(log_body != null, "a fallen trunk, stump or log to shoot at")
+	var lp := log_body.global_position + Vector3.UP * 0.25
+	var a2 := _shoot_arrow(s, lp + Vector3(0, 3.0, 5), lp)
+	a2.break_chance = 0.0
+	await _run(0.8)
+	check(is_instance_valid(a1) and a1.freeze and a1._host != null, "the arrow is stuck in the carcass")
+	var ok := is_instance_valid(a2) and a2.freeze
+	check(ok, "the arrow is stuck in the dead wood")
 	await _teardown(s)

@@ -3,6 +3,8 @@ extends Node
 ## Root of a play session: world + player + UI. Handles new/load, saving, UI modality, death.
 
 const AUTOSAVE_INTERVAL := 300.0
+const Opening := preload("res://game/opening.gd")
+const OPENING_ENTRY := "JOURNAL_ARUUN_ESCAPE"
 
 var world: ForestWorld
 var player: Player
@@ -15,6 +17,8 @@ var death_screen: DeathScreen
 var build_menu: BuildMenu
 var storage_screen: StorageScreen
 var _autosave_t := 0.0
+var _opening_pending := false
+var _opening: CanvasLayer
 
 
 func _ready() -> void:
@@ -28,6 +32,8 @@ func _ready() -> void:
 	world.player = player
 	var save := Game.pending_save
 	Game.pending_save = {}
+	_opening_pending = Game.pending_opening and save.is_empty()
+	Game.pending_opening = false
 	if save.is_empty():
 		_start_new()
 	else:
@@ -38,7 +44,10 @@ func _ready() -> void:
 	add_child(amb)
 	player.died.connect(_on_player_died)
 	player.slept.connect(func(_h: float) -> void: save_to("autosave"))
-	player.capture_mouse()
+	player.input_enabled = not _opening_pending
+	if not _opening_pending:
+		_guide_to_cache()
+		player.capture_mouse()
 	AutoShot.attach_if_requested(self)
 
 
@@ -52,8 +61,37 @@ func _start_new() -> void:
 
 
 func _apply_save(d: Dictionary) -> void:
-	world.apply_save(d.get("world", {}))
+	var saved_world: Dictionary = d.get("world", {})
+	world.apply_save(saved_world)
 	player.from_dict(d.get("player", {}))
+	if not world.uses_current_layout(saved_world):
+		player.global_position = world.spawn_position()
+		player.respawn_point = player.global_position
+
+
+func play_opening() -> void:
+	if not _opening_pending:
+		return
+	_opening_pending = false
+	var scene := Opening.new()
+	scene.world = world
+	scene.player = player
+	scene.finished.connect(_finish_opening)
+	_opening = scene
+	hud.suppressed = true
+	add_child(scene)
+
+
+func _finish_opening() -> void:
+	_opening = null
+	world.add_journal(OPENING_ENTRY)
+	_guide_to_cache()
+	_on_ui_closed()
+
+
+func _guide_to_cache() -> void:
+	if OPENING_ENTRY in world.journal and "JOURNAL_OLD_CAMP" not in world.journal:
+		hud.opening_cache = world.get_node_by_save_id("poi_stash") as Stash
 
 
 func _build_ui() -> void:
@@ -111,12 +149,14 @@ func build_save() -> Dictionary:
 
 
 func save_to(slot: String) -> bool:
-	if player.dead:
+	if player.dead or _opening_pending or _opening != null:
 		return false
 	return SaveManager.save_game(slot, build_save())
 
 
 func _process(delta: float) -> void:
+	if _opening_pending or _opening != null:
+		return
 	var dn := world.day_night
 	if dn.day >= 2 and dn.time_hours >= 6.0 and not player.dead:
 		world.add_journal("JOURNAL_FIRST_NIGHT")
@@ -127,7 +167,7 @@ func _process(delta: float) -> void:
 
 
 func is_ui_open() -> bool:
-	if inventory_screen == null:  # UI not built yet (e.g. focus lost while loading)
+	if inventory_screen == null or _opening_pending or _opening != null:
 		return true
 	return inventory_screen.visible or pause_menu.visible or death_screen.visible \
 		or build_menu.visible or storage_screen.visible or map_screen.visible or weapon_wheel.visible

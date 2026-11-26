@@ -34,6 +34,8 @@ func test_camps_and_people_exist() -> void:
 	for f in ["hunters", "clan", "gatherers"]:
 		var fire: Campfire = s.world.structures_root.get_node("camp_%s_fire" % f)
 		check(fire and fire.lit and fire.eternal, "%s camp fire burns" % f)
+	check(s.world.camps.has_node("PlayerCampMarker/CoastalHall") and
+		s.world.camps.has_node("PlayerCampMarker/LookoutTower"), "the coastal camp has its own shelter and tower")
 	eq(s.world.factions.stance(&"clan"), &"wary", "clan starts wary")
 	eq(s.world.factions.stance(&"gatherers"), &"neutral", "gatherers start neutral")
 	var hunter := _npc(s, "hunters")
@@ -51,7 +53,7 @@ func test_regional_bases_have_distinct_defenses_and_stream_guards() -> void:
 	var s: GameSession = await _boot()
 	var w := s.world
 	var camps := w.camps
-	eq(Camps.REGIONAL_BASES.size(), 5, "five regional base sites")
+	eq(Camps.REGIONAL_BASES.size(), 4, "the occupied ruins and three rival settlements")
 	var guard_counts := []
 	var warning_times := []
 	for id: String in Camps.REGIONAL_BASES:
@@ -65,9 +67,21 @@ func test_regional_bases_have_distinct_defenses_and_stream_guards() -> void:
 		check(cache.storage.free_slots() < cache.storage.size, "%s has supplies" % id)
 		camps._stream_regional_guards(center)
 		var guards: Array = camps._regional_guards[id]
-		guard_counts.append(guards.size())
+		guard_counts.append(guards.filter(func(n: HumanNPC) -> bool: return n.armed).size())
 		warning_times.append((guards[0] as HumanNPC).warn_time)
 		check((guards[0] as HumanNPC)._inside_territory(center), "%s guard protects this base" % id)
+		var city: Node = camps.get_node(id.capitalize())
+		check(city.get_node("Streets") is MeshInstance3D, "%s has streets connecting districts" % id)
+		check(city.find_children("*", "StaticBody3D", true, false).size() >= 8, "%s has enterable buildings" % id)
+		check(city.has_node("LookoutTower") and city.find_child("GatheringShelter", true, false) != null,
+			"%s has its main shelter and lookout tower" % id)
+		var owner := &"varkai" if id == "aruun" else StringName(id)
+		check(guards.all(func(n: HumanNPC) -> bool: return n.faction == owner), "%s uses its current occupant" % id)
+		if id == "aruun":
+			check(city.has_node("SacredHearth") and city.has_node("OccupiedQuarter"), "Aruun preserves the hearth and has an occupied quarter")
+			eq(w.factions.stance(owner), &"hostile", "occupying Varkai start hostile")
+		else:
+			check(guards.any(func(n: HumanNPC) -> bool: return not n.armed), "%s has residents as well as guards" % id)
 		if id == "varkai":
 			var first: HumanNPC = guards[0]
 			first.die(false)
@@ -77,10 +91,10 @@ func test_regional_bases_have_distinct_defenses_and_stream_guards() -> void:
 			camps._stream_regional_guards(center)
 			check((camps.npcs[first.npc_id] as HumanNPC).is_dead(), "guard stays dead after streaming")
 		camps._stream_regional_guards(Vector3.ZERO)
-	eq(guard_counts, [2, 3, 4, 5, 6], "garrison size increases with difficulty")
-	eq(warning_times, [10.0, 8.0, 6.0, 4.0, 2.0], "higher difficulty gives a shorter warning")
+	eq(guard_counts, [7, 8, 10, 10], "garrisons cover the keep and districts")
+	eq(warning_times, [6.0, 4.0, 2.0, 2.0], "higher difficulty gives a shorter warning")
 	eq(w.get_piece("base_varkai_wall2").piece_id, &"palisade", "strongest base uses a palisade")
-	check(w.get_piece("base_ossara_wall2") == null, "easiest base has an open perimeter")
+	check(w.get_piece("base_aruun_wall2") == null, "the ruins have breachable outer defenses")
 	await _teardown(s)
 
 
@@ -89,15 +103,18 @@ func test_regional_bases_migrate_old_saves_without_resetting_new_ones() -> void:
 	var w := s.world
 	var old := w.collect_save()
 	old.erase("regional_bases")
+	old.erase("city_services")
 	old.structures = (old.structures as Array).filter(func(row: Dictionary) -> bool:
-		return not str(row.id).begins_with("base_"))
+		return not str(row.id).begins_with("base_") and not str(row.id).begins_with("city_"))
 	w.apply_save(old)
-	check(w.get_piece("base_ossara_cache") != null, "older saves gain regional bases")
+	check(w.get_piece("base_kharum_cache") != null, "older saves gain regional bases")
+	check(w.get_piece("city_aruun_workshops_store") != null, "older saves gain the city's workshop")
 	var state := w.collect_save()
 	state.structures = (state.structures as Array).filter(func(row: Dictionary) -> bool:
-		return str(row.id) != "base_ossara_cache")
+		return str(row.id) not in ["base_kharum_cache", "city_aruun_workshops_store"])
 	w.apply_save(state)
-	check(w.get_piece("base_ossara_cache") == null, "a removed cache stays removed after loading")
+	check(w.get_piece("base_kharum_cache") == null, "a removed cache stays removed after loading")
+	check(w.get_piece("city_aruun_workshops_store") == null, "a removed city store stays removed after loading")
 	await _teardown(s)
 
 

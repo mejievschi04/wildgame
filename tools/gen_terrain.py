@@ -38,11 +38,19 @@ from gen_backdrop import Noise, fbm, ridged, smoothstep, erode, thermal, blur3, 
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, "assets", "terrain")
-HALF = 2100.0
-PLAYABLE = 2000.0
+HALF = 4200.0
+PLAYABLE = 4000.0
 LAKE = (205.0, 1760.0, 170.0, 145.0)  # centre x, z, radius x, radius z
+# Every lake (keep in sync with ForestWorld.LAKES): the southern lake, then the three frozen lakes of the
+# northern taiga basin, all at the water level and fed by the river's valley.
+LAKES = [LAKE, (620.0, -2780.0, 230.0, 160.0), (-260.0, -3010.0, 170.0, 240.0), (760.0, -3160.0, 150.0, 120.0)]
 SPAWN = (0.0, 0.0)
-FINE_N = 2049                      # final grid: 4200 m / 2048 = 2.05 m (keep in sync with ForestWorld.BAKE_N)
+FINE_N = 4097                      # final grid: 8400 m / 4096 = 2.05 m (keep in sync with ForestWorld.BAKE_N)
+# The glacier (keep in sync with ForestWorld.glacier_at): a tongue of ice down the river's head valley through the
+# northern mountains, its snout where the river is born.
+GLACIER_TOP = -4150.0
+GLACIER_SNOUT = -3330.0
+GLACIER_HALF_W = 170.0
 OLD_CAMP = (55.0, -58.0)
 # Regional bases (keep in sync with Camps.REGIONAL_BASES): centre, wall radius. Faction camps come from factions.json.
 REGIONAL_BASES = [((112.0, 1280.0), 0.0), ((1032.0, 606.0), 8.0), ((-912.0, -1152.0), 10.0),
@@ -87,7 +95,7 @@ def meyra_b(z):
 
 RIVER_END = LAKE[1] - LAKE[3] + 20.0
 CHANNELS = [  # (function, start z, end z)
-    (river_x, -PLAYABLE - 100.0, RIVER_END),
+    (river_x, GLACIER_SNOUT, RIVER_END),
     (meyra_a, 180.0, 1700.0),
     (meyra_b, 430.0, 1300.0),
 ]
@@ -112,7 +120,32 @@ def channel_distance(x, z):
 
 
 def lake_distance(x, z):
-    return np.hypot((x - LAKE[0]) * LAKE[3] / LAKE[2], z - LAKE[1])
+    """Distance to the nearest lake in the southern lake's units (its radius z = 145 m), so the basin thresholds
+    (150 / 260) scale with each lake's size."""
+    d = np.full(np.shape(x), 1e9)
+    for cx, cz, rx, rz in LAKES:
+        d = np.minimum(d, np.hypot((x - cx) / rx, (z - cz) / rz) * LAKE[3])
+    return d
+
+
+def glacier_half_w(z):
+    """Half-width of the ice: a broad cirque up top narrowing to the tongue, the edges wandering."""
+    up = smoothstep(GLACIER_SNOUT, GLACIER_TOP, z)
+    return GLACIER_HALF_W * (0.75 + 0.7 * up) + 28.0 * np.sin(z * 0.011 + 1.7) + 12.0 * np.sin(z * 0.047)
+
+
+def glacier_at(x, z):
+    """0..1: on the glacier's ice (the river's head valley above the snout)."""
+    d = np.abs(x - river_x(z))
+    hw = glacier_half_w(z)
+    along = smoothstep(GLACIER_SNOUT + 10.0, GLACIER_SNOUT - 70.0, z)
+    return (1.0 - smoothstep(hw - 40.0, hw + 25.0, d)) * along
+
+
+def glacier_surface(z):
+    """The ice surface along the glacier: high in the cirque, falling to a low snout over the river's head."""
+    t = np.clip((z - GLACIER_TOP) / (GLACIER_SNOUT - GLACIER_TOP), 0.0, 1.0)
+    return 175.0 - 165.0 * t ** 0.85  # the snout ends ~10 m over the river's head, not as a wall
 
 
 # ------------------------------------------------------------------ helpers
@@ -178,14 +211,33 @@ def landform(x, z):
     R = (R - R.min()) / (R.max() - R.min())
     h += m_k * (26.0 + 150.0 * R ** 1.45)
 
-    # Northern range over the tundra; lower near the river, which leaves it through a gorge.
-    m_n = smoothstep(-1640.0, -1960.0, wz)
+    # Northern range over the tundra; lower near the river, which leaves it through a gorge. Beyond it lies the
+    # cold north: a taiga basin of moraine hills and frozen lakes, then the glacier mountains at the map's edge.
+    m_n = smoothstep(-1640.0, -1960.0, wz) * (1.0 - smoothstep(-2250.0, -2600.0, wz))
     R2 = ridged(N[6], wx / 640.0 + 3.0, wz / 640.0 - 1.0, 6, gain=0.5)
     R2 = (R2 - R2.min()) / (R2.max() - R2.min())
     gap = 1.0 - 0.55 * np.exp(-((x - river_x(z)) / 300.0) ** 2)
     h += m_n * gap * (45.0 + 135.0 * R2 ** 1.35)
-    m_t = smoothstep(-1150.0, -1450.0, wz) * (1.0 - m_n)
+    m_t = smoothstep(-1150.0, -1450.0, wz) * (1.0 - m_n) * (1.0 - smoothstep(-2000.0, -2300.0, wz))
     h += m_t * (14.0 + 4.0 * fbm(N[7], x / 600.0, z / 600.0, 3))
+    # taiga basin: low rolling moraine hills, eskers and kettle hollows
+    m_tg = smoothstep(-2300.0, -2650.0, wz)
+    moraine = ridged(N[4], wx / 300.0 + 7.0, wz / 300.0 - 2.0, 4, gain=0.5)
+    taiga = 16.0 + 10.0 * fbm(N[2], x / 700.0 - 3.0, z / 700.0 + 5.0, 4) + 12.0 * moraine ** 1.5 + 2.0 * fine
+    h = h * (1.0 - 0.9 * m_tg) + 0.9 * m_tg * taiga
+    # glacier mountains: high snowy ridges closing the north, cut by the glacier's valley
+    m_g = smoothstep(-3250.0, -3650.0, wz)
+    R3 = ridged(N[5], wx / 700.0 - 4.0, wz / 700.0 + 6.0, 6, gain=0.5)
+    R3 = (R3 - R3.min()) / (R3.max() - R3.min())
+    h += m_g * (55.0 + 240.0 * R3 ** 1.35) * (1.0 - 0.5 * np.exp(-((x - river_x(z)) / 420.0) ** 2))
+    # the glacier: a smooth, gently convex ice surface filling the valley, walls rising from its edges
+    gd = np.abs(x - river_x(z))
+    ghw = glacier_half_w(z)
+    gk = (1.0 - smoothstep(ghw, ghw + 220.0, gd)) * smoothstep(GLACIER_SNOUT + 120.0, GLACIER_SNOUT - 40.0, z)
+    # convex across, rolling along (ogive waves and icefall steps), the edges rising into the valley walls
+    ice = glacier_surface(z) + 7.0 * (1.0 - (gd / ghw) ** 2).clip(0.0) + 2.2 * np.sin(z * 0.045) \
+        + 3.0 * fbm(N[3], x / 90.0, z / 60.0, 3) + np.maximum(gd - ghw, 0.0) * 0.9
+    h = h * (1.0 - gk) + gk * ice
 
     # Varkai plateau: crisp outline (small warp), escarpment west and south, gentle ramp to the east.
     vx = x + fbm(N[8], x / 900.0, z / 900.0, 4) * 190.0
@@ -208,6 +260,15 @@ def landform(x, z):
     m_o = smoothstep(820.0, 1180.0, wz) * (1.0 - m_m)
     steppe = 13.0 + 9.0 * fbm(N[3], x / 1300.0 + 4.0, z / 1300.0, 3) + 3.5 * swell + 1.5 * fine
     h = h * (1.0 - 0.85 * m_o) + 0.85 * m_o * steppe
+
+    # The outer lands (beyond the old 4 km square, east, west and south): wild hill country — ridged hills and
+    # small massifs of varying height, so the wider map isn't a plain. The north has its own relief above.
+    cheb = np.maximum(np.abs(wx), np.abs(wz))
+    outer = smoothstep(1900.0, 2700.0, cheb) * (1.0 - smoothstep(-1900.0, -2300.0, wz))
+    R4 = ridged(N[6], wx / 520.0 - 9.0, wz / 520.0 + 4.0, 6, gain=0.5)
+    R4 = (R4 - R4.min()) / (R4.max() - R4.min())
+    big = 0.5 + 0.5 * fbm(N[8], x / 1800.0 + 1.0, z / 1800.0 - 6.0, 3)
+    h += outer * (8.0 + 150.0 * big * R4 ** 1.5 + 6.0 * swell)
 
     # River valley: a floodplain along the river, narrowing into a gorge through the northern range.
     dr = channel_distance(x, z)
@@ -486,12 +547,16 @@ def runtime_features(h, x, z, base_at):
     h = h * (1.0 - k) + spawn_h * k
     k = 1.0 - smoothstep(4.0, 12.0, np.hypot(x - OLD_CAMP[0], z - OLD_CAMP[1]))
     h = h * (1.0 - k) + np.maximum(h, 2.6) * k
-    d = channel_distance_runtime(x, z)
+    # A natural shoreline: the banks wander in and out of the centre line (bays and points, ~4-18 m from it
+    # instead of a constant 10 m), and their slope changes along the river (shelving beaches, steeper cut banks).
+    wob = 5.5 * fbm(Noise(152), x / 42.0, z / 42.0, 3) + 1.5 * fbm(Noise(153), x / 10.0, z / 10.0, 2)
+    d = np.maximum(channel_distance_runtime(x, z) - wob, 0.0)
+    bank_end = RIVER_BANK_END + 6.0 * fbm(Noise(154), x / 140.0, z / 140.0, 2)
     slope = RIVER_VALLEY_SLOPE + 0.08 * fbm(Noise(150), x / 520.0, z / 520.0, 3)
     prof = np.where(d <= RIVER_BANK_START, RIVER_BED,
-                    np.where(d <= RIVER_BANK_END,
-                             RIVER_BED + (RIVER_BANK_TOP - RIVER_BED) * (d - RIVER_BANK_START) / (RIVER_BANK_END - RIVER_BANK_START),
-                             RIVER_BANK_TOP + (d - RIVER_BANK_END) * slope))
+                    np.where(d <= bank_end,
+                             RIVER_BED + (RIVER_BANK_TOP - RIVER_BED) * (d - RIVER_BANK_START) / (bank_end - RIVER_BANK_START),
+                             RIVER_BANK_TOP + (d - bank_end) * slope))
     h = smin(h, prof, 8.0)
     main = np.abs(x - river_x(z))
     grit = fbm(Noise(151), x / 6.0, z / 6.0, 2)
@@ -540,7 +605,12 @@ def carve_caves(hf, X, Z, fx_, mask):
     out = []
     for c in CAVES:
         c = dict(c)
-        c["floor0"] = float(sample(hf, fx_, np.array([c["entry"][0]]), np.array([c["entry"][1]]))[0])
+        # the floor starts no higher than the ground on the approach: a cave mouth on a hump would be a step up
+        a = math.radians(c["dir"])
+        ex, ez = c["entry"]
+        probe_x = np.array([ex, ex - math.cos(a) * 6.0, ex - math.cos(a) * 12.0])
+        probe_z = np.array([ez, ez - math.sin(a) * 6.0, ez - math.sin(a) * 12.0])
+        c["floor0"] = float(np.min(sample(hf, fx_, probe_x, probe_z)))
         t, lat = cave_coords(c, X, Z)
         L = c["length"]
         tc = np.clip(t, -CAVE_APPROACH, L)
@@ -596,8 +666,8 @@ def carve_caves(hf, X, Z, fx_, mask):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--size", type=int, default=1025)
-    ap.add_argument("--drops", type=int, default=1_500_000)
+    ap.add_argument("--size", type=int, default=2049)
+    ap.add_argument("--drops", type=int, default=6_000_000)
     ap.add_argument("--preview", default="")
     a = ap.parse_args()
     n = a.size
@@ -606,6 +676,7 @@ def main():
     x, z = np.meshgrid(xs, xs)
     t0 = time.time()
     h, fixed, dr, ld, marsh = landform(x, z)
+    glacier = glacier_at(x, z)
     print(f"landform {time.time() - t0:.1f}s  {h.min():.1f}..{h.max():.1f} m", flush=True)
     # keep the start terrace and the camps out of the erosion's reach (they are flattened at runtime anyway)
     before = h.copy()
@@ -614,6 +685,8 @@ def main():
     # Full erosion in the hills and mountains, a lighter touch on the lowlands, none on the start terrace.
     w = (0.45 + 0.55 * smoothstep(34.0, 60.0, before)) * smoothstep(150.0, 230.0, np.hypot(x - SPAWN[0], z - SPAWN[1]))
     h = before * (1.0 - w) + h * w
+    # the glacier's ice is smooth: no gullies on it
+    h = h * (1.0 - glacier) + before * glacier
     # No pits: drops never dig more than 18 m, and dry land stays above the water outside the water bodies.
     h = np.maximum(h, before - 18.0)
     # Near the river only light rills: its banks are shaped at runtime.
@@ -652,6 +725,10 @@ def main():
             continue
         # the marsh has its channels; creeks crossing it on the flat would run in straight lines
         if sample(marsh, xs, pts[:, 0], pts[:, 1]).mean() > 0.35:
+            continue
+        # no creeks on the glacier: drop the stretch on the ice (meltwater runs under it)
+        keep = keep & (sample(glacier, xs, pts[:, 0], pts[:, 1]) < 0.2)
+        if keep.sum() < 20:
             continue
         # drop the part outside the playable square (sources on the border slopes)
         first = int(np.argmax(keep))
@@ -723,7 +800,7 @@ def main():
     m[..., 0] = np.clip(creek_m * 255, 0, 255)
     m[..., 1] = np.clip(fl * 255, 0, 255)
     m[..., 2] = np.clip(dp_ * 255, 0, 255)
-    m[..., 3] = 255
+    m[..., 3] = np.clip(255 - glacier * 255, 0, 255)  # A: 255 ground … 0 glacier ice
     write_png(os.path.join(OUT, "T_Terrain_Masks.png"), m)
     streams = []
     for i, c in enumerate(creeks):

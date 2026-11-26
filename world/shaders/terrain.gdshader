@@ -54,7 +54,16 @@ void fragment() {
 	float gully = smoothstep(0.45, 0.85, tm.g) * smoothstep(0.12, 0.3, slope) * smoothstep(25.0, 60.0, h);
 	float rock = max(max(smoothstep(0.22, 0.42, slope + (n2 - 0.5) * 0.06), gully),
 		smoothstep(128.0, 160.0, h + n1 * 6.0));
-	float snow = smoothstep(165.0, 195.0, h + n1 * 6.0) * (1.0 - smoothstep(0.4, 0.58, slope));
+	float northern_range = smoothstep(800.0, 1800.0, wpos.x) * (1.0 - smoothstep(-2200.0, -1620.0, wpos.z));
+	float snow_line = mix(278.0, 165.0, northern_range);
+	float snow = smoothstep(snow_line, snow_line + 30.0, h + n1 * 6.0) * (1.0 - smoothstep(0.4, 0.58, slope));
+	// the cold north lies under snow: everywhere but the steepest rock, thinner under the densest canopy, with
+	// wind-scoured patches where the ground shows; the glacier is ice
+	float tg = taiga_at(wpos.xz);
+	float scour = smoothstep(0.62, 0.8, texture(macro_noise, wpos.xz * 0.021 + vec2(0.13, 0.57)).r + (n2 - 0.5) * 0.3);
+	float cover = tg * (1.0 - smoothstep(0.5, 0.75, slope)) * (1.0 - 0.4 * smoothstep(0.6, 0.95, forest)) * (1.0 - 0.75 * scour);
+	float glacier = glacier_at(wpos.xz);
+	snow = max(snow, max(cover, glacier));
 	// Apply in priority order (each layer covers the ones below it).
 	for (int i = 0; i < 2; i++) { w[i] *= (1.0 - mud); }
 	w[2] = mud * (1.0 - pebbles);
@@ -88,12 +97,24 @@ void fragment() {
 			vec3 meadow = mix(vec3(0.17, 0.26, 0.09), vec3(0.34, 0.32, 0.15), dry * 0.55);
 			a = mix(a, meadow * clamp(lum / 0.34, 0.65, 1.2), 0.75);
 		}
+		if (i == 5) {
+			// fresh snow: bright, faintly cool white (the scan read grey-violet under the blue sky light)
+			float ls = dot(a, vec3(0.299, 0.587, 0.114));
+			a = vec3(0.9, 0.93, 0.97) * clamp(0.82 + (ls - 0.6) * 0.5, 0.75, 1.0);
+		}
+		if (i == 3) {
+			// Rock: the lichen scan is near black-brown and read as bare earth on the hillsides; lift it toward the
+			// weathered sandstone of the 3D outcrops (Vegetation._place_outcrops), keeping all its lichen contrast.
+			float lr = dot(a, vec3(0.299, 0.587, 0.114));
+			a = mix(a, vec3(lr) * vec3(1.08, 1.0, 0.88), 0.4) * 1.7;
+		}
 		if (i == 0) {
 			// Forest floor: dark, damp litter with mossy patches (no bright bare dirt under the trees).
-			float moss = smoothstep(0.4, 0.75, n2 + (n1 - 0.5) * 0.4);
+			// moss and low green growth in broad patches, so a slope under open trees isn't one flat brown sheet
+			float moss = smoothstep(0.3, 0.62, n2 + (n1 - 0.5) * 0.5 + (texture(macro_noise, wpos.xz * 0.11).r - 0.5) * 0.35);
 			float l0 = dot(a, vec3(0.299, 0.587, 0.114));
 			vec3 litter = vec3(0.30, 0.24, 0.16) * (l0 / 0.32);   // brown needles and leaves, not orange sand
-			vec3 green = vec3(0.17, 0.22, 0.09) * (l0 / 0.32);    // moss
+			vec3 green = vec3(0.16, 0.24, 0.08) * (l0 / 0.32);    // moss
 			a = mix(a, mix(litter, green, moss), 0.7) * 0.82;
 		}
 		alb += a * w[i];
@@ -141,19 +162,42 @@ void fragment() {
 	// under the trees: dark, damp humus between the forest-floor plants
 	float humus = smoothstep(0.35, 0.75, forest) * (1.0 - smoothstep(0.45, 0.65, slope)) * (1.0 - w[2] - w[4] - w[5])
 		* (1.0 - smoothstep(18.0, 30.0, cam_d)) * (1.0 - wet);
-	alb = mix(alb, vec3(0.055, 0.045, 0.03) * (0.75 + 0.5 * n2), clamp(humus, 0.0, 1.0) * 0.8);
+	// ... broken by low moss and sward in broad patches: in an open grove a sunlit slope was one sheet of bare earth
+	float mossy = smoothstep(0.35, 0.65, n2 + (n1 - 0.5) * 0.5 + (texture(macro_noise, wpos.xz * 0.11).r - 0.5) * 0.35);
+	vec3 humus_col = mix(vec3(0.055, 0.045, 0.03), vec3(0.035, 0.055, 0.02), mossy * 0.85);
+	alb = mix(alb, humus_col * (0.75 + 0.5 * n2), clamp(humus, 0.0, 1.0) * 0.8);
 	alb = mix(alb, alb * vec3(0.82, 0.95, 0.72), far * w[1] * (1.0 - wet));
 	// beyond the impostors: the ground under a canopy is in its shade and reads as a dark green mass of crowns
 	float canopy = smoothstep(0.25, 0.8, forest);
 	alb = mix(alb, vec3(0.05, 0.075, 0.035) * (0.8 + 0.4 * n1), canopy * smoothstep(400.0, 1500.0, cam_d) * 0.85);
 	alb *= mix(1.0, 0.62, far * canopy);
+	// glacier ice: blue-white, streaked along its flow with dirty moraine bands and dark crevasses across it
+	if (glacier > 0.01) {
+		float along = wpos.z * 0.05 + (n1 - 0.5) * 3.0;
+		float ghw = 170.0 * (0.75 + 0.7 * smoothstep(-3330.0, -4150.0, wpos.z)) + 28.0 * sin(wpos.z * 0.011 + 1.7);
+		float across = (wpos.x - (155.0 + 95.0 * sin(wpos.z * 0.0019) + 34.0 * sin(wpos.z * 0.0044 + 1.3))) / ghw;
+		float crev = smoothstep(0.82, 0.95, sin(along * 6.0 + across * 4.0 + n2 * 4.0) * 0.5 + 0.5) * smoothstep(0.2, 0.7, abs(across));
+		float moraine = smoothstep(0.7, 0.85, abs(across)) * 0.6 + smoothstep(0.02, 0.0, abs(abs(across) - 0.45)) * 0.3;
+		// snow-covered in the cirque, bare blue ice lower down the tongue
+		float bare = smoothstep(-3700.0, -3450.0, wpos.z);
+		vec3 ice = mix(vec3(0.86, 0.9, 0.95), mix(vec3(0.26, 0.46, 0.6), vec3(0.42, 0.6, 0.72), n2), bare * 0.9);
+		ice = mix(ice, vec3(0.42, 0.4, 0.38), moraine);
+		ice = mix(ice, vec3(0.12, 0.26, 0.38), crev * 0.85);
+		alb = mix(alb, ice, glacier);
+	}
+	// beyond the impostors the snowy taiga's canopy reads grey-white, not the summer forest's dark green
+	alb = mix(alb, vec3(0.62, 0.66, 0.68) * (0.85 + 0.3 * n1), tg * canopy * smoothstep(400.0, 1500.0, cam_d) * 0.7);
 	ALBEDO = alb * mix(1.0, 0.58, cloud_shadow(wpos));
 	NORMAL_MAP = nrm;
 	NORMAL_MAP_DEPTH = 1.0;
 	AO = arm.r;
 	AO_LIGHT_AFFECT = 0.4;
 	// Ground is matte (scanned roughness on the meadow layer let it mirror the bright sky at grazing angles).
-	ROUGHNESS = mix(max(arm.g, 0.85), 0.25, wet * 0.7);
+	ROUGHNESS = mix(mix(max(arm.g, 0.85), 0.25, wet * 0.7), 0.35, glacier);
 	SPECULAR = mix(0.25, 0.5, wet);
+	// snow crystals glint in the sun: sparse, view-dependent sparkle
+	float sparkle = step(0.985, fract(sin(dot(floor(wpos.xz * 40.0) + floor(VIEW.xy * 6.0), vec2(12.9898, 78.233))) * 43758.5453));
+	EMISSION = vec3(0.6, 0.65, 0.7) * sparkle * w[5] * (1.0 - smoothstep(8.0, 30.0, cam_d));
+	ROUGHNESS = mix(ROUGHNESS, 0.62, w[5]);
 	METALLIC = 0.0;
 }

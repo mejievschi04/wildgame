@@ -6,6 +6,8 @@ extends CharacterBody3D
 ##           HUNT (two armed members, once a day) / SLEEP by the fire at night (one keeps watch)
 ##   player: SUSPICIOUS → INVESTIGATE → WARN (territory) → COMBAT (armed) / FLEE (unarmed or hurt) → RECOVER
 ##           friendly: GREET (open-palm gesture). No shared language: offerings (E) and barter (R).
+##   raids:  a night war party (Raids) moves as one: RAID approach → stalk behind trunks / mock charges → COMBAT;
+##           a badly hurt raider runs, recovers and comes back to the stalk; at the end they withdraw.
 ##   beasts: armed people fight predators that come close (together, from slots around it, spears thrown
 ##           first), everyone else runs to the fire; big cats and bears are only faced by three or more.
 ## Fighting: one or two attack at a time (TribeGroup tokens), the others hold their slot, circle and feint;
@@ -16,7 +18,7 @@ extends CharacterBody3D
 signal died(npc: HumanNPC)
 
 enum State { IDLE, SIT, PATROL, GATHER, SUSPICIOUS, INVESTIGATE, WARN, COMBAT, FLEE, RECOVER, GREET, DEAD,
-	SLEEP, WORK, DELIVER, SOCIAL, HUNT, TEND }
+	SLEEP, WORK, DELIVER, SOCIAL, HUNT, TEND, RAID }
 const WALK := 1.6
 const RUN := 4.6
 const SIDE_STEP := 1.0
@@ -87,6 +89,11 @@ var greeted_until := 0.0
 var foe: Node3D = null  # what this person is fighting (the player or an animal)
 var being_tended := false
 var carrying: StringName = &""
+## Night war party member (Raids): orders come from the party, not from the camp day.
+var raider := false
+var raid_mode := &""  # approach, stalk, feint, attack, withdraw
+var _raid_goal := Vector3.ZERO
+var _torch_light: OmniLight3D
 ## Hit-location health per body region; a cutting weapon severs a region that reaches 0.
 var region_hp := {&"head": 45.0, &"torso": 999.0, &"arm_l": 35.0, &"arm_r": 35.0, &"leg_l": 45.0, &"leg_r": 45.0}
 var severed: Array[StringName] = []
@@ -94,6 +101,8 @@ var bleeding := 0.0  # health lost per second
 var _skel: Skeleton3D
 var _severed_mod: SeveredBones
 var _stagger_t := 0.0
+## Shove from a blow or a projectile (m/s, horizontal), braked on the feet (HitPhysics); a corpse slides it off.
+var _push_v := Vector3.ZERO
 var _guard_t := 0.0
 var _react_t := 0.0
 var _react_clip := ""
@@ -747,6 +756,14 @@ func _wound_effects(region: StringName) -> void:
 		_drop_weapon()
 
 
+## A blow's momentum `j` (N·s) along `dir`: a shove by body mass; a hard one staggers (HitPhysics).
+func hit_impulse(j: float, dir: Vector3) -> void:
+	var dv := HitPhysics.push_velocity(j, dir, HitPhysics.HUMAN_MASS)
+	_push_v = (_push_v + dv).limit_length(HitPhysics.MAX_PUSH)
+	if not is_dead() and dv.length() > HitPhysics.STAGGER_PUSH:
+		stagger(clampf(dv.length() * 0.2, 0.25, 0.8))
+
+
 func stagger(seconds: float) -> void:
 	_stagger_t = maxf(_stagger_t, seconds)
 	_cancel_attack()
@@ -914,9 +931,10 @@ func _set_state(s: State) -> void:
 	_duration = rng.randf_range(12.0, 30.0)
 	match s:
 		State.PATROL:
-			if armed and group and not group.guards:
-				var a := rng.randf() * TAU  # walk the camp's edge
-				_goal = home + Vector3(cos(a), 0, sin(a)) * rng.randf_range(8.0, 13.0)
+			if armed and group:
+				var a := rng.randf() * TAU
+				var origin := post if group.guards else home
+				_goal = origin + Vector3(cos(a), 0, sin(a)) * rng.randf_range(8.0, 13.0)
 			else:
 				var a := rng.randf() * TAU
 				_goal = home + Vector3(cos(a), 0, sin(a)) * rng.randf_range(4.0, 14.0)
@@ -943,6 +961,75 @@ func _set_state(s: State) -> void:
 		State.COMBAT:
 			if foe == null or not is_instance_valid(foe):
 				foe = _player()
+		State.RAID:
+			_goal = _raid_goal
+
+
+## An order from the war party (Raids): where to go and how.
+func raid_order(mode: StringName, goal: Vector3) -> void:
+	if is_dead():
+		return
+	raid_mode = mode
+	_raid_goal = goal
+	_goal = goal
+	match mode:
+		&"attack":
+			_engage(_player())
+		&"withdraw":
+			_cancel_attack()
+			if state != State.RAID:
+				_set_state(State.RAID)
+		_:
+			if state not in [State.COMBAT, State.FLEE]:
+				if state != State.RAID:
+					_set_state(State.RAID)
+
+
+## The leader's burning torch: its light moving through the trees is how a raid is first seen at night.
+func carry_torch() -> void:
+	_show_carry(&"torch")
+	if not is_instance_valid(_carry_node):
+		_carry_node = Node3D.new()
+		_carry_node.top_level = true
+		add_child(_carry_node)
+	_torch_light = OmniLight3D.new()
+	_torch_light.light_color = Color(1.0, 0.62, 0.3)
+	_torch_light.light_energy = 2.2
+	_torch_light.omni_range = 11.0
+	_torch_light.shadow_enabled = false
+	_torch_light.position = Vector3(0, 0.45, 0)
+	_carry_node.add_child(_torch_light)
+	var flame := CPUParticles3D.new()
+	flame.local_coords = true  # the flame stays on the torch instead of trailing behind a walking carrier
+	flame.amount = 24
+	flame.lifetime = 0.55
+	flame.position = Vector3(0, 0.42, 0)
+	flame.direction = Vector3.UP
+	flame.spread = 14.0
+	flame.gravity = Vector3(0, 1.6, 0)
+	flame.initial_velocity_min = 0.2
+	flame.initial_velocity_max = 0.5
+	flame.scale_amount_min = 0.5
+	flame.scale_amount_max = 0.9
+	var curve := Curve.new()
+	curve.add_point(Vector2(0.0, 1.0))
+	curve.add_point(Vector2(1.0, 0.15))
+	flame.scale_amount_curve = curve
+	var grad := Gradient.new()
+	grad.set_color(0, Color(1.0, 0.85, 0.4, 0.95))
+	grad.set_color(1, Color(0.9, 0.25, 0.05, 0.0))
+	flame.color_ramp = grad
+	var quad := QuadMesh.new()
+	quad.size = Vector2(0.16, 0.22)
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	m.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+	m.vertex_color_use_as_albedo = true
+	quad.material = m
+	flame.mesh = quad
+	_carry_node.add_child(flame)
 
 
 ## Fight `target` (the player or an animal).
@@ -971,8 +1058,9 @@ func _physics_process(delta: float) -> void:
 	if not is_on_floor():
 		velocity.y -= _gravity * delta
 	if is_dead():
-		velocity.x = 0.0
-		velocity.z = 0.0
+		_push_v = HitPhysics.brake(_push_v, HitPhysics.CORPSE_BRAKE, delta) if is_on_floor() else _push_v
+		velocity.x = _push_v.x
+		velocity.z = _push_v.z
 		move_and_slide()
 		return
 	state_time += delta
@@ -1030,6 +1118,9 @@ func _think(dt: float) -> void:
 		if state in [State.WARN, State.SUSPICIOUS]:
 			_set_state(State.GREET)
 	var stance := factions.stance(faction)
+	if raider:
+		_think_raid(p, d)
+		return
 	match state:
 		State.COMBAT:
 			_think_combat(p)
@@ -1081,6 +1172,8 @@ func _think(dt: float) -> void:
 			var inside := _inside_territory(p.global_position)
 			if stance == &"hostile" and armed and d < 30.0:
 				_engage(p)
+			elif stance == &"hostile" and not armed and d < 15.0:
+				_flee(p)
 			elif stance == &"friendly":
 				if d < 8.0 and _uptime > greeted_until:
 					greeted_until = _uptime + 40.0
@@ -1097,6 +1190,50 @@ func _think(dt: float) -> void:
 						_engage(p)
 			else:
 				_watch()
+
+
+## A war party member: the party (Raids) gives the orders; here only the fighting and the hit-and-run.
+func _think_raid(p: Node3D, d: float) -> void:
+	last_known = p.global_position
+	match state:
+		State.COMBAT:
+			if foe == null or not is_instance_valid(foe) or p.get("dead") == true:
+				_end_fight()
+			elif foe == p and health < max_health * 0.5 and _uptime > _avoid_until and rng.randf() < 0.35:
+				_avoid_until = _uptime + 40.0  # badly hurt: back off, catch breath, come back
+				_flee(p)
+			elif foe is Animal:
+				_think_combat(p)
+			return
+		State.FLEE:
+			if raid_mode == &"withdraw":
+				_set_state(State.RAID)
+			elif state_time > 6.0 and d > 18.0 or state_time > 12.0:
+				raid_mode = &"stalk"
+				_raid_goal = global_position
+				_set_state(State.RAID)
+			return
+		State.RAID:
+			match raid_mode:
+				&"feint":
+					if _arrived(1.6) or state_time > 6.0:
+						# the mock charge: a stop a few metres off, then back to the trees
+						var back := global_position - p.global_position
+						back.y = 0.0
+						raid_mode = &"stalk"
+						_raid_goal = p.global_position + back.normalized() * 22.0
+						_goal = _raid_goal
+						state_time = 0.0
+				&"attack":
+					_engage(p)
+			return
+		State.DEAD:
+			return
+	# woken, greeting, recovering: back to the party's order
+	if raid_mode == &"attack":
+		_engage(p)
+	else:
+		_set_state(State.RAID)
 
 
 ## Animals near the person. Returns true when it took over this think step.
@@ -1152,6 +1289,12 @@ func _think_combat(p: Node3D) -> void:
 
 func _end_fight() -> void:
 	_cancel_attack()
+	if raider:
+		if raid_mode == &"attack":
+			raid_mode = &"stalk"
+			_raid_goal = global_position
+		_set_state(State.RAID)
+		return
 	if _hunting:
 		_set_state(State.HUNT)
 		if _hunt_phase in [&"stalk", &"chase", &""]:
@@ -1677,6 +1820,22 @@ func _desired() -> Dictionary:
 		State.INVESTIGATE:
 			dir = _steer(last_known)
 			speed = WALK * 1.2
+		State.RAID:
+			var to_goal := _goal - global_position
+			to_goal.y = 0.0
+			var far := to_goal.length()
+			var stop := 1.0 if raid_mode != &"approach" else 6.0
+			if far > stop:
+				dir = _steer(_goal)
+				match raid_mode:
+					&"feint", &"withdraw":
+						speed = RUN
+					&"stalk":
+						speed = RUN * 0.8 if far > 12.0 else WALK
+					_:
+						speed = WALK * 1.35 if far > 60.0 else WALK * 1.1
+			elif p:
+				dir = p.global_position - global_position  # in cover: watch the player
 		State.COMBAT:
 			var target := foe if foe and is_instance_valid(foe) else p
 			if target:
@@ -1754,7 +1913,7 @@ func _move(delta: float) -> void:
 	if state == State.COMBAT and target and (_attack_time < _commit_t or _attack_kind == &"throw"):
 		face = (target.global_position - global_position)  # keep facing the opponent while circling
 		face.y = 0.0
-	elif state == State.WARN and pl:
+	elif (state == State.WARN or state == State.RAID and raid_mode == &"stalk" and target_speed < 0.1) and pl:
 		face = pl.global_position - global_position
 		face.y = 0.0
 	elif state == State.SLEEP and _arrived(0.9):
@@ -1776,8 +1935,9 @@ func _move(delta: float) -> void:
 	horizontal = horizontal.move_toward(desired, rate * delta)
 	if _attack_time >= 0.0:
 		horizontal = Vector3.ZERO
-	velocity.x = horizontal.x
-	velocity.z = horizontal.z
+	_push_v = HitPhysics.brake(_push_v, HitPhysics.FEET_BRAKE * (0.6 if _stagger_t > 0.0 else 1.0), delta)
+	velocity.x = horizontal.x + _push_v.x
+	velocity.z = horizontal.z + _push_v.z
 	move_and_slide()
 	if _detour_t <= 0.0 and target_speed > 0.0:
 		_step_around_wall(dir)
@@ -1845,6 +2005,10 @@ func _animate() -> void:
 		State.WARN, State.SUSPICIOUS:
 			_play("combat/guard" if armed and state == State.WARN else "alert")
 			return
+		State.RAID:
+			if still and raid_mode in [&"stalk", &"feint"]:
+				_play_any(["combat/guard", "alert"])
+				return
 	if state == State.COMBAT and armed:
 		if _speed < 0.13:
 			_play("combat/guard")

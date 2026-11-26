@@ -18,15 +18,15 @@ import numpy as np
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, "assets", "textures", "backdrop")
-EXTENT = 11000.0
-INNER = 2100.0
+EXTENT = 13100.0
+INNER = 4200.0
 HMAX = 6000.0
 # keep in sync with Backdrop.VOLCANOES: [x, z, height, radius, crater radius, smoke]
 VOLCANOES = [
-    [900.0, 5400.0, 2700.0, 3900.0, 380.0],
-    [-1500.0, 3900.0, 1800.0, 2700.0, 240.0],
-    [3100.0, 3600.0, 1350.0, 2300.0, 200.0],
-    [-3700.0, 3200.0, 1100.0, 2000.0, 170.0],
+    [1350.0, 7500.0, 2700.0, 3900.0, 380.0],
+    [-2250.0, 6000.0, 1800.0, 2700.0, 240.0],
+    [4650.0, 5700.0, 1350.0, 2300.0, 200.0],
+    [-5550.0, 5300.0, 1100.0, 2000.0, 170.0],
 ]
 
 

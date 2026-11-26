@@ -61,23 +61,37 @@ func _build() -> void:
 	_light.distance_fade_length = 30.0
 	_light.distance_fade_shadow = 45.0
 	add_child(_light)
-	_flames = CPUParticles3D.new()
-	_flames.amount = 70
-	_flames.lifetime = 0.7
-	_flames.position = Vector3(0, 0.18, 0)
-	_flames.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
-	_flames.emission_sphere_radius = 0.18
-	_flames.direction = Vector3.UP
-	_flames.spread = 12.0
-	_flames.gravity = Vector3(0, 1.2, 0)
-	_flames.initial_velocity_min = 0.4
-	_flames.initial_velocity_max = 0.9
-	_flames.scale_amount_min = 0.6
-	_flames.scale_amount_max = 1.0
+	_flames = make_flames()
+	add_child(_flames)
+	_smoke = _make_smoke()
+	add_child(_smoke)
+	_food_root = Node3D.new()
+	_food_root.position = Vector3(0, 0.35, 0)
+	add_child(_food_root)
+	_crackle = Sfx.make_loop_3d(&"fire_loop", 2.0)
+	_crackle.position = Vector3(0, 0.4, 0)
+	add_child(_crackle)
+	Graybox.add_shape(self, Graybox.cyl_shape(0.7, 0.4), Vector3(0, 0.2, 0))
+
+
+static func make_flames() -> CPUParticles3D:
+	var flames := CPUParticles3D.new()
+	flames.amount = 70
+	flames.lifetime = 0.7
+	flames.position = Vector3(0, 0.18, 0)
+	flames.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
+	flames.emission_sphere_radius = 0.18
+	flames.direction = Vector3.UP
+	flames.spread = 12.0
+	flames.gravity = Vector3(0, 1.2, 0)
+	flames.initial_velocity_min = 0.4
+	flames.initial_velocity_max = 0.9
+	flames.scale_amount_min = 0.6
+	flames.scale_amount_max = 1.0
 	var curve := Curve.new()
 	curve.add_point(Vector2(0, 1))
 	curve.add_point(Vector2(1, 0))
-	_flames.scale_amount_curve = curve
+	flames.scale_amount_curve = curve
 	var quad := QuadMesh.new()
 	quad.size = Vector2(0.22, 0.3)
 	var fm := StandardMaterial3D.new()
@@ -99,21 +113,12 @@ func _build() -> void:
 	gt.height = 64
 	fm.albedo_texture = gt
 	quad.material = fm
-	_flames.mesh = quad
+	flames.mesh = quad
 	var grad := Gradient.new()
 	grad.set_color(0, Color(1.0, 0.85, 0.4, 1.0))
 	grad.set_color(1, Color(0.9, 0.2, 0.05, 0.0))
-	_flames.color_ramp = grad
-	add_child(_flames)
-	_smoke = _make_smoke()
-	add_child(_smoke)
-	_food_root = Node3D.new()
-	_food_root.position = Vector3(0, 0.35, 0)
-	add_child(_food_root)
-	_crackle = Sfx.make_loop_3d(&"fire_loop", 2.0)
-	_crackle.position = Vector3(0, 0.4, 0)
-	add_child(_crackle)
-	Graybox.add_shape(self, Graybox.cyl_shape(0.7, 0.4), Vector3(0, 0.2, 0))
+	flames.color_ramp = grad
+	return flames
 
 
 func _process(delta: float) -> void:

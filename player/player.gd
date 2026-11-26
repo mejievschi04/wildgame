@@ -78,6 +78,7 @@ const HEAVY_CHARGE := 0.4
 const PARRY_WINDOW := 0.25
 var _gesture_t := 0.0
 var _shake := 0.0
+var _knock_v := Vector3.ZERO  # shove from a hit (m/s, horizontal), see take_hit
 ## Footprint under the crosshair (read by the HUD): {species, age, yaw} or {}.
 var look_track: Dictionary = {}
 
@@ -101,7 +102,7 @@ func _ready() -> void:
 	add_child(head)
 	camera = Camera3D.new()
 	camera.near = 0.05
-	camera.far = 14000.0  # the border mountains and volcanoes (Backdrop) stand up to ~11 km away
+	camera.far = 16000.0  # the border mountains and volcanoes (Backdrop) stand up to ~13 km away
 	camera.current = true
 	head.add_child(camera)
 	ray = RayCast3D.new()
@@ -122,7 +123,7 @@ func _ready() -> void:
 	_torch_light.light_color = Color(1.0, 0.65, 0.35)
 	_torch_light.omni_range = 9.0
 	_torch_light.light_energy = 1.4
-	_torch_light.position = Vector3(0.0, 0.35, 0.0)
+	_torch_light.position = Vector3(0.0, -0.12 + 0.47 * HandModels.VIEW_SCALE, 0.0)  # at the torch head
 	_torch_light.visible = false
 	hand_root.add_child(_torch_light)
 	body = PlayerBody.new()
@@ -277,8 +278,14 @@ func _physics_process(delta: float) -> void:
 		_tick_draw(delta)
 	if not (_hand_is(&"spear") or _hand_is(&"bow")):
 		aiming = false
+	# a shove from a blow carries the body on top of its own steps, braked by the feet (less in the air)
+	_knock_v = HitPhysics.brake(_knock_v, 14.0 if is_on_floor() else 3.0, delta)
+	velocity.x += _knock_v.x
+	velocity.z += _knock_v.z
 	var was_on_floor := is_on_floor()
 	move_and_slide()
+	velocity.x -= _knock_v.x
+	velocity.z -= _knock_v.z
 	if is_on_floor() and not was_on_floor:
 		_on_landed(_fall_speed)
 	if is_on_floor():
@@ -413,7 +420,12 @@ func take_hit(amount: float, cause: StringName, bleed_chance: float = 0.0, from_
 	if from_pos != Vector3.ZERO:
 		var push := (global_position - from_pos)
 		push.y = 0.0
-		velocity += push.normalized() * 2.5
+		# the heavier the attacker, the harder it throws you (a wolf jolts you, a bison or mammoth bowls you over)
+		var heft := HitPhysics.species_mass((attacker as Animal).species) if attacker is Animal else HitPhysics.HUMAN_MASS
+		var strength := clampf(1.5 + heft / 120.0, 2.5, 8.0)
+		_knock_v = push.normalized() * strength
+		if heft > 600.0 and is_on_floor():
+			velocity.y = maxf(velocity.y, minf(heft / 600.0, 4.5))  # off your feet
 	Sfx.play(&"hurt", null)
 	hurt.emit(amount)
 
@@ -427,6 +439,7 @@ func throw_spear() -> void:
 	aiming = false
 	var spear := ThrownSpear.new()
 	world.pickups_root.add_child(spear)
+	spear.flight_wobble = 0.035
 	var fwd := -camera.global_transform.basis.z
 	spear.launch(st, camera.global_position + fwd * 0.7, fwd * 24.0 + Vector3(velocity.x, 0, velocity.z), self)
 	_noise_burst = maxf(_noise_burst, 0.6)
@@ -441,7 +454,9 @@ const BOW_MIN_DRAW := 0.2  # releasing earlier just lets the string down, the ar
 const ARROW_SPEED_MIN := 16.0
 const ARROW_SPEED_MAX := 46.0
 const BOW_HOLD_STAMINA := 5.0  # per second while holding a full draw
-const ARROW_BREAK_CHANCE := 0.3
+const ARROW_BREAK_CHANCE := 0.12  # snaps on a hit (flesh, wood, soil)
+const ARROW_STONE_BREAK_CHANCE := 0.6  # flint on rock: usually snaps
+const ARROW_DRAG := 0.0025  # 1/m: fletching slows an arrow far more than a spear
 ## How far the nock travels back at full draw (bow model metres). The bow's "Drawn" blend shape pulls the string
 ## exactly this far (tools/blender/gen_items.py BOW_PULL), so string and arrow stay together.
 const BOW_PULL := 0.45
@@ -521,6 +536,9 @@ func _release_draw() -> void:
 	arrow.base_damage = data.damage if data else 30.0
 	arrow.ref_speed = ARROW_SPEED_MAX * 0.85
 	arrow.break_chance = ARROW_BREAK_CHANCE
+	arrow.stone_break_chance = ARROW_STONE_BREAK_CHANCE
+	arrow.drag = ARROW_DRAG
+	arrow.stick_speed = 11.0
 	var fwd := -camera.global_transform.basis.z
 	# A weak, hurried draw is less accurate.
 	var wobble := (1.0 - k) * 0.035
@@ -621,8 +639,17 @@ func _process(delta: float) -> void:
 			var hold: Array = HandModels.HOLD.get(_hand_item_id, [Vector3.ZERO, Vector3.ZERO, 1.0])
 			var aim: Array = HandModels.AIM[_hand_item_id]
 			var e := _aim_w * _aim_w * (3.0 - 2.0 * _aim_w)
+			# turned the shortest way (euler angles blended one by one swing the shaft round in a loop)
+			var q0 := Quaternion.from_euler((hold[1] as Vector3) * (PI / 180.0))
+			var q1 := Quaternion.from_euler((aim[1] as Vector3) * (PI / 180.0))
 			m.position = (hold[0] as Vector3).lerp(aim[0], e)
-			m.rotation_degrees = (hold[1] as Vector3).lerp(aim[1], e)
+			m.basis = Basis(q0.slerp(q1, e)).scaled(Vector3.ONE * float(hold[2]) * HandModels.VIEW_SCALE)
+			# the fist turns round the shaft so the forearm keeps coming from the lower right
+			var hand := m.get_node_or_null("Hand") as Node3D
+			if hand:
+				var h0 := HandModels.hand_basis(_hand_item_id, Basis(q0)).get_rotation_quaternion()
+				var h1 := HandModels.hand_basis(_hand_item_id, Basis(q1)).get_rotation_quaternion()
+				hand.basis = Basis(h0.slerp(h1, e)).scaled(hand.scale)
 
 
 ## The bow in the view: raised before the eye while aiming or drawing, lowered on the left otherwise. The hands
@@ -872,6 +899,9 @@ func _resolve_swing() -> bool:
 	if creature:
 		var dmg := (item.damage if item and item.damage > 0.0 else 3.0) * (1.8 if _heavy else 1.0)
 		hit.take_damage(dmg, self, ray.get_collision_point(), item, _heavy)
+		# the weight of the blow: shoves the body away along the swing (staggers a wolf, not a mammoth)
+		if is_instance_valid(hit) and hit.has_method("hit_impulse"):
+			hit.hit_impulse(HitPhysics.melee_impulse(item, _heavy), -camera.global_transform.basis.z)
 		Sfx.play(&"axe_chop" if item and item.has_tag(&"tool_axe") else &"chop", ray.get_collision_point(), -4.0)
 		_hit_stop(0.07 if _heavy else 0.04)
 		if item and inventory.wear_hand(1):
@@ -1071,10 +1101,15 @@ func sleep_at(bed: Node3D) -> void:
 		if stats.body_temp < 35.8:
 			woke_cold = true
 			break
+		if world.raids and world.raids.wake_player:
+			break
 	is_sleeping = false
 	var hours := elapsed * 24.0 / world.day_night.day_length_sec
 	slept.emit(hours)
-	if woke_cold:
+	if world.raids and world.raids.wake_player:
+		world.raids.wake_player = false
+		Events.toast(Loc.t("MSG_WOKE_RAID"), &"danger")
+	elif woke_cold:
 		Events.toast(Loc.t("MSG_WOKE_COLD"), &"danger")
 	else:
 		Events.toast(Loc.t("MSG_SLEPT", {"h": snappedf(hours, 0.1)}), &"good")

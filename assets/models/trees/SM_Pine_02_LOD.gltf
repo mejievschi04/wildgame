@@ -1,0 +1,248 @@
+{
+ "asset": {
+  "generator": "Khronos glTF Blender I/O v5.3.43",
+  "version": "2.0"
+ },
+ "scene": 0,
+ "scenes": [
+  {
+   "name": "Scene",
+   "nodes": [
+    0
+   ]
+  }
+ ],
+ "nodes": [
+  {
+   "mesh": 0,
+   "name": "SM_Pine_02_LOD"
+  }
+ ],
+ "materials": [
+  {
+   "doubleSided": true,
+   "name": "M_PineBark2",
+   "normalTexture": {
+    "index": 0
+   },
+   "pbrMetallicRoughness": {
+    "baseColorTexture": {
+     "index": 1
+    },
+    "metallicRoughnessTexture": {
+     "index": 2
+    }
+   }
+  },
+  {
+   "alphaMode": "MASK",
+   "doubleSided": true,
+   "name": "M_PineFoliage",
+   "pbrMetallicRoughness": {
+    "baseColorTexture": {
+     "index": 3
+    },
+    "metallicFactor": 0,
+    "roughnessFactor": 0.8500000238418579
+   },
+   "alphaCutoff": 0.4
+  }
+ ],
+ "meshes": [
+  {
+   "name": "SM_Pine_02_LOD",
+   "primitives": [
+    {
+     "attributes": {
+      "POSITION": 0,
+      "NORMAL": 1,
+      "TEXCOORD_0": 2
+     },
+     "indices": 3,
+     "material": 0
+    },
+    {
+     "attributes": {
+      "POSITION": 4,
+      "NORMAL": 5,
+      "TEXCOORD_0": 6
+     },
+     "indices": 7,
+     "material": 1
+    }
+   ]
+  }
+ ],
+ "textures": [
+  {
+   "sampler": 0,
+   "source": 0
+  },
+  {
+   "sampler": 0,
+   "source": 1
+  },
+  {
+   "sampler": 0,
+   "source": 2
+  },
+  {
+   "sampler": 0,
+   "source": 3
+  }
+ ],
+ "images": [
+  {
+   "mimeType": "image/jpeg",
+   "name": "T_PineBark_nor_gl",
+   "uri": "textures/T_PineBark_nor_gl.jpg"
+  },
+  {
+   "mimeType": "image/jpeg",
+   "name": "T_PineBark_diff",
+   "uri": "textures/T_PineBark_diff.jpg"
+  },
+  {
+   "mimeType": "image/jpeg",
+   "name": "T_PineBark_arm",
+   "uri": "textures/T_PineBark_arm.jpg"
+  },
+  {
+   "mimeType": "image/png",
+   "name": "T_PineTwigCard_D",
+   "uri": "textures/T_PineTwigCard_D.png"
+  }
+ ],
+ "accessors": [
+  {
+   "bufferView": 0,
+   "componentType": 5126,
+   "count": 452,
+   "max": [
+    3.0094492435455322,
+    17.075275421142578,
+    3.7472095489501953
+   ],
+   "min": [
+    -3.5214791297912598,
+    -0.005222741048783064,
+    -3.185842990875244
+   ],
+   "type": "VEC3"
+  },
+  {
+   "bufferView": 1,
+   "componentType": 5126,
+   "count": 452,
+   "type": "VEC3"
+  },
+  {
+   "bufferView": 2,
+   "componentType": 5126,
+   "count": 452,
+   "type": "VEC2"
+  },
+  {
+   "bufferView": 3,
+   "componentType": 5123,
+   "count": 1656,
+   "type": "SCALAR"
+  },
+  {
+   "bufferView": 4,
+   "componentType": 5126,
+   "count": 2964,
+   "max": [
+    4.504144668579102,
+    19.833890914916992,
+    4.461332321166992
+   ],
+   "min": [
+    -4.647468566894531,
+    10.291845321655273,
+    -4.181758880615234
+   ],
+   "type": "VEC3"
+  },
+  {
+   "bufferView": 5,
+   "componentType": 5126,
+   "count": 2964,
+   "type": "VEC3"
+  },
+  {
+   "bufferView": 6,
+   "componentType": 5126,
+   "count": 2964,
+   "type": "VEC2"
+  },
+  {
+   "bufferView": 7,
+   "componentType": 5123,
+   "count": 5928,
+   "type": "SCALAR"
+  }
+ ],
+ "bufferViews": [
+  {
+   "buffer": 0,
+   "byteLength": 5424,
+   "byteOffset": 0,
+   "target": 34962
+  },
+  {
+   "buffer": 0,
+   "byteLength": 5424,
+   "byteOffset": 5424,
+   "target": 34962
+  },
+  {
+   "buffer": 0,
+   "byteLength": 3616,
+   "byteOffset": 10848,
+   "target": 34962
+  },
+  {
+   "buffer": 0,
+   "byteLength": 3312,
+   "byteOffset": 14464,
+   "target": 34963
+  },
+  {
+   "buffer": 0,
+   "byteLength": 35568,
+   "byteOffset": 17776,
+   "target": 34962
+  },
+  {
+   "buffer": 0,
+   "byteLength": 35568,
+   "byteOffset": 53344,
+   "target": 34962
+  },
+  {
+   "buffer": 0,
+   "byteLength": 23712,
+   "byteOffset": 88912,
+   "target": 34962
+  },
+  {
+   "buffer": 0,
+   "byteLength": 11856,
+   "byteOffset": 112624,
+   "target": 34963
+  }
+ ],
+ "samplers": [
+  {
+   "magFilter": 9729,
+   "minFilter": 9987
+  }
+ ],
+ "buffers": [
+  {
+   "byteLength": 124480,
+   "uri": "SM_Pine_02_LOD.bin"
+  }
+ ]
+}

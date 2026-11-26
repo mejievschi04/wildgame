@@ -117,119 +117,119 @@
   {
    "bufferView": 0,
    "componentType": 5126,
-   "count": 1105,
+   "count": 3555,
    "max": [
-    1.9564672708511353,
-    16.574535369873047,
-    2.355010986328125
+    3.0094492435455322,
+    18.27191734313965,
+    3.7459702491760254
    ],
    "min": [
-    -2.4962308406829834,
-    -0.00451192120090127,
-    -2.1354713439941406
+    -3.6623611450195312,
+    -0.005222741048783064,
+    -3.188807249069214
    ],
    "type": "VEC3"
   },
   {
    "bufferView": 1,
    "componentType": 5126,
-   "count": 1105,
+   "count": 3555,
    "type": "VEC3"
   },
   {
    "bufferView": 2,
    "componentType": 5126,
-   "count": 1105,
+   "count": 3555,
    "type": "VEC2"
   },
   {
    "bufferView": 3,
    "componentType": 5123,
-   "count": 4020,
+   "count": 10032,
    "type": "SCALAR"
   },
   {
    "bufferView": 4,
    "componentType": 5126,
-   "count": 2466,
+   "count": 15480,
    "max": [
-    3.067903757095337,
-    17.566287994384766,
-    3.3166937828063965
+    3.910501003265381,
+    19.00212860107422,
+    4.548561096191406
    ],
    "min": [
-    -3.9350264072418213,
-    9.653837203979492,
-    -3.3019216060638428
+    -4.540380001068115,
+    10.537362098693848,
+    -3.8910155296325684
    ],
    "type": "VEC3"
   },
   {
    "bufferView": 5,
    "componentType": 5126,
-   "count": 2466,
+   "count": 15480,
    "type": "VEC3"
   },
   {
    "bufferView": 6,
    "componentType": 5126,
-   "count": 2466,
+   "count": 15480,
    "type": "VEC2"
   },
   {
    "bufferView": 7,
    "componentType": 5123,
-   "count": 4932,
+   "count": 30960,
    "type": "SCALAR"
   }
  ],
  "bufferViews": [
   {
    "buffer": 0,
-   "byteLength": 13260,
+   "byteLength": 42660,
    "byteOffset": 0,
    "target": 34962
   },
   {
    "buffer": 0,
-   "byteLength": 13260,
-   "byteOffset": 13260,
+   "byteLength": 42660,
+   "byteOffset": 42660,
    "target": 34962
   },
   {
    "buffer": 0,
-   "byteLength": 8840,
-   "byteOffset": 26520,
+   "byteLength": 28440,
+   "byteOffset": 85320,
    "target": 34962
   },
   {
    "buffer": 0,
-   "byteLength": 8040,
-   "byteOffset": 35360,
+   "byteLength": 20064,
+   "byteOffset": 113760,
    "target": 34963
   },
   {
    "buffer": 0,
-   "byteLength": 29592,
-   "byteOffset": 43400,
+   "byteLength": 185760,
+   "byteOffset": 133824,
    "target": 34962
   },
   {
    "buffer": 0,
-   "byteLength": 29592,
-   "byteOffset": 72992,
+   "byteLength": 185760,
+   "byteOffset": 319584,
    "target": 34962
   },
   {
    "buffer": 0,
-   "byteLength": 19728,
-   "byteOffset": 102584,
+   "byteLength": 123840,
+   "byteOffset": 505344,
    "target": 34962
   },
   {
    "buffer": 0,
-   "byteLength": 9864,
-   "byteOffset": 122312,
+   "byteLength": 61920,
+   "byteOffset": 629184,
    "target": 34963
   }
  ],
@@ -241,7 +241,7 @@
  ],
  "buffers": [
   {
-   "byteLength": 132176,
+   "byteLength": 691104,
    "uri": "SM_Pine_02.bin"
   }
  ]

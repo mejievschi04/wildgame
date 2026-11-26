@@ -1,0 +1,248 @@
+{
+ "asset": {
+  "generator": "Khronos glTF Blender I/O v5.3.43",
+  "version": "2.0"
+ },
+ "scene": 0,
+ "scenes": [
+  {
+   "name": "Scene",
+   "nodes": [
+    0
+   ]
+  }
+ ],
+ "nodes": [
+  {
+   "mesh": 0,
+   "name": "SM_Alder_02_LOD"
+  }
+ ],
+ "materials": [
+  {
+   "doubleSided": true,
+   "name": "M_AlderBark",
+   "normalTexture": {
+    "index": 0
+   },
+   "pbrMetallicRoughness": {
+    "baseColorTexture": {
+     "index": 1
+    },
+    "metallicRoughnessTexture": {
+     "index": 2
+    }
+   }
+  },
+  {
+   "alphaMode": "MASK",
+   "doubleSided": true,
+   "name": "M_AlderFoliage",
+   "pbrMetallicRoughness": {
+    "baseColorTexture": {
+     "index": 3
+    },
+    "metallicFactor": 0,
+    "roughnessFactor": 0.8500000238418579
+   },
+   "alphaCutoff": 0.4
+  }
+ ],
+ "meshes": [
+  {
+   "name": "SM_Alder_02_LOD",
+   "primitives": [
+    {
+     "attributes": {
+      "POSITION": 0,
+      "NORMAL": 1,
+      "TEXCOORD_0": 2
+     },
+     "indices": 3,
+     "material": 0
+    },
+    {
+     "attributes": {
+      "POSITION": 4,
+      "NORMAL": 5,
+      "TEXCOORD_0": 6
+     },
+     "indices": 7,
+     "material": 1
+    }
+   ]
+  }
+ ],
+ "textures": [
+  {
+   "sampler": 0,
+   "source": 0
+  },
+  {
+   "sampler": 0,
+   "source": 1
+  },
+  {
+   "sampler": 0,
+   "source": 2
+  },
+  {
+   "sampler": 0,
+   "source": 3
+  }
+ ],
+ "images": [
+  {
+   "mimeType": "image/jpeg",
+   "name": "T_AlderBark_nor_gl",
+   "uri": "textures/T_AlderBark_nor_gl.jpg"
+  },
+  {
+   "mimeType": "image/jpeg",
+   "name": "T_AlderBark_diff",
+   "uri": "textures/T_AlderBark_diff.jpg"
+  },
+  {
+   "mimeType": "image/jpeg",
+   "name": "T_AlderBark_arm",
+   "uri": "textures/T_AlderBark_arm.jpg"
+  },
+  {
+   "mimeType": "image/png",
+   "name": "T_LeavesCard_D",
+   "uri": "textures/T_LeavesCard_D.png"
+  }
+ ],
+ "accessors": [
+  {
+   "bufferView": 0,
+   "componentType": 5126,
+   "count": 240,
+   "max": [
+    3.0151331424713135,
+    11.646001815795898,
+    1.9277023077011108
+   ],
+   "min": [
+    -1.8317127227783203,
+    -0.011982199735939503,
+    -3.481079578399658
+   ],
+   "type": "VEC3"
+  },
+  {
+   "bufferView": 1,
+   "componentType": 5126,
+   "count": 240,
+   "type": "VEC3"
+  },
+  {
+   "bufferView": 2,
+   "componentType": 5126,
+   "count": 240,
+   "type": "VEC2"
+  },
+  {
+   "bufferView": 3,
+   "componentType": 5123,
+   "count": 948,
+   "type": "SCALAR"
+  },
+  {
+   "bufferView": 4,
+   "componentType": 5126,
+   "count": 2088,
+   "max": [
+    5.7664337158203125,
+    15.071598052978516,
+    4.937432289123535
+   ],
+   "min": [
+    -5.098515510559082,
+    6.111928462982178,
+    -5.553214073181152
+   ],
+   "type": "VEC3"
+  },
+  {
+   "bufferView": 5,
+   "componentType": 5126,
+   "count": 2088,
+   "type": "VEC3"
+  },
+  {
+   "bufferView": 6,
+   "componentType": 5126,
+   "count": 2088,
+   "type": "VEC2"
+  },
+  {
+   "bufferView": 7,
+   "componentType": 5123,
+   "count": 4176,
+   "type": "SCALAR"
+  }
+ ],
+ "bufferViews": [
+  {
+   "buffer": 0,
+   "byteLength": 2880,
+   "byteOffset": 0,
+   "target": 34962
+  },
+  {
+   "buffer": 0,
+   "byteLength": 2880,
+   "byteOffset": 2880,
+   "target": 34962
+  },
+  {
+   "buffer": 0,
+   "byteLength": 1920,
+   "byteOffset": 5760,
+   "target": 34962
+  },
+  {
+   "buffer": 0,
+   "byteLength": 1896,
+   "byteOffset": 7680,
+   "target": 34963
+  },
+  {
+   "buffer": 0,
+   "byteLength": 25056,
+   "byteOffset": 9576,
+   "target": 34962
+  },
+  {
+   "buffer": 0,
+   "byteLength": 25056,
+   "byteOffset": 34632,
+   "target": 34962
+  },
+  {
+   "buffer": 0,
+   "byteLength": 16704,
+   "byteOffset": 59688,
+   "target": 34962
+  },
+  {
+   "buffer": 0,
+   "byteLength": 8352,
+   "byteOffset": 76392,
+   "target": 34963
+  }
+ ],
+ "samplers": [
+  {
+   "magFilter": 9729,
+   "minFilter": 9987
+  }
+ ],
+ "buffers": [
+  {
+   "byteLength": 84744,
+   "uri": "SM_Alder_02_LOD.bin"
+  }
+ ]
+}

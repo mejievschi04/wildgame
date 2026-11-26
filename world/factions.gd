@@ -66,7 +66,7 @@ func meet(faction: StringName) -> void:
 	discovered.emit(faction)
 	if world:
 		world.add_journal(str(def_of(faction).get("journal", "")))
-		if known.size() >= defs.size():
+		if known.has(&"hunters") and known.has(&"clan") and known.has(&"gatherers"):
 			world.add_journal("JOURNAL_ACT2")
 
 
@@ -97,7 +97,10 @@ func save_state() -> Dictionary:
 func load_state(d: Dictionary) -> void:
 	var r: Dictionary = d.get("rel", {})
 	for k: String in r.keys():
-		relations[StringName(k)] = float(r[k])
+		if defs.has(StringName(k)):
+			relations[StringName(k)] = float(r[k])
 	known.clear()
 	for k: Variant in d.get("known", []):
-		known[StringName(str(k))] = true
+		var faction := StringName(str(k))
+		if defs.has(faction):
+			known[faction] = true

@@ -732,7 +732,7 @@ def b_arrow(rng):
         nt.links.new(tn.outputs["Color"], bsdf.inputs["Base Color"])
     else:
         shaft_mat = flat("M_ArrowShaft", (0.58, 0.45, 0.3), 0.7)
-    shaft = tube([Vector((0, 0, 0)), Vector((0, 0, ARROW_LEN - 0.03))], [0.0045, 0.0045], shaft_mat, seg=8, v_scale=1)
+    shaft = tube([Vector((0, 0, 0)), Vector((0, 0, ARROW_LEN - 0.03))], [0.005, 0.005], shaft_mat, seg=8, v_scale=1)
     if wood:
         uvl = shaft.data.uv_layers.active.data
         vmax = max(d.uv[1] for d in uvl) or 1.0
@@ -748,12 +748,13 @@ def b_arrow(rng):
     for k in range(3):
         a = math.tau * k / 3
         d = Vector((math.cos(a), math.sin(a), 0))
-        quad = [d * 0.004 + Vector((0, 0, 0.035)), d * 0.004 + Vector((0, 0, 0.135)),
-                d * 0.016 + Vector((0, 0, 0.115)), d * 0.013 + Vector((0, 0, 0.045))]
+        # three full split-feather vanes (~2.4 cm high, 13 cm long): what makes an arrow stuck in a body readable
+        quad = [d * 0.004 + Vector((0, 0, 0.03)), d * 0.004 + Vector((0, 0, 0.165)),
+                d * 0.028 + Vector((0, 0, 0.13)), d * 0.022 + Vector((0, 0, 0.04))]
         f = bm.faces.new([bm.verts.new(p) for p in quad])
         for l, (u, v) in zip(f.loops, ((0, 0), (1, 0), (1, 1), (0, 1))):
             l[uv].uv = (u, v)
-    fletch = new_obj("fletch", bm, flat("M_Feather", (0.22, 0.2, 0.17), 0.8))
+    fletch = new_obj("fletch", bm, flat("M_Feather", (0.74, 0.69, 0.6), 0.8))  # pale goose / swan feather
     return [shaft, head, fletch] + wraps
 
 

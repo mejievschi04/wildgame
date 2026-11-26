@@ -13,13 +13,15 @@ const BEGIN := 95.0  # = Vegetation.LOAD_RADIUS × CHUNK: real trees are always 
 const END := {0: 900.0, 1: 1500.0, 2: 2200.0}
 const IMPOSTOR_PX := 512
 const CACHE_DIR := "res://assets/textures/impostors"
-const PLACEMENT_CACHE := "res://assets/textures/impostors/far_forest_placement.bin"
-const VERSION := 2  # bump when the placement rules change
+const PLACEMENT_CACHE := "user://world_layout_far_forest.bin"
+const VERSION := 4  # bump when the placement rules change
 const SPAWN_CLEAR := 135.0
+const SPECIES := [&"spruce", &"pine", &"alder", &"jungle", &"palm"]
 ## region -> [species, trees per m²] (as Vegetation._chunk)
 const REGION_TREES := {
 	&"tavren": [&"spruce", 0.011], &"meyra": [&"alder", 0.0052], &"kharum": [&"spruce", 0.0042],
 	&"varkai": [&"pine", 0.0034], &"ossara": [&"pine", 0.0011], &"tundra": [&"pine", 0.00065], &"aruun": [&"alder", 0.0042],
+	&"sakhal": [&"spruce", 0.009], &"ilmar": [&"spruce", 0.0018],
 }
 
 var world: ForestWorld
@@ -48,7 +50,7 @@ func build(w: ForestWorld, mask: Image) -> void:
 		grove_at(0.0, 0.0)  # create the shared noise before the threads read it
 		_bands.resize(BANDS)
 		_task = WorkerThreadPool.add_group_task(_compute_band.bind(mask), BANDS, -1, false, "FarForest")
-	for sp: StringName in [&"spruce", &"pine", &"alder", &"jungle", &"palm"]:
+	for sp: StringName in SPECIES:
 		var list: Array[Mesh] = []
 		for path: String in AssetLib.TREES[sp]:
 			list.append(await _impostor(path))
@@ -101,6 +103,8 @@ func _impostor(path: String) -> Mesh:
 
 ## Two crossed cards wearing an impostor texture.
 func _cards(tex: Texture2D, h: float, r: float) -> Mesh:
+	h *= AssetLib.TREE_MODEL_SCALE
+	r *= AssetLib.TREE_MODEL_SCALE
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	for axis: Vector3 in [Vector3(1, 0, 0), Vector3(0, 0, 1)]:
@@ -150,7 +154,7 @@ func _compute_band(band: int, mask: Image) -> void:
 			if rng.randf() > p:
 				continue
 			if Vector2(px, pz).distance_to(ForestWorld.SPAWN) < SPAWN_CLEAR or world.water_distance(px, pz) < 20.0 \
-					or world.in_cave_cut(px, pz, 6.0):
+					or world.in_cave_cut(px, pz, 6.0) or world.in_settlement(px, pz):
 				continue
 			var h := world.height_at(px, pz)
 			if h < 1.5 or h > 135.0 or world.normal_at(px, pz).y < 0.72:
@@ -176,10 +180,12 @@ func _compute_band(band: int, mask: Image) -> void:
 	_band_done_ms = maxi(_band_done_ms, Time.get_ticks_msec() - _t0)
 
 
-## A cheap hash of everything the placement depends on (terrain heights, rivers, regions, groves, constants):
+## A cheap hash of everything the placement depends on (terrain, regions, groves, tree variant counts):
 ## the cached placement is only used while it still matches.
 func _terrain_fingerprint() -> int:
 	var parts: Array = [VERSION, STEP, ForestWorld.SEED, Vegetation.TREE_SCALE, SPAWN_CLEAR, str(REGION_TREES)]
+	for species: StringName in SPECIES:
+		parts.append(AssetLib.TREES[species].size())
 	for i in 64:
 		var x := -1900.0 + (i % 8) * 540.0
 		var z := -1900.0 + (i / 8) * 540.0
@@ -213,8 +219,6 @@ func _load_placement() -> Dictionary:
 
 
 func _save_placement(chunks: Dictionary) -> void:
-	if not OS.has_feature("editor"):
-		return
 	var flat_chunks := {}
 	for key: Vector2i in chunks:
 		flat_chunks[key] = {}
@@ -224,7 +228,6 @@ func _save_placement(chunks: Dictionary) -> void:
 				flat.append_array([xf.basis.x.x, xf.basis.x.y, xf.basis.x.z, xf.basis.y.x, xf.basis.y.y, xf.basis.y.z,
 					xf.basis.z.x, xf.basis.z.y, xf.basis.z.z, xf.origin.x, xf.origin.y, xf.origin.z])
 			flat_chunks[key][k] = flat
-	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(CACHE_DIR))
 	var f := FileAccess.open(PLACEMENT_CACHE, FileAccess.WRITE)
 	if f:
 		f.store_buffer(var_to_bytes({"fingerprint": _fingerprint, "chunks": flat_chunks}))
@@ -281,6 +284,8 @@ static func grove_at(x: float, z: float) -> float:
 	var g := smoothstep(-0.05, 0.35, _groves.get_noise_2d(x, z))
 	g = maxf(g, ForestWorld.jungle_at(x, z) * 0.9)          # the jungle closes into one canopy
 	g *= 1.0 - 0.85 * ForestWorld.tundra_at(x, z)           # the tundra is open
+	g = maxf(g, ForestWorld.taiga_at(x, z) * 0.75)           # the snowy taiga is one forest, broken by clearings
+	g *= 1.0 - ForestWorld.glacier_at(x, z)
 	return g * open_valley
 
 
@@ -295,7 +300,7 @@ func _mask(mask: Image, x: float, z: float) -> float:
 func _finish(chunks: Dictionary) -> void:
 	if not is_inside_tree():
 		return
-	if _meshes.size() < 5:  # impostors still being photographed (first run): build when they are
+	if _meshes.size() < SPECIES.size():  # impostors still being photographed (first run): build when they are
 		_pending = chunks
 		return
 	_pending = {}

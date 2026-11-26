@@ -6,8 +6,8 @@ extends RefCounted
 ## snowy peaks. Pure function of the world's heights (deterministic per SEED), cached to user://.
 ## Exploration: a coarse grid over the playable area; cells around the player are revealed as they walk.
 
-const RES := 1024  # map image size (covers the playable square)
-const FOG_RES := 128  # exploration grid
+const RES := 2048  # map image size (covers the playable square: ~4 m per pixel on the 8 km map)
+const FOG_RES := 256  # exploration grid (~31 m cells)
 const REVEAL_RADIUS := 110.0
 const START_REVEAL := 170.0
 const CONTOUR := 12.0  # metres between contour lines

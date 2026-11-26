@@ -1,46 +1,53 @@
 class_name ForestWorld
 extends Node3D
-## Procedural open world (4 × 4 km playable): central tutorial valley and regional wilderness,
-## deterministic resource scatter, POIs, day/night, structures, pickups and world persistence.
+## Baked open world (8 × 8 km playable): the southwest coast, central valley, three clan territories
+## and the snowy northeastern range. Resources and locations use a deterministic scatter seed.
 ## Deterministic seed → generated nodes have stable ids, so saves only store changed state.
 
-const SIZE := 4200.0
+const SIZE := 8400.0
 const HALF := SIZE * 0.5
 const SEED := 20261121
 const WATER_LEVEL := 0.0
-const PLAYABLE := 2000.0
-const SPAWN := Vector2(0.0, 0.0)
-const OLD_CAMP := Vector2(55.0, -58.0)
-const LAKE_CENTER := Vector2(205.0, 1760.0)
-const LAKE_RADIUS_X := 170.0
-const LAKE_RADIUS_Z := 145.0
-## Relief baked offline with hydraulic erosion (tools/gen_terrain.py): the final float32 heights on a BAKE_N² grid
+const PLAYABLE := 4000.0
+const Layout := preload("res://world/world_layout.gd")
+static var SPAWN := Layout.point("player_camp")
+static var OLD_CAMP := SPAWN + Vector2(55.0, -58.0)
+const LAKE_CENTER := Vector2(1200.0, -670.0)
+const LAKE_RADIUS_X := 160.0
+const LAKE_RADIUS_Z := 112.0
+## Lake bounds are shared with the terrain bake in data/world_layout.json.
+const LAKES := [Vector4(1200.0, -670.0, 160.0, 112.0)]
+const GLACIER_SNOUT := -3330.0
+const GLACIER_HALF_W := 170.0
+## Relief baked offline (tools/bake_reference_world.py): the final float32 heights on a BAKE_N² grid
 ## (~2 m) over the whole terrain, zlib-compressed, with the river's cut, lake, fords and camp clearings already in.
 ## The visible terrain (TerrainLod), its collision (one HeightMapShape3D) and height_at() all use this grid and the
 ## same triangulation. Creeks (with their water levels) and the shader masks come from the same run.
-const TERRAIN_BIN := "res://assets/terrain/terrain_height.bin"
-const TERRAIN_MASKS := "res://assets/terrain/T_Terrain_Masks.png"
-const STREAMS_JSON := "res://data/streams.json"
-const CAVES_JSON := "res://data/caves.json"
-const BAKE_N := 2049
+const TERRAIN_BIN := Layout.TERRAIN_DIR + "height.bin"
+const TERRAIN_MASKS := Layout.TERRAIN_DIR + "masks.png"
+const STREAMS_JSON := Layout.TERRAIN_DIR + "streams.json"
+const CAVES_JSON := Layout.TERRAIN_DIR + "caves.json"
+const BAKE_N := 4097
 const BAKE_CELL := SIZE / (BAKE_N - 1)
 ## Shallow crossings of the main river: river z, half-length along the river (m), bed height (water ~0.15 m deep).
 ## Cut into the bake: keep in sync with tools/gen_terrain.py FORDS.
 const FORDS := {
 	&"stone_ford": Vector3(-200.0, 9.0, -0.12),  # Vadul de Piatră: quick, open, stepping stones
-	&"dry_ford": Vector3(1150.0, 15.0, -0.08),   # Vadul Secat: the southern gravel bar, hard to spot
+	&"dry_ford": Vector3(1510.0, 15.0, -0.08),   # Vadul Secat: the southern gravel bar, hard to spot
 }
 const CREEK_HASH := 32.0
 
 ## Region centers also anchor the strategic map and future clan strongholds.
-const REGIONS := {
-	&"aruun": Vector2(0.0, 0.0),
-	&"varkai": Vector2(1160.0, -1240.0),
-	&"meyra": Vector2(1160.0, 580.0),
-	&"kharum": Vector2(-1400.0, 80.0),
-	&"ossara": Vector2(80.0, 1480.0),
-	&"tavren": Vector2(-1000.0, -1200.0),
-	&"tundra": Vector2(180.0, -1740.0),
+static var REGIONS := {
+	&"aruun": Layout.point("aruun"),
+	&"varkai": Layout.point("red"),
+	&"meyra": Vector2(1300.0, -470.0),
+	&"kharum": Layout.point("stone"),
+	&"ossara": Layout.point("player_camp"),
+	&"tavren": Vector2(-850.0, -1150.0),
+	&"tundra": Vector2(1550.0, -2250.0),
+	&"sakhal": Layout.point("north"),
+	&"ilmar": Vector2(2800.0, -3640.0),
 }
 const STRUCTURE_SCRIPTS := {
 	&"campfire": preload("res://world/campfire.gd"),
@@ -56,10 +63,10 @@ var tracks: Tracks
 var wildlife: Wildlife
 var factions: Factions
 var camps: Camps
+var raids: Raids
 var npc_nav: NpcNav
 var meadow_grass: MeadowGrass
 var far_forest: FarForest
-var waterfall: Waterfall
 var _water_mat: ShaderMaterial
 var _camp_sites: Array[Vector2] = []
 var _camp_clearings: Array[Vector2] = []
@@ -77,6 +84,7 @@ var _landform := FastNoiseLite.new()
 var _detail := FastNoiseLite.new()
 var terrain_lod: TerrainLod
 var caves: Array[Cave] = []
+var landmarks: Landmarks
 var _nodes: Dictionary = {}  # id -> Node
 var _pending_region_states: Dictionary = {}
 var _structure_counter := 0
@@ -138,7 +146,8 @@ func _ready() -> void:
 		_occupy(c.x, c.y, maxf(16.0, _camp_clearings[i].x + 4.0))
 	_scatter()
 	_build_forest_mask()
-	_terrain_mat.set_shader_parameter("grove_tex", ImageTexture.create_from_image(FarForest.grove_image()))
+	_build_landmarks()  # after the forest mask: bones and stone rings keep to open ground
+	_terrain_mat.set_shader_parameter("grove_tex", ImageTexture.create_from_image(FarForest.grove_image(512)))
 	tracks = Tracks.new()
 	tracks.name = "Tracks"
 	add_child(tracks)
@@ -162,11 +171,10 @@ func _ready() -> void:
 		add_child(camps)
 		camps.build_structures()
 		camps.spawn_people()
-	waterfall = Waterfall.new()
-	waterfall.name = "Waterfall"
-	add_child(waterfall)
-	waterfall.build(self, -520.0, 1.0)
-	_water_mat.set_shader_parameter("rapids", waterfall.rapids())
+		raids = Raids.new()
+		raids.name = "Raids"
+		raids.world = self
+		add_child(raids)
 	var veg := Vegetation.new()
 	veg.name = "Vegetation"
 	add_child(veg)
@@ -205,7 +213,8 @@ func _ready() -> void:
 
 ## Paints the world map once per seed in the background (it is cached on disk afterwards).
 func _start_map_paint() -> void:
-	map_image = MapData.cached()
+	var relief := load(Layout.TERRAIN_DIR + "relief.png") as Texture2D
+	map_image = relief.get_image() if relief else MapData.cached()
 	if map_image:
 		return
 	var heights := _bake
@@ -265,14 +274,17 @@ func _process(delta: float) -> void:
 # ---------------------------------------------------------------- terrain
 
 func river_x(z: float) -> float:
-	return 155.0 + 95.0 * sin(z * 0.0019) + 34.0 * sin(z * 0.0044 + 1.3)
+	return Layout.river_x(Layout.data.rivers[0], z)
 
 
 func river_distance(x: float, z: float) -> float:
-	var d := _channel_distance(x, z, -PLAYABLE, LAKE_CENTER.y - LAKE_RADIUS_Z + 20.0, Callable(self, "river_x"))
-	# The main river splits into slow channels through Meyra's eastern marsh; they braid and drain into the lake.
-	d = minf(d, _channel_distance(x, z, 180.0, MEYRA_A_END, Callable(self, "_meyra_channel_a")))
-	d = minf(d, _channel_distance(x, z, 430.0, MEYRA_B_END, Callable(self, "_meyra_channel_b")))
+	var d := INF
+	for river: Dictionary in Layout.data.rivers:
+		var points: Array = river.points
+		var at := clampf(z, float(points[0][0]), float(points[-1][0]))
+		var center := Layout.river_x(river, at)
+		var slope := (Layout.river_x(river, at + 2.0) - Layout.river_x(river, at - 2.0)) * 0.25
+		d = minf(d, Vector2((x - center) / sqrt(1.0 + slope * slope), z - at).length())
 	return d
 
 
@@ -281,28 +293,6 @@ func river_distance(x: float, z: float) -> float:
 func water_distance(x: float, z: float) -> float:
 	return minf(river_distance(x, z), creek_distance(x, z) + 7.0)
 
-
-func _channel_distance(x: float, z: float, start_z: float, end_z: float, center_x: Callable) -> float:
-	var nearest_z := clampf(z, start_z, end_z)
-	var dx := x - float(center_x.call(nearest_z))
-	return Vector2(dx, z - nearest_z).length()
-
-
-## Keep the Meyra channels in sync with tools/gen_terrain.py (meyra_a / meyra_b).
-const MEYRA_A_END := 1700.0
-const MEYRA_B_END := 1300.0
-
-
-func _meyra_channel_a(z: float) -> float:
-	var bend := 35.0 * (sin(z * 0.003) - sin(180.0 * 0.003))
-	var out := 250.0 * smoothstep(180.0, 520.0, z) + bend
-	var home := smoothstep(1250.0, 1720.0, z)  # turns back into the lake's east shore
-	return river_x(z) + out * (1.0 - home) + home * (LAKE_CENTER.x + 120.0 - river_x(z))
-
-
-func _meyra_channel_b(z: float) -> float:
-	var bend := 45.0 * (sin(z * 0.0025) - sin(430.0 * 0.0025))
-	return _meyra_channel_a(z) + (220.0 * smoothstep(430.0, 760.0, z) + bend) * (1.0 - smoothstep(1050.0, 1300.0, z))
 
 
 func region_at(x: float, z: float) -> StringName:
@@ -341,14 +331,34 @@ func _load_camp_sites() -> void:
 	var f := FileAccess.open("res://data/factions.json", FileAccess.READ)
 	var d: Variant = JSON.parse_string(f.get_as_text()) if f else {}
 	for k: String in (d as Dictionary).keys():
-		_add_camp_site(Camps.site(d[k]), 10.0)
-	for base: Dictionary in Camps.REGIONAL_BASES.values():
-		_add_camp_site(Camps.site(base), maxf(12.0, float(base.wall_radius) + 6.0))
+		if (d[k] as Dictionary).has("camp"):
+			_add_camp_site(Camps.site(d[k]), 10.0)
+	for id: String in Camps.REGIONAL_BASES:
+		var center := Camps.site(Camps.REGIONAL_BASES[id])
+		var radius := Camps.Layout.radius(id)
+		_add_camp_site(center, radius)
+		# Scatter queries scan adjacent 6 m cells. Tile the reserved area so even
+		# the tree closest to a gate sees the city reservation.
+		for x in range(-ceili(radius), ceili(radius) + 1, 6):
+			for z in range(-ceili(radius), ceili(radius) + 1, 6):
+				var offset := Vector2(x, z)
+				if offset.length() <= radius:
+					_occupy(center.x + x, center.y + z, 4.4)
 
 
 func _add_camp_site(c: Vector2, flat_radius: float) -> void:
 	_camp_sites.append(c)
 	_camp_clearings.append(Vector2(flat_radius, flat_radius + 12.0))
+
+
+func in_settlement(x: float, z: float) -> bool:
+	var at := Vector2(x, z)
+	for id: String in Camps.REGIONAL_BASES:
+		var center := Camps.site(Camps.REGIONAL_BASES[id])
+		var radius := Camps.Layout.radius(id)
+		if center.distance_squared_to(at) < radius * radius:
+			return true
+	return false
 
 
 ## The baked terrain at (x, z): the triangle of the bake grid under the point, split like the terrain mesh and the
@@ -388,7 +398,7 @@ static func _load_bake() -> void:
 	var raw := packed.decompress(BAKE_N * BAKE_N * 4, FileAccess.COMPRESSION_DEFLATE)
 	_bake = raw.to_float32_array()
 	if _bake.size() != BAKE_N * BAKE_N:
-		push_error("ForestWorld: %s is missing or damaged (run tools/gen_terrain.py)" % TERRAIN_BIN)
+		push_error("ForestWorld: %s is missing or damaged (run tools/bake_reference_world.py)" % TERRAIN_BIN)
 		_bake.resize(BAKE_N * BAKE_N)
 		_bake.fill(30.0)
 
@@ -505,11 +515,36 @@ func _terrain_height(x: float, z: float) -> float:
 ## Climate bands, north (−z) to south (+z): tundra · taiga · temperate · jungle. 0..1, with wavy borders.
 ## Keep in sync with biome.gdshaderinc.
 static func jungle_at(x: float, z: float) -> float:
-	return smoothstep(650.0, 1150.0, z + 120.0 * sin(x * 0.004) + 80.0 * sin(x * 0.011 + 1.0))
+	return smoothstep(1300.0, 2800.0, z + 120.0 * sin(x * 0.004)) * smoothstep(-1000.0, 1100.0, x)
 
 
 static func tundra_at(x: float, z: float) -> float:
-	return 1.0 - smoothstep(-1550.0, -1200.0, z + 100.0 * sin(x * 0.005 + 2.0) + 60.0 * sin(x * 0.013))
+	return (1.0 - smoothstep(-1770.0, -1320.0, z + 85.0 * sin(x * 0.005 + 2.0))) \
+		* smoothstep(0.0, 900.0, x) * (1.0 - taiga_at(x, z))
+
+
+## The cold north beyond the northern range: snowy taiga, frozen water, the glacier mountains (0..1).
+static func taiga_at(x: float, z: float) -> float:
+	return (1.0 - smoothstep(-2560.0, -2020.0, z + 90.0 * sin(x * 0.0037 + 0.7))) * smoothstep(450.0, 1500.0, x)
+
+
+## Any cold climate (tundra or taiga): cold-hardy animals, frost, snow.
+static func cold_at(x: float, z: float) -> float:
+	return maxf(tundra_at(x, z), taiga_at(x, z))
+
+
+## 0..1 on the glacier's ice (keep in sync with gen_terrain.py glacier_at and biome.gdshaderinc).
+static func glacier_at(x: float, z: float) -> float:
+	var rx := 3050.0 + 110.0 * sin(z * 0.002)
+	var d := absf(x - rx)
+	var hw := glacier_half_w(z)
+	return (1.0 - smoothstep(hw - 40.0, hw + 25.0, d)) * smoothstep(GLACIER_SNOUT + 10.0, GLACIER_SNOUT - 70.0, z)
+
+
+## Half-width of the glacier's ice at z (gen_terrain.py glacier_half_w): broad cirque, narrower tongue.
+static func glacier_half_w(z: float) -> float:
+	var up := smoothstep(GLACIER_SNOUT, -4150.0, z)
+	return GLACIER_HALF_W * (0.75 + 0.7 * up) + 28.0 * sin(z * 0.011 + 1.7) + 12.0 * sin(z * 0.047)
 
 
 ## Dry, walkable ground well inside the map (hunting grounds, forage spots).
@@ -587,12 +622,37 @@ func _build_water() -> void:
 		fn.frequency = 0.012 if key == "wave_a" else 0.03
 		nt.noise = fn
 		m.set_shader_parameter(key, nt)
-	_build_water_channel("MainRiver", -PLAYABLE, LAKE_CENTER.y - LAKE_RADIUS_Z + 20.0, 65.0, 14.0, Callable(self, "river_x"), m, true)
-	_build_water_channel("MeyraChannelA", 180.0, MEYRA_A_END, 60.0, 12.0, Callable(self, "_meyra_channel_a"), m, true)
-	_build_water_channel("MeyraChannelB", 430.0, MEYRA_B_END, 60.0, 11.0, Callable(self, "_meyra_channel_b"), m, true)
+	for river: Dictionary in Layout.data.rivers:
+		var points: Array = river.points
+		var line := func(z: float) -> float: return Layout.river_x(river, z)
+		_build_water_channel(river.name, float(points[0][0]), float(points[-1][0]), 15.0,
+			float(river.width) + 8.0, line, m, true)
+	_build_ocean(m)
 	_build_lake(m)
 	for i in creeks.size():
 		_build_creek(i, m)
+
+
+func _build_ocean(material: ShaderMaterial) -> void:
+	var mesh := SurfaceTool.new()
+	mesh.begin(Mesh.PRIMITIVE_TRIANGLES)
+	const SECTIONS := 140
+	for i in range(SECTIONS + 1):
+		var x := lerpf(-7000.0, 3000.0, float(i) / SECTIONS)
+		for z: float in [Layout.coast_z(x) - 45.0, 7900.0]:
+			mesh.set_normal(Vector3.UP)
+			mesh.set_uv(Vector2(x, z) / 25.0)
+			mesh.add_vertex(Vector3(x, WATER_LEVEL + 0.018, z))
+	for i in SECTIONS:
+		var a := i * 2
+		for vertex in [a, a + 2, a + 1, a + 1, a + 2, a + 3]:
+			mesh.add_index(vertex)
+	var ocean := MeshInstance3D.new()
+	ocean.name = "SouthwestSea"
+	ocean.mesh = mesh.commit()
+	ocean.material_override = material
+	ocean.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(ocean)
 
 
 ## A creek's water: a ribbon following its descending level (so it runs downhill, unlike the river at 0 m), and
@@ -649,33 +709,53 @@ func _build_creek(index: int, material: ShaderMaterial) -> void:
 
 
 func _build_lake(material: ShaderMaterial) -> void:
+	for i in LAKES.size():
+		_build_one_lake(i, LAKES[i], material)
+
+
+## A lake's surface and its water volume. A lake in the cold north is frozen: an ice sheet you can walk on.
+func _build_one_lake(index: int, lk: Vector4, material: ShaderMaterial) -> void:
 	const SEGMENTS := 64
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var center := Vector3(LAKE_CENTER.x, WATER_LEVEL + 0.025, LAKE_CENTER.y)
+	var center := Vector3(lk.x, WATER_LEVEL + 0.025, lk.y)
 	for i in SEGMENTS:
 		var a0 := TAU * float(i) / SEGMENTS
 		var a1 := TAU * float(i + 1) / SEGMENTS
-		var p0 := Vector3(LAKE_CENTER.x + cos(a0) * LAKE_RADIUS_X, WATER_LEVEL + 0.025,
-			LAKE_CENTER.y + sin(a0) * LAKE_RADIUS_Z)
-		var p1 := Vector3(LAKE_CENTER.x + cos(a1) * LAKE_RADIUS_X, WATER_LEVEL + 0.025,
-			LAKE_CENTER.y + sin(a1) * LAKE_RADIUS_Z)
+		var p0 := Vector3(lk.x + cos(a0) * lk.z, WATER_LEVEL + 0.025, lk.y + sin(a0) * lk.w)
+		var p1 := Vector3(lk.x + cos(a1) * lk.z, WATER_LEVEL + 0.025, lk.y + sin(a1) * lk.w)
 		for p: Vector3 in [center, p0, p1]:
 			st.set_normal(Vector3.UP)
 			st.set_uv(Vector2(p.x / 18.0, p.z / 18.0))
 			st.add_vertex(p)
 	var surface := MeshInstance3D.new()
 	surface.add_to_group("far_scenery")
-	surface.name = "SouthernLake_Surface"
+	surface.name = "SouthernLake_Surface" if index == 0 else "Lake%d_Surface" % index
 	surface.mesh = st.commit()
 	surface.material_override = material
 	surface.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(surface)
 	var lake := WaterBody.new()
-	lake.name = "LakeWater"
+	lake.name = "LakeWater" if index == 0 else "Lake%dWater" % index
 	add_child(lake)
-	lake.setup_ellipse(LAKE_RADIUS_X, LAKE_RADIUS_Z, WATER_LEVEL)
-	lake.position = Vector3(LAKE_CENTER.x, 0.0, LAKE_CENTER.y)
+	lake.setup_ellipse(lk.z, lk.w, WATER_LEVEL)
+	lake.position = Vector3(lk.x, 0.0, lk.y)
+	if taiga_at(lk.x, lk.y) > 0.5:
+		_add_ice(surface.mesh, "Lake%d_Ice" % index)
+
+
+## Walkable ice over frozen water: a static body on the surface mesh (the water shader draws it as ice there).
+func _add_ice(mesh: Mesh, ice_name: String) -> void:
+	var body := StaticBody3D.new()
+	body.name = ice_name
+	body.collision_layer = 1
+	body.collision_mask = 0
+	body.add_to_group("terrain")
+	body.add_to_group("ice")
+	var shape := mesh.create_trimesh_shape()
+	shape.backface_collision = true
+	Graybox.add_shape(body, shape)
+	add_child(body)
 
 
 func _build_water_channel(channel_name: String, start_z: float, end_z: float, step: float,
@@ -691,8 +771,6 @@ func _build_water_channel(channel_name: String, start_z: float, end_z: float, st
 		var tangent := Vector2(float(center_x.call(next_z)) - float(center_x.call(prev_z)), next_z - prev_z).normalized()
 		var side := Vector2(tangent.y, -tangent.x)
 		var taper := 1.0
-		if channel_name != "MainRiver":
-			taper = minf(smoothstep(start_z, start_z + 75.0, z), 1.0 - smoothstep(end_z - 75.0, end_z, z))
 		for edge: float in [-1.0, 1.0]:
 			var p: Vector2 = Vector2(center, z) + side * half_width * taper * edge
 			st.set_normal(Vector3.UP)
@@ -716,6 +794,29 @@ func _build_water_channel(channel_name: String, start_z: float, end_z: float, st
 	surface.material_override = material
 	surface.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(surface)
+	# in the cold north the river is frozen over: walkable ice along that stretch
+	var ice := SurfaceTool.new()
+	ice.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var frozen := 0
+	for i in sections:
+		var za := lerpf(start_z, end_z, float(i) / sections)
+		var zb := lerpf(start_z, end_z, float(i + 1) / sections)
+		if taiga_at(float(center_x.call(za)), za) < 0.5 or taiga_at(float(center_x.call(zb)), zb) < 0.5:
+			continue
+		var quad: Array[Vector3] = []
+		for z: float in [za, zb]:
+			var c := float(center_x.call(z))
+			var tg := Vector2(float(center_x.call(z + 1.0)) - float(center_x.call(z - 1.0)), 2.0).normalized()
+			var sd := Vector2(tg.y, -tg.x)
+			for edge: float in [-1.0, 1.0]:
+				var p: Vector2 = Vector2(c, z) + sd * half_width * edge
+				quad.append(Vector3(p.x, WATER_LEVEL + 0.025, p.y))
+		for v: Vector3 in [quad[0], quad[1], quad[2], quad[1], quad[3], quad[2]]:
+			ice.set_normal(Vector3.UP)
+			ice.add_vertex(v)
+		frozen += 1
+	if frozen > 0:
+		_add_ice(ice.commit(), "%s_Ice" % channel_name)
 	if not interactable:
 		return
 	var main_water_index := floori(sections * 0.5)
@@ -877,11 +978,14 @@ func _scatter() -> void:
 		[&"rock", -13.0, 9.0], [&"mushroom", 11.0, 8.0],
 	]
 	for s: Array in starters:
-		_occupy(s[1], s[2], 1.5)
-		_spawn_node(s[0], s[1], s[2])
+		_occupy(SPAWN.x + s[1], SPAWN.y + s[2], 1.5)
+		_spawn_node(s[0], SPAWN.x + s[1], SPAWN.y + s[2])
 	# Flint on the river bank nearest to spawn.
-	for z: float in [-6.0, 14.0]:
-		var x := river_x(z) - 14.0  # on the dry bank: the waterline sits ~10 m from the channel centre
+	for dz: float in [-6.0, 14.0]:
+		var z := SPAWN.y + dz
+		var x := river_x(z) - 14.0  # on the dry bank: the waterline wanders 4-18 m from the channel centre
+		while height_at(x, z) < 0.6 and x > river_x(z) - 30.0:
+			x -= 1.0
 		_occupy(x, z, 2.0)
 		_spawn_node(&"flint", x, z)
 
@@ -902,8 +1006,8 @@ func _scatter() -> void:
 	_scatter_kind(&"stones", 40, 1.0, anywhere)
 	_scatter_kind(&"mushroom", 30, 0.6, anywhere)
 	# In sight when a new player faces east. Append after the seeded scatter for save stability.
-	_spawn_node(&"sticks", 2.0, 0.75)
-	_spawn_node(&"stones", 2.1, -0.75)
+	_spawn_node(&"sticks", SPAWN.x + (2), SPAWN.y + (0.75))
+	_spawn_node(&"stones", SPAWN.x + (2.1), SPAWN.y + (-0.75))
 	# Wild food and fibre plants (farming update). Appended after everything above so older save ids stay put.
 	var meadow := func(x: float, z: float, h: float) -> bool:
 		return anywhere.call(x, z, h) and river_distance(x, z) > 25.0
@@ -919,8 +1023,16 @@ func _scatter() -> void:
 	_scatter_kind(&"reeds", 18, 1.0, wet_bank, 60)
 	_scatter_kind(&"clay", 8, 1.2, wet_bank, 80)
 	# A few right by the start so the first loop shows them.
-	_spawn_node(&"wild_grain", -6.5, 9.0)
-	_spawn_node(&"herbs", 7.5, 10.5)
+	_spawn_node(&"wild_grain", SPAWN.x + (-6.5), SPAWN.y + (9))
+	_spawn_node(&"herbs", SPAWN.x + (7.5), SPAWN.y + (10.5))
+	# Dry twig bushes (sticks without hunting through the grass, as Far Cry Primal's wood bushes). Appended last so
+	# older save ids stay put; a few in sight of the start.
+	for offset: Vector2 in [Vector2(6.5, -3.0), Vector2(-7.5, 1.5), Vector2(1.0, 8.5), Vector2(-2.5, -9.5)]:
+		var at := SPAWN + offset
+		if is_scatter_site_free(at.x, at.y, 1.2):
+			_occupy(at.x, at.y, 1.2)
+			_spawn_node(&"deadwood", at.x, at.y, _rng.randf_range(0.9, 1.1))
+	_scatter_kind(&"deadwood", 120, 1.3, anywhere)
 
 
 func set_ground_wetness(v: float) -> void:
@@ -931,7 +1043,7 @@ func set_ground_wetness(v: float) -> void:
 ## Forest density mask (0 clearing … 1 dense forest) from tree positions; drives terrain layers
 ## (needles vs grass) and decorative scatter.
 func _build_forest_mask() -> void:
-	const RES := 256
+	const RES := 512  # ~16 m texels over the 8 km map
 	const CANOPY_RADIUS := 5.0
 	const COVER_PER_TREE := PI * CANOPY_RADIUS * CANOPY_RADIUS / ((SIZE / RES) * (SIZE / RES))
 	var acc := PackedFloat32Array()
@@ -973,6 +1085,8 @@ func _build_biome_tint() -> Image:
 		&"ossara": Color(1.0, 0.98, 0.94),
 		&"tavren": Color(0.95, 0.99, 0.94),
 		&"tundra": Color(0.98, 0.99, 1.0),
+		&"sakhal": Color(0.97, 0.99, 1.02),
+		&"ilmar": Color(0.98, 1.0, 1.03),
 	}
 	for y in RES:
 		for x in RES:
@@ -992,13 +1106,28 @@ func _forest_density(region: StringName, x: float, z: float) -> float:
 		&"meyra": return 0.48 if river_distance(x, z) < 720.0 else 0.20
 		&"varkai": return 0.12
 		&"tundra": return 0.10
+		&"sakhal": return 0.8
+		&"ilmar": return 0.15
 		_: return 0.26
 
 
 # ---------------------------------------------------------------- POIs
 
+## Skeletons, totems, standing stones and hunters' camps across the wilds (Landmarks), clear of the start, the
+## clans' camps and the regional bases.
+func _build_landmarks() -> void:
+	var avoid: Array[Vector2] = [SPAWN, OLD_CAMP]
+	for c: Vector2 in _camp_sites:
+		avoid.append(c)
+	for b: Dictionary in Camps.REGIONAL_BASES.values():
+		avoid.append(Vector2(float(b.camp[0]), float(b.camp[1])))
+	landmarks = Landmarks.new()
+	landmarks.name = "Landmarks"
+	add_child(landmarks)
+	landmarks.build(self, avoid)
+
 func _build_pois() -> void:
-	# Abandoned camp across the river: collapsed lean-to, cold hearth, cache.
+	# Abandoned camp above the river: collapsed lean-to, cold hearth, cache.
 	var camp := Node3D.new()
 	camp.name = "POI_OldCamp"
 	camp.position = ground_point(OLD_CAMP.x, OLD_CAMP.y)
@@ -1010,6 +1139,16 @@ func _build_pois() -> void:
 			Vector3(-1.6 + i * 0.65, 1.1, -1.2), Vector3(-35, 0, 4.0 * (i % 3)))
 	Graybox.part_mat(camp, Graybox.cylinder(0.06, 0.06, 4.2, 7), wood, Vector3(0, 1.9, -0.3), Vector3(0, 0, 90))
 	Graybox.part_mat(camp, Graybox.box(Vector3(2.4, 1.8, 0.04)), Graybox.tex("Leather", Color(0.7, 0.62, 0.55), 0.8), Vector3(0.3, 1.25, -1.0), Vector3(-35, 0, 6))
+	var signpost := Node3D.new()
+	signpost.position = Vector3(-1.7, 0.72, -0.65)
+	camp.add_child(signpost)
+	Graybox.part_mat(signpost, Graybox.box(Vector3(0.36, 1.45, 0.1)), wood, Vector3.ZERO)
+	var pale_wood := Color(0.86, 0.64, 0.4)
+	for i in range(-1, 2):
+		Graybox.part(signpost, Graybox.box(Vector3(0.018, 0.14, 0.008)), pale_wood,
+			Vector3(i * 0.085, 0.52, 0.052), Vector3(0, 0, -10))
+	Graybox.part(signpost, Graybox.box(Vector3(0.02, 0.11, 0.008)), pale_wood,
+		Vector3(0, 0.52, 0.058), Vector3(0, 0, 60))
 	var hearth_stones: Array[Mesh] = []
 	for path: String in AssetLib.ROCKS[&"small"]:
 		hearth_stones.append(AssetLib.mesh(path))
@@ -1033,7 +1172,7 @@ func _build_pois() -> void:
 	_build_stone_ford()
 
 	# Fresh kill on the near river bank.
-	var cz := 26.0
+	var cz := SPAWN.y + 26.0
 	var cx := river_x(cz) - 10.0
 	var carcass := Carcass.new()
 	carcass.name = "POI_Carcass"
@@ -1082,6 +1221,8 @@ func ambient_temperature_at(pos: Vector3) -> float:
 	var t := day_night.ambient_temperature()
 	# climate bands: the tundra is ~10 °C colder (taiga a little), the southern jungle ~8 °C warmer
 	t += 8.0 * jungle_at(pos.x, pos.z) - 10.0 * tundra_at(pos.x, pos.z) - 3.0 * (1.0 - smoothstep(-1200.0, -800.0, pos.z))
+	# the snowy taiga beyond the range is bitter (~ -16 °C colder), the glacier colder still
+	t -= 16.0 * taiga_at(pos.x, pos.z) + 6.0 * glacier_at(pos.x, pos.z)
 	if weather:
 		t += weather.temp_offset + weather.wind_chill_at(pos)
 	if pos.y < WATER_LEVEL - 0.3:
@@ -1265,17 +1406,20 @@ func collect_save() -> Dictionary:
 		structures.append({"type": String(s.get("structure_type")), "id": s.get("structure_id"),
 			"pos": [o.x, o.y, o.z], "yaw": s.global_rotation.y, "state": s.save_state()})
 	return {
+		"layout_version": Layout.VERSION,
 		"time_hours": day_night.time_hours, "day": day_night.day, "journal": journal.duplicate(),
 		"map_fog": Marshalls.raw_to_base64(map_fog.compress(FileAccess.COMPRESSION_DEFLATE)),
 		"waypoint": [] if waypoint == Vector3.INF else [waypoint.x, waypoint.y, waypoint.z],
 		"nodes": nodes, "pickups": pickups, "structures": structures, "structure_counter": _structure_counter,
 		"regional_bases": Camps.REGIONAL_BASES.keys() if camps else [],
+		"city_services": Camps.REGIONAL_BASES.keys() if camps else [],
 		"weather": weather.save_state(), "carcasses": wildlife.save_state(), "wildlife": wildlife.save_director(),
 		"factions": factions.save_state() if factions else {}, "npcs": camps.save_state() if camps else {},
 	}
 
 
 func apply_save(d: Dictionary) -> void:
+	var current := uses_current_layout(d)
 	day_night.time_hours = float(d.get("time_hours", 12.0))
 	day_night.day = int(d.get("day", 1))
 	if d.has("weather"):
@@ -1287,17 +1431,17 @@ func apply_save(d: Dictionary) -> void:
 	if camps:
 		camps.load_state(d.get("npcs", {}))
 	journal.clear()
-	if d.has("map_fog"):
+	if current and d.has("map_fog"):
 		var raw := Marshalls.base64_to_raw(str(d.map_fog)).decompress(MapData.FOG_RES * MapData.FOG_RES, FileAccess.COMPRESSION_DEFLATE)
 		if raw.size() == MapData.FOG_RES * MapData.FOG_RES:
 			map_fog = raw
-	var wp: Array = d.get("waypoint", [])
+	var wp: Array = d.get("waypoint", []) if current else []
 	waypoint = Vector3(float(wp[0]), float(wp[1]), float(wp[2])) if wp.size() == 3 else Vector3.INF
 	for k: Variant in d.get("journal", []):
 		journal.append(str(k))
 	var nodes: Dictionary = d.get("nodes", {})
 	_pending_region_states.clear()
-	for id: String in nodes.keys():
+	for id: String in nodes.keys() if current else []:
 		if _nodes.has(id):
 			_nodes[id].load_state(nodes[id])
 		elif id.begins_with("region_"):
@@ -1305,19 +1449,54 @@ func apply_save(d: Dictionary) -> void:
 	for p in pickups_root.get_children():
 		pickups_root.remove_child(p)  # detach now so restored nodes keep their names
 		p.queue_free()
+	var old_heights := PackedFloat32Array()
+	if not current and (not d.get("structures", []).is_empty() or not d.get("pickups", []).is_empty()):
+		var old_bake := FileAccess.get_file_as_bytes("res://assets/terrain/terrain_height.bin")
+		old_heights = old_bake.decompress(BAKE_N * BAKE_N * 4, FileAccess.COMPRESSION_DEFLATE).to_float32_array()
 	for p: Dictionary in d.get("pickups", []):
 		var st := ItemStack.from_dict(p.item)
 		if ItemDB.get_item(st.id):
-			spawn_pickup(st, _vec(p.pos))
+			var pos := _vec(p.pos)
+			spawn_pickup(st, pos if current else _relocate_legacy_point(pos, old_heights))
 	for s in structures_root.get_children():
+		if not current and _layout_structure(String(s.name)):
+			continue
 		structures_root.remove_child(s)
 		s.queue_free()
 	_structure_counter = int(d.get("structure_counter", 0))
 	for s: Dictionary in d.get("structures", []):
-		var xf := Transform3D(Basis(Vector3.UP, float(s.get("yaw", 0.0))), _vec(s.pos))
-		spawn_structure(StringName(str(s.type)), xf, s.get("state", {}), str(s.get("id", "")))
-	if camps:
+		var id := str(s.get("id", ""))
+		if not current and _layout_structure(id):
+			continue
+		var pos := _vec(s.pos)
+		var xf := Transform3D(Basis(Vector3.UP, float(s.get("yaw", 0.0))),
+			pos if current else _relocate_legacy_point(pos, old_heights))
+		spawn_structure(StringName(str(s.type)), xf, s.get("state", {}), id)
+	if camps and current:
 		camps.build_regional_bases(d.get("regional_bases", []))
+		camps.build_city_services(d.get("city_services", []))
+
+
+func uses_current_layout(save: Dictionary) -> bool:
+	return int(save.get("layout_version", 1)) == Layout.VERSION
+
+
+static func _layout_structure(id: String) -> bool:
+	return id.begins_with("camp_") or id.begins_with("base_") or id.begins_with("city_") \
+		or id.begins_with("player_camp_")
+
+
+func _relocate_legacy_point(pos: Vector3, old_heights: PackedFloat32Array) -> Vector3:
+	var at := Vector2(pos.x, pos.z)
+	var lift := 0.12
+	if old_heights.size() == BAKE_N * BAKE_N:
+		var x := clampi(roundi((at.x + HALF) / BAKE_CELL), 0, BAKE_N - 1)
+		var z := clampi(roundi((at.y + HALF) / BAKE_CELL), 0, BAKE_N - 1)
+		lift = pos.y - old_heights[z * BAKE_N + x]
+	# Old player settlements near the original spawn move together to the new camp.
+	if at.length() < 280.0:
+		at += SPAWN
+	return Vector3(at.x, maxf(height_at(at.x, at.y), WATER_LEVEL) + lift, at.y)
 
 
 func get_node_by_save_id(id: String) -> Node:

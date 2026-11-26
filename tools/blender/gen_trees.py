@@ -52,6 +52,8 @@ def card_material(name, tex):
 # ---------------------------------------------------------------- geometry builder
 
 class Builder:
+    lod = False  # building the far LOD: detail-only cards skipped, LOD-only cards emitted, thinner tubes
+
     def __init__(self):
         self.bm = bmesh.new()
         self.uv = self.bm.loops.layers.uv.new("UVMap")
@@ -59,6 +61,10 @@ class Builder:
 
     def tube(self, path, radii, segments, mat_index, u_repeat, v_scale):
         """Generalised cylinder along a list of points. UV u wraps around, v follows length."""
+        if self.lod:
+            if max(radii) < 0.05:
+                return  # twigs and boughs vanish at LOD distance (the cards cover them)
+            segments = max(3, segments // 2)
         rings = []
         acc = 0.0
         for i, p in enumerate(path):
@@ -84,7 +90,11 @@ class Builder:
                     loop[self.uv].uv = (v[1], v[2])
 
 # Foliage card + mesh finalisation (attached to Builder below).
-def _card(self, base, direction, side, length, width, mat_index, crown_center, uv_rect=(0, 0, 1, 1), bend=0.0):
+def _card(self, base, direction, side, length, width, mat_index, crown_center, uv_rect=(0, 0, 1, 1), bend=0.0,
+          detail=False, lod_only=False):
+    """detail: only in the near model; lod_only: only in the far LOD (a big card standing in for several)."""
+    if (detail and self.lod) or (lod_only and not self.lod):
+        return
     u0, v0, u1, v1 = uv_rect
     mid = base + direction * length * 0.5 + Vector((0, 0, -bend * 0.25))
     tip = base + direction * length + Vector((0, 0, -bend))
@@ -344,6 +354,222 @@ def palm(seed):
     return b, H
 
 
+
+# ---------------------------------------------------------------- species v2 (structured crowns)
+# Real branch structure instead of a few big cards on the trunk: every branch is modelled (a thin tapering tube that
+# droops and turns up at the tip), its foliage is many small twig cards along it, so the crown has depth, gaps and
+# a believable silhouette up close; the far impostors are captured from the same models.
+
+def bough(path_fn, n):
+    return [path_fn(i / n) for i in range(n + 1)]
+
+
+def trunk_with_flare(b, H, r0, lean, rng, steps, flare=1.35):
+    """Trunk rings at exact heights (TreeNode reads its profile from them) with a root flare at the foot."""
+    path = trunk_path(H, lean, rng, steps)
+    radii = []
+    for i in range(steps + 1):
+        t = i / steps
+        r = r0 * (1 - t) ** 0.85 + 0.03
+        r *= 1.0 + (flare - 1.0) * max(0.0, 1.0 - t * steps / 1.5)
+        radii.append(r)
+    b.tube(path, radii, 14, 0, 2.0, 0.9)
+    return path, radii
+
+
+def trunk_at(path, H, z):
+    i = min(int(z / H * (len(path) - 1)), len(path) - 2)
+    f = z / H * (len(path) - 1) - i
+    return path[i].lerp(path[i + 1], max(0.0, min(f, 1.0)))
+
+
+def spruce2(seed):
+    rng = random.Random(seed)
+    b = Builder()
+    H = rng.uniform(14.0, 17.0)
+    r0 = rng.uniform(0.27, 0.34)
+    path, radii = trunk_with_flare(b, H, r0, Vector((rng.uniform(-0.25, 0.25), rng.uniform(-0.25, 0.25), 0)), rng, 16)
+    crown_base = rng.uniform(1.2, 2.2)
+    center = Vector((0, 0, H * 0.45))
+    # dead lower branches: bare grey twigs on the shaded lower trunk
+    z = 0.6
+    while z < crown_base + 1.2:
+        for k in range(rng.randint(2, 4)):
+            ang = rng.uniform(0, 2 * math.pi)
+            base = trunk_at(path, H, z)
+            d = (horiz(ang) * 0.9 + Vector((0, 0, rng.uniform(-0.35, 0.05)))).normalized()
+            L = rng.uniform(0.5, 1.3)
+            b.tube([base, base + d * L * 0.5, base + d * L + Vector((0, 0, -0.08))], [0.025, 0.016, 0.006], 4, 0, 0.3, 1.0)
+        z += rng.uniform(0.25, 0.45)
+    z = crown_base
+    whorl = 0
+    while z < H - 0.5:
+        rel = (z - crown_base) / (H - crown_base)
+        L = 0.35 + 3.1 * (1 - rel) ** 1.1          # long boughs low down, short at the top: a narrow cone
+        n = rng.randint(5, 7) if rel < 0.85 else rng.randint(4, 5)
+        a0 = rng.uniform(0, 2 * math.pi) + whorl * 0.7
+        base = trunk_at(path, H, z)
+        for k in range(n):
+            ang = a0 + 2 * math.pi * k / n + rng.uniform(-0.3, 0.3)
+            Lk = L * rng.uniform(0.8, 1.12)
+            out = horiz(ang)
+            droop = rng.uniform(0.18, 0.42) * (1 - rel * 0.5)
+            # the bough: out and down, the tip curving up again (spruce boughs sag in a gentle S)
+            def at(t, out=out, Lk=Lk, droop=droop, base=base):
+                return base + out * Lk * t + Vector((0, 0, -droop * Lk * math.sin(t * math.pi * 0.85) + 0.18 * Lk * t * t))
+            pts = bough(at, 3)
+            b.tube(pts, [0.035 * (1 - rel * 0.6) + 0.01, 0.022, 0.012, 0.004], 4, 0, 0.4, 1.0)
+            # twig cards along it, hanging off both sides, overlapping into a dense layered fan
+            cards = max(2, int(Lk / 0.36))
+            for c in range(cards):
+                t = (c + 0.6) / (cards + 0.4)
+                p = at(t)
+                tang = (at(min(t + 0.05, 1.0)) - at(max(t - 0.05, 0.0))).normalized()
+                for side_sign in (-1.0, 1.0):
+                    side = tang.cross(Vector((0, 0, 1))).normalized() * side_sign
+                    d = (tang * 0.55 + side * 0.65 + Vector((0, 0, -0.25))).normalized()
+                    s = rng.uniform(0.85, 1.2) * (0.75 + 0.35 * (1 - t)) * (0.8 + 0.4 * (1 - rel))
+                    flat = d.cross(Vector((0, 0, 1)))
+                    flat = flat.normalized() if flat.length > 0.01 else Vector((1, 0, 0))
+                    tilt = (flat * 0.85 + Vector((0, 0, 0.5)) * rng.uniform(-1, 1)).normalized()
+                    b.card(p, d, tilt, s, s * 0.9, 1, center, bend=s * 0.15, detail=True)
+            # far LOD: the whole bough as two broad cards
+            lod_side = out.cross(Vector((0, 0, 1))).normalized()
+            b.card(at(0.0), (at(1.0) - at(0.0)).normalized(), (lod_side * 0.9 + Vector((0, 0, 0.35))).normalized(),
+                   Lk * 1.05, Lk * 1.0 + 0.4, 1, center, bend=Lk * 0.12, lod_only=True)
+            b.card(at(0.0), (at(1.0) - at(0.0)).normalized(), (lod_side * 0.4 - Vector((0, 0, 0.9))).normalized(),
+                   Lk * 0.95, Lk * 0.55 + 0.3, 1, center, lod_only=True)
+            # the leader card over the bough's tip
+            tip = at(1.0)
+            b.card(at(0.85), (tip - at(0.85)).normalized(), out.cross(Vector((0, 0, 1))).normalized(), 0.6, 0.5, 1, center,
+                   detail=True)
+        z += rng.uniform(0.3, 0.4) * (1.0 - 0.35 * rel)
+        whorl += 1
+    top = trunk_at(path, H, H - 0.9)
+    for k in range(3):
+        b.card(top, (Vector((0, 0, 1)) + horiz(k * 2.1) * 0.15).normalized(), horiz(k * math.pi / 3), 1.3, 0.7, 1, top - Vector((0, 0, 1)))
+    return b, H
+
+
+def pine2(seed):
+    """Scots pine: a tall clean bole, a few crooked limbs carrying flat-topped clouds of needle tufts."""
+    rng = random.Random(seed)
+    b = Builder()
+    H = rng.uniform(15.5, 18.5)
+    r0 = rng.uniform(0.25, 0.32)
+    path, radii = trunk_with_flare(b, H, r0, Vector((rng.uniform(-0.6, 0.6), rng.uniform(-0.6, 0.6), 0)), rng, 18, 1.25)
+    crown0 = H * rng.uniform(0.55, 0.64)
+    center = Vector((path[-1].x, path[-1].y, (crown0 + H) / 2))
+    # stubs of shed branches along the bole
+    for i in range(rng.randint(5, 9)):
+        z = rng.uniform(2.0, crown0)
+        ang = rng.uniform(0, 2 * math.pi)
+        base = trunk_at(path, H, z)
+        b.tube([base, base + horiz(ang) * rng.uniform(0.15, 0.4) + Vector((0, 0, -0.05))], [0.03, 0.01], 4, 0, 0.2, 1.0)
+
+    def tuft(p, up, size, first=False):
+        # a pine tuft: needle cards fanned round the shoot like a brush (far LOD: one big tuft per shoot)
+        for k in range(3):
+            side = horiz(k * math.pi / 3 + rng.uniform(0, 1))
+            d = (up + side * 0.35).normalized()
+            b.card(p - d * size * 0.3, d, side.cross(d).normalized(), size, size * 0.95, 1, center, bend=size * 0.1, detail=True)
+            if first and k < 2:
+                big = size * 1.9
+                b.card(p - d * big * 0.3, d, side.cross(d).normalized(), big, big * 0.95, 1, center, lod_only=True)
+
+    z = crown0
+    while z < H - 0.6:
+        rel = (z - crown0) / (H - crown0)
+        base = trunk_at(path, H, z)
+        for k in range(rng.randint(3, 4)):
+            ang = rng.uniform(0, 2 * math.pi)
+            rise = math.radians(rng.uniform(10, 40) + rel * 20)
+            d = (horiz(ang) * math.cos(rise) + Vector((0, 0, math.sin(rise)))).normalized()
+            L = (1.2 + 2.6 * math.sin(math.pi * min(0.1 + rel * 0.9, 1.0))) * rng.uniform(0.8, 1.15)
+            kink = horiz(ang + rng.uniform(-0.8, 0.8)) * 0.35
+            pts = [base, base + d * L * 0.45 + kink, base + d * L + Vector((0, 0, 0.2))]
+            b.tube(pts, [0.07 * (1 - rel * 0.5), 0.04, 0.015], 5, 0, 0.6, 1.0)
+            # side shoots off the limb, each ending in tufts: flat-topped needle clouds
+            for c in range(rng.randint(5, 8)):
+                t = rng.uniform(0.25, 1.0)
+                p = pts[0].lerp(pts[1], min(t * 2, 1.0)) if t < 0.5 else pts[1].lerp(pts[2], (t - 0.5) * 2)
+                sd = (horiz(rng.uniform(0, 2 * math.pi)) * 0.8 + Vector((0, 0, 0.45))).normalized()
+                sl = rng.uniform(0.4, 0.9)
+                q = p + sd * sl
+                b.tube([p, q], [0.018, 0.008], 4, 0, 0.2, 1.0)
+                for j in range(rng.randint(3, 4)):
+                    tp = q + Vector((rng.uniform(-0.45, 0.45), rng.uniform(-0.45, 0.45), rng.uniform(-0.15, 0.2)))
+                    tuft(tp, Vector((0, 0, 1)), rng.uniform(1.1, 1.6), first=(j == 0))
+        z += rng.uniform(0.4, 0.6)
+    top = trunk_at(path, H, H - 0.4)
+    tuft(top, Vector((0, 0, 1)), 1.2, first=True)
+    return b, H
+
+
+def alder2(seed):
+    """Broadleaf (alder): a straight leader running up through an oval crown, limbs leaving it all the way up and
+    forking twice, leaf clusters along the outer branches and at every twig end: a full, lumpy crown with a few
+    gaps of sky."""
+    rng = random.Random(seed)
+    b = Builder()
+    H = rng.uniform(11.5, 13.5)
+    r0 = rng.uniform(0.22, 0.28)
+    lean = Vector((rng.uniform(-0.3, 0.3), rng.uniform(-0.3, 0.3), 0))
+    path, radii = trunk_with_flare(b, H * 0.88, r0, lean, rng, 14, 1.3)
+    crown0 = H * rng.uniform(0.28, 0.36)
+    crown = Vector((path[-1].x * 0.6, path[-1].y * 0.6, (crown0 + H) * 0.52))
+    rx = rng.uniform(3.0, 3.8)
+    rz = (H - crown0) * 0.55
+
+    def inside(p):
+        q = p - crown
+        return (q.x / rx) ** 2 + (q.y / rx) ** 2 + (q.z / rz) ** 2
+
+    def leaves(p, d, n, size):
+        for i in range(n):
+            q = p + Vector((rng.uniform(-0.7, 0.7), rng.uniform(-0.7, 0.7), rng.uniform(-0.4, 0.5)))
+            if inside(q) > 1.25:
+                q = crown + (q - crown) * (1.1 / math.sqrt(inside(q)))  # keep the outline an oval
+            dd = ((q - crown).normalized() * 0.7 + d * 0.3 + Vector((0, 0, 0.15))).normalized()
+            side = dd.cross(Vector((0, 0, 1)))
+            side = side.normalized() if side.length > 0.01 else Vector((1, 0, 0))
+            cell = rng.randint(0, 3)
+            rect = (cell / 4, 0.0, (cell + 1) / 4, 1.0)
+            s = size * rng.uniform(0.85, 1.15)
+            b.card(q - dd * s * 0.45, dd, side, s, s, 1, crown, uv_rect=rect, detail=True)
+            b.card(q - dd * s * 0.45, dd, dd.cross(side).normalized(), s, s * 0.8, 1, crown, uv_rect=rect, detail=True)
+            if i % 3 == 0:
+                big = s * 1.75
+                b.card(q - dd * big * 0.45, dd, side, big, big, 1, crown, uv_rect=rect, lod_only=True)
+                b.card(q - dd * big * 0.45, dd, dd.cross(side).normalized(), big, big * 0.8, 1, crown, uv_rect=rect, lod_only=True)
+
+    def branch(start, d, L, r, depth):
+        mid = start + d * L * 0.5 + Vector((rng.uniform(-0.15, 0.15), rng.uniform(-0.15, 0.15), rng.uniform(0.0, 0.2)))
+        end = start + d * L + Vector((0, 0, 0.08 * L))
+        b.tube([start, mid, end], [r, r * 0.72, r * 0.45], 5 if depth == 0 else 4, 0, 1.0, 1.0)
+        leaves(mid.lerp(end, 0.5), d, 2 if depth == 0 else 3, rng.uniform(1.2, 1.6))
+        if depth >= 2:
+            leaves(end, d, rng.randint(5, 7), rng.uniform(1.4, 1.85))
+            return
+        for k in range(rng.randint(2, 3)):
+            ang = rng.uniform(0, 2 * math.pi)
+            nd = (d * 0.6 + horiz(ang) * 0.6 + Vector((0, 0, 0.3))).normalized()
+            branch(mid.lerp(end, rng.uniform(0.2, 1.0)), nd, L * rng.uniform(0.5, 0.68), r * 0.55, depth + 1)
+
+    # limbs leaving the leader all the way up the crown, shorter toward the top
+    z = crown0
+    a = rng.uniform(0, 2 * math.pi)
+    while z < H * 0.82:
+        rel = (z - crown0) / (H * 0.82 - crown0)
+        a += rng.uniform(1.8, 2.6)  # spiral phyllotaxis
+        rise = math.radians(rng.uniform(30, 55) + rel * 15)
+        d = (horiz(a) * math.cos(rise) + Vector((0, 0, math.sin(rise)))).normalized()
+        L = rx * (1.15 - 0.6 * rel) * rng.uniform(0.85, 1.1)
+        branch(trunk_at(path, H * 0.88, z), d, L, r0 * (0.42 - 0.2 * rel), 0)
+        z += rng.uniform(0.7, 1.1)
+    leaves(Vector((path[-1].x, path[-1].y, H * 0.9)), Vector((0, 0, 1)), 8, 1.7)
+    return b, H
+
 # ---------------------------------------------------------------- export
 
 def export(obj, name):
@@ -371,7 +597,7 @@ def main():
         "jungle": [bark_material("M_JungleBark", "AlderBark"), card_material("M_JungleFoliage", "T_JungleLeafCard_D.png")],
         "palm": [bark_material("M_PalmBark", "PineBark"), card_material("M_PalmFoliage", "T_PalmFrondCard_D.png")],
     }
-    makers = {"spruce": ("SM_Spruce", spruce, 3), "pine": ("SM_Pine", pine, 2), "alder": ("SM_Alder", alder, 2),
+    makers = {"spruce": ("SM_Spruce", spruce2, 3), "pine": ("SM_Pine", pine2, 2), "alder": ("SM_Alder", alder2, 2),
               "jungle": ("SM_Jungle", jungle, 2), "palm": ("SM_Palm", palm, 2)}
     import sys
     only = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
@@ -381,12 +607,17 @@ def main():
         for i in range(count):
             for o in list(bpy.context.scene.objects):
                 bpy.data.objects.remove(o)
-            b, H = fn(1000 * (i + 1) + len(key))
-            name = f"{prefix}_{i + 1:02d}"
-            obj = b.finish(name, mats[key])
-            tris = sum(len(p.vertices) - 2 for p in obj.data.polygons)
-            export(obj, name)
-            print("TREE", name, "height", round(H, 1), "tris", tris)
+            for lod in ((False, True) if fn in (spruce2, pine2, alder2) else (False,)):
+                for o in list(bpy.context.scene.objects):
+                    bpy.data.objects.remove(o)
+                Builder.lod = lod
+                b, H = fn(1000 * (i + 1) + len(key))
+                name = f"{prefix}_{i + 1:02d}" + ("_LOD" if lod else "")
+                obj = b.finish(name, mats[key])
+                tris = sum(len(p.vertices) - 2 for p in obj.data.polygons)
+                export(obj, name)
+                print("TREE", name, "height", round(H, 1), "tris", tris)
+            Builder.lod = False
 
 
 main()

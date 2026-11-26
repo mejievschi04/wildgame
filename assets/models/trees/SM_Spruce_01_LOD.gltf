@@ -1,0 +1,248 @@
+{
+ "asset": {
+  "generator": "Khronos glTF Blender I/O v5.3.43",
+  "version": "2.0"
+ },
+ "scene": 0,
+ "scenes": [
+  {
+   "name": "Scene",
+   "nodes": [
+    0
+   ]
+  }
+ ],
+ "nodes": [
+  {
+   "mesh": 0,
+   "name": "SM_Spruce_01_LOD"
+  }
+ ],
+ "materials": [
+  {
+   "doubleSided": true,
+   "name": "M_PineBark",
+   "normalTexture": {
+    "index": 0
+   },
+   "pbrMetallicRoughness": {
+    "baseColorTexture": {
+     "index": 1
+    },
+    "metallicRoughnessTexture": {
+     "index": 2
+    }
+   }
+  },
+  {
+   "alphaMode": "MASK",
+   "doubleSided": true,
+   "name": "M_SpruceFoliage",
+   "pbrMetallicRoughness": {
+    "baseColorTexture": {
+     "index": 3
+    },
+    "metallicFactor": 0,
+    "roughnessFactor": 0.8500000238418579
+   },
+   "alphaCutoff": 0.4
+  }
+ ],
+ "meshes": [
+  {
+   "name": "SM_Spruce_01_LOD",
+   "primitives": [
+    {
+     "attributes": {
+      "POSITION": 0,
+      "NORMAL": 1,
+      "TEXCOORD_0": 2
+     },
+     "indices": 3,
+     "material": 0
+    },
+    {
+     "attributes": {
+      "POSITION": 4,
+      "NORMAL": 5,
+      "TEXCOORD_0": 6
+     },
+     "indices": 7,
+     "material": 1
+    }
+   ]
+  }
+ ],
+ "textures": [
+  {
+   "sampler": 0,
+   "source": 0
+  },
+  {
+   "sampler": 0,
+   "source": 1
+  },
+  {
+   "sampler": 0,
+   "source": 2
+  },
+  {
+   "sampler": 0,
+   "source": 3
+  }
+ ],
+ "images": [
+  {
+   "mimeType": "image/jpeg",
+   "name": "T_PineBark_nor_gl",
+   "uri": "textures/T_PineBark_nor_gl.jpg"
+  },
+  {
+   "mimeType": "image/jpeg",
+   "name": "T_PineBark_diff",
+   "uri": "textures/T_PineBark_diff.jpg"
+  },
+  {
+   "mimeType": "image/jpeg",
+   "name": "T_PineBark_arm",
+   "uri": "textures/T_PineBark_arm.jpg"
+  },
+  {
+   "mimeType": "image/png",
+   "name": "T_FirTwigCard_D",
+   "uri": "textures/T_FirTwigCard_D.png"
+  }
+ ],
+ "accessors": [
+  {
+   "bufferView": 0,
+   "componentType": 5126,
+   "count": 136,
+   "max": [
+    0.4194999933242798,
+    15.04100227355957,
+    0.4357864260673523
+   ],
+   "min": [
+    -0.39145219326019287,
+    -0.010076154954731464,
+    -0.3958168029785156
+   ],
+   "type": "VEC3"
+  },
+  {
+   "bufferView": 1,
+   "componentType": 5126,
+   "count": 136,
+   "type": "VEC3"
+  },
+  {
+   "bufferView": 2,
+   "componentType": 5126,
+   "count": 136,
+   "type": "VEC2"
+  },
+  {
+   "bufferView": 3,
+   "componentType": 5123,
+   "count": 672,
+   "type": "SCALAR"
+  },
+  {
+   "bufferView": 4,
+   "componentType": 5126,
+   "count": 3222,
+   "max": [
+    4.199244499206543,
+    15.425477027893066,
+    4.078514575958252
+   ],
+   "min": [
+    -3.9231417179107666,
+    0.627773642539978,
+    -4.2802557945251465
+   ],
+   "type": "VEC3"
+  },
+  {
+   "bufferView": 5,
+   "componentType": 5126,
+   "count": 3222,
+   "type": "VEC3"
+  },
+  {
+   "bufferView": 6,
+   "componentType": 5126,
+   "count": 3222,
+   "type": "VEC2"
+  },
+  {
+   "bufferView": 7,
+   "componentType": 5123,
+   "count": 6444,
+   "type": "SCALAR"
+  }
+ ],
+ "bufferViews": [
+  {
+   "buffer": 0,
+   "byteLength": 1632,
+   "byteOffset": 0,
+   "target": 34962
+  },
+  {
+   "buffer": 0,
+   "byteLength": 1632,
+   "byteOffset": 1632,
+   "target": 34962
+  },
+  {
+   "buffer": 0,
+   "byteLength": 1088,
+   "byteOffset": 3264,
+   "target": 34962
+  },
+  {
+   "buffer": 0,
+   "byteLength": 1344,
+   "byteOffset": 4352,
+   "target": 34963
+  },
+  {
+   "buffer": 0,
+   "byteLength": 38664,
+   "byteOffset": 5696,
+   "target": 34962
+  },
+  {
+   "buffer": 0,
+   "byteLength": 38664,
+   "byteOffset": 44360,
+   "target": 34962
+  },
+  {
+   "buffer": 0,
+   "byteLength": 25776,
+   "byteOffset": 83024,
+   "target": 34962
+  },
+  {
+   "buffer": 0,
+   "byteLength": 12888,
+   "byteOffset": 108800,
+   "target": 34963
+  }
+ ],
+ "samplers": [
+  {
+   "magFilter": 9729,
+   "minFilter": 9987
+  }
+ ],
+ "buffers": [
+  {
+   "byteLength": 121688,
+   "uri": "SM_Spruce_01_LOD.bin"
+  }
+ ]
+}

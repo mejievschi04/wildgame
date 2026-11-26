@@ -197,7 +197,7 @@ func habitat_ok(species: StringName, x: float, z: float) -> bool:
 	# climate bands come first: only jungle animals in the jungle, only cold-hardy ones on the tundra
 	if ForestWorld.jungle_at(x, z) > 0.5:
 		return bool(def.get("jungle", false))
-	if ForestWorld.tundra_at(x, z) > 0.5:
+	if ForestWorld.cold_at(x, z) > 0.5:  # the tundra and the snowy taiga
 		return bool(def.get("tundra", false))
 	var hab: Array = def.get("habitat", [])
 	return hab.is_empty() or hab.has(String(world.region_at(x, z)))

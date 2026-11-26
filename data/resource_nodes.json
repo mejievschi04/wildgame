@@ -173,5 +173,12 @@
 		"capacity": 6,
 		"regrow": 2880,
 		"blocking": false
+	},
+	"deadwood": {
+		"hand_yield": {"stick": 2},
+		"capacity": 3,
+		"hold": 0.8,
+		"regrow": 1800,
+		"blocking": false
 	}
 }

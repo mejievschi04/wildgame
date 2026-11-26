@@ -8,19 +8,19 @@ extends Node3D
 ## (40 m cells near the map, coarser further out) standing on the terrain's edge heights, plus an absolute-height
 ## texture the shader marches over for terrain shadows. Its shader hazes it itself, so it stays visible ~10 km away.
 
-const EXTENT := 11000.0
+const EXTENT := 13100.0
 const FINE := 40.0
-const FINE_TO := 3800.0
-const INNER := 2100.0  # = ForestWorld.HALF: the terrain mesh covers everything inside
+const FINE_TO := 5900.0
+const INNER := 4200.0  # = ForestWorld.HALF: the terrain mesh covers everything inside
 const HMAX := 6000.0   # gen_backdrop.py HMAX: 16-bit height range
 const HM_PATH := "res://assets/textures/backdrop/T_Backdrop_HM.png"
 const N_PATH := "res://assets/textures/backdrop/T_Backdrop_N.png"
 ## [x, z, height, radius, crater radius, smoke]  (south = +z) — keep in sync with gen_backdrop.py
 const VOLCANOES := [
-	[900.0, 5400.0, 2700.0, 3900.0, 380.0, 1.0],
-	[-1500.0, 3900.0, 1800.0, 2700.0, 240.0, 0.25],
-	[3100.0, 3600.0, 1350.0, 2300.0, 200.0, 0.0],
-	[-3700.0, 3200.0, 1100.0, 2000.0, 170.0, 0.0],
+	[1350.0, 7500.0, 2700.0, 3900.0, 380.0, 1.0],
+	[-2250.0, 6000.0, 1800.0, 2700.0, 240.0, 0.25],
+	[4650.0, 5700.0, 1350.0, 2300.0, 200.0, 0.0],
+	[-5550.0, 5300.0, 1100.0, 2000.0, 170.0, 0.0],
 ]
 
 var world: ForestWorld

@@ -160,14 +160,16 @@ func test_hungry_predator_comes_to_a_carcass() -> void:
 func test_climate_habitats_and_temperature() -> void:
 	var s: GameSession = await _boot()
 	var w := s.world
-	check(w.wildlife.habitat_ok(&"lion", 100.0, 1500.0), "cave lions live in the jungle")
-	check(not w.wildlife.habitat_ok(&"mammoth", 100.0, 1500.0), "no mammoths in the jungle")
-	check(not w.wildlife.habitat_ok(&"bison", 100.0, 1500.0), "no bison in the jungle")
-	check(w.wildlife.habitat_ok(&"bison", 180.0, -1740.0), "bison on the tundra")
-	check(not w.wildlife.habitat_ok(&"lion", 180.0, -1740.0), "no cave lions on the tundra")
+	var south := Vector2(2250.0, 3200.0)
+	var north: Vector2 = ForestWorld.REGIONS[&"tundra"]
+	check(w.wildlife.habitat_ok(&"lion", south.x, south.y), "cave lions live in the jungle")
+	check(not w.wildlife.habitat_ok(&"mammoth", south.x, south.y), "no mammoths in the jungle")
+	check(not w.wildlife.habitat_ok(&"bison", south.x, south.y), "no bison in the jungle")
+	check(w.wildlife.habitat_ok(&"bison", north.x, north.y), "bison on the tundra")
+	check(not w.wildlife.habitat_ok(&"lion", north.x, north.y), "no cave lions on the tundra")
 	var mid := w.ambient_temperature_at(w.ground_point(0, 0))
-	check(w.ambient_temperature_at(w.ground_point(600, 1300)) > mid + 6.0, "the jungle is warm")
-	check(w.ambient_temperature_at(w.ground_point(180, -1800)) < mid - 9.0, "the tundra is cold")
+	check(w.ambient_temperature_at(w.ground_point(south.x, south.y)) > mid + 6.0, "the jungle is warm")
+	check(w.ambient_temperature_at(w.ground_point(north.x, north.y)) < mid - 9.0, "the tundra is cold")
 	await _teardown(s)
 
 

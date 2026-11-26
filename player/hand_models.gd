@@ -14,14 +14,22 @@ const HOLD := {
 	&"sickle": [Vector3(0, -0.04, 0), Vector3(-35, -20, -8), 1.0],
 	&"digging_stick": [Vector3(-0.02, 0.05, 0.12), Vector3(-62, 0, 0), 0.9],
 	&"fishing_spear": [Vector3(-0.02, 0.05, 0.14), Vector3(-75, 0, 0), 0.9],
-	# Carried diagonally across the view, point up and out to the right, the hand low in the corner.
-	&"spear": [Vector3(-0.1, 0.06, 0.1), Vector3(-40, -70, -10), 0.9],
+	# As in Far Cry Primal: the fist over the shaft low on the right, knuckles up, the forearm out of the bottom edge,
+	# the shaft running forward to the middle of the view (HAND_TILT cocks the wrist to match). Right hand, thumb
+	# toward the head.
+	&"spear": [Vector3(-0.129, 0.136, 0.377), Vector3(-39.1, -56.2, 67.1), 0.9],
 	&"torch": [Vector3(0, -0.12, 0), Vector3(-12, 0, -6), 0.9],
 	&"stone": [Vector3(0, 0, 0), Vector3(0, 30, 0), 1.0],
 	# Held out front on the left, string toward the camera, canted like an instinctive archer (the stave is thick:
 	# kept clear of the line of sight).
 	&"bow": [Vector3(-0.62, 0.42, -0.05), Vector3(6, 14, 24), 1.0],
 }
+## Held items and the hand round them are drawn this much bigger than the 0.75-scaled hand anchor gave them, scaled
+## about the grip (the fist stays where it is on screen). At 0.75 a 1.9 m spear held 0.6 m from the eye read as a
+## 1.3 m toy; this brings them to their real size at arm's length, as other first-person games show them.
+const VIEW_SCALE := 1.4
+## The bow is placed in view space by its own transform and already spans most of the view: kept as it was.
+const BOW_SCALE_UP := 1.0
 const HAND_PATH := "res://assets/models/humans/SM_FP_Hand_R.gltf"
 const HAND_L_PATH := "res://assets/models/humans/SM_FP_Hand_L.gltf"
 ## Items held without the right hand drawn (the bow is held in the left hand; small stones are thrown).
@@ -29,14 +37,54 @@ const NO_HAND := [&"bow", &"stone"]
 ## Held in the left hand (its own hand model, its forearm coming from the lower left).
 const LEFT_HAND := [&"bow"]
 ## Aiming pose (right mouse button) per item, blended in by the player: [position, rotation_degrees] of the model.
-## The spear goes back over the shoulder, point forward, ready to throw.
+## The spear is raised over the shoulder, the fist up in the right of the view and the point aimed at the crosshair
+## (25 m out), ready to throw; the forearm drops away to the lower right.
 const AIM := {
-	&"spear": [Vector3(0.0, 0.62, 0.5), Vector3(-95, 8, 0)],
+	&"spear": [Vector3(-0.019, 0.597, 0.06), Vector3(-29.5, -72.8, 81.3)],
 }
 ## Per item: [yaw of the hand around the handle (degrees), offset along the handle] in the item's model space.
 const HAND_FIX := {}
 const FOREARM_TOWARD := Vector3(0.45, -0.55, 1.0)  # in the hand anchor's space: back toward the eye, low right
 const FOREARM_TOWARD_L := Vector3(-0.35, -0.6, 1.0)  # the left hand's forearm: back toward the eye, low left
+## Per item, where the forearm goes instead of FOREARM_TOWARD (hand anchor space).
+const FOREARM_DIR := {
+	# the spear, as in Far Cry Primal: the fist over the shaft at the bottom right, the forearm dropping out of the
+	# bottom edge, the shaft running forward to the middle of the view
+	&"spear": Vector3(0.25, -0.9, 0.35),
+}
+
+
+## Per item, the wrist bent toward the butt (degrees about the hand's own X axis): the fist modelled square to the
+## forearm, a spear carried pointing forward needs the hand cocked back so the forearm still comes from below.
+const HAND_TILT := {&"spear": 40.0}
+## Held with the thumb toward the butt (the fist turned round on the shaft). Empty: the player's right hand always
+## grips with the thumb toward the head.
+const HAND_FLIP := []
+
+
+## Rotation of the hand (child of the item model) for the item held in `item_basis`: turned round the handle so the
+## forearm points most toward forearm_toward(id), with the wrist bent by HAND_TILT.
+static func hand_basis(id: StringName, item_basis: Basis) -> Basis:
+	var tilt := Basis(Vector3.RIGHT, deg_to_rad(float(HAND_TILT.get(id, 0.0))))
+	if id in HAND_FLIP:
+		tilt = tilt * Basis(Vector3.BACK, PI)
+	var target := forearm_toward(id).normalized()
+	var b := item_basis.orthonormalized()
+	var best := 0.0
+	var best_dot := -INF
+	for k in 72:
+		var yaw := deg_to_rad(k * 5.0)
+		var dot := (b * Basis(Vector3.UP, yaw) * tilt * Vector3(0, 0, 1)).dot(target)
+		if dot > best_dot:
+			best_dot = dot
+			best = yaw
+	return Basis(Vector3.UP, best) * tilt
+
+
+static func forearm_toward(id: StringName) -> Vector3:
+	if id in LEFT_HAND:
+		return FOREARM_TOWARD_L
+	return FOREARM_DIR.get(id, FOREARM_TOWARD)
 
 
 ## Yaw (degrees, about the handle = the item's +Y) that points the hand's forearm (its +Z) most toward `toward`.
@@ -68,7 +116,7 @@ static func build(id: StringName) -> Node3D:
 		var pose: Array = HOLD.get(id, [Vector3.ZERO, Vector3(-30, 0, 0), 1.0])
 		m.position = pose[0]
 		m.rotation_degrees = pose[1]
-		m.scale = Vector3.ONE * float(pose[2])
+		m.scale = Vector3.ONE * float(pose[2]) * (VIEW_SCALE if id not in LEFT_HAND else 1.0)
 		root.add_child(m)
 		if id not in NO_HAND and ResourceLoader.exists(HAND_PATH):
 			# The player's own hand around the grip: a child of the item, so it follows its hold pose and swings.
@@ -76,7 +124,12 @@ static func build(id: StringName) -> Node3D:
 			hand.name = "Hand"
 			var fix: Array = HAND_FIX.get(id, [INF, Vector3.ZERO])
 			# turn round the handle so the forearm comes from the camera, down and to the right
-			hand.rotation_degrees = Vector3(0, float(fix[0]) if fix[0] != INF else _forearm_yaw(m.basis), 0)
+			if fix[0] != INF:
+				hand.rotation_degrees = Vector3(0, float(fix[0]), 0)
+			elif HAND_TILT.has(id) or id in HAND_FLIP:
+				hand.basis = hand_basis(id, m.basis)
+			else:
+				hand.rotation_degrees = Vector3(0, _forearm_yaw(m.basis, forearm_toward(id)), 0)
 			hand.position = fix[1]
 			hand.scale = Vector3.ONE / maxf(float(pose[2]), 0.01)
 			m.add_child(hand)
@@ -90,7 +143,8 @@ static func build(id: StringName) -> Node3D:
 			m.add_child(left)
 			HumanNPC._tune_skin(left)
 		if id == &"torch":
-			var flame := Graybox.part(root, Graybox.sphere(0.05, 8), Color(1.0, 0.6, 0.2), Vector3(0, 0.33, -0.08))
+			var head := (pose[0] as Vector3) + (Vector3(0, 0.33, -0.08) - (pose[0] as Vector3)) * VIEW_SCALE
+			var flame := Graybox.part(root, Graybox.sphere(0.05 * VIEW_SCALE, 8), Color(1.0, 0.6, 0.2), head)
 			flame.material_override = Graybox.mat(Color(1.0, 0.55, 0.2), 1.0, 3.0)
 	else:
 		Graybox.part(root, Graybox.box(Vector3(0.1, 0.1, 0.1)), Color.GRAY)
@@ -110,8 +164,7 @@ const VIEW_Z_CLIP := 0.2
 ## the forearm's direction, so the forearm stays rooted in the corner of the view as the blow comes down.
 static func swing_pivot(id: StringName) -> Vector3:
 	var pose: Array = HOLD.get(id, [Vector3.ZERO, Vector3(-30, 0, 0), 1.0])
-	var toward := FOREARM_TOWARD_L if id in LEFT_HAND else FOREARM_TOWARD
-	return (pose[0] as Vector3) + toward.normalized() * FOREARM
+	return (pose[0] as Vector3) + forearm_toward(id).normalized() * FOREARM * VIEW_SCALE
 
 
 static var _view_mats: Dictionary = {}
@@ -137,8 +190,8 @@ static func _viewmodel_materials(root: Node) -> void:
 ## away to the right, an arrow on the string, and the arrow always pointing at the crosshair (the shot really
 ## leaves along the view axis). Drawing pulls the arrow back and lifts the bow a little; the pose stays the same.
 ## Static vars so AutoShot can tune them.
-const BOW_VIEW_SCALE := 0.8
-const BOW_HAND_SCALE := 1.2
+const BOW_VIEW_SCALE := 0.8 * BOW_SCALE_UP
+const BOW_HAND_SCALE := 1.2 * BOW_SCALE_UP
 static var BOW_GRIP := Vector3(0.1, -0.22, -0.42)      # the grip (model origin) in the view, carried
 static var BOW_GRIP_DRAWN := Vector3(0.07, -0.17, -0.46)
 static var BOW_CANT := 30.0                             # degrees, the top to the right

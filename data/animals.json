@@ -7,7 +7,7 @@
 		"radius": 0.35, "height": 1.5, "length": 1.4,
 		"loot": {"meat_raw": 6, "hide": 2, "bone": 3}, "group": [2, 4], "max": 8, "track": "hoof",
 		"spawn_min": 55, "spawn_max": 95,
-		"habitat": ["aruun","tavren","meyra","kharum"], "min_wild": 0, "respawn_h": 2, "jungle": true, "tundra": false
+		"habitat": ["aruun","tavren","meyra","kharum","ossara"], "min_wild": 0, "respawn_h": 2, "jungle": true, "tundra": false
 	},
 	"megaloceros": {
 		"model": "res://assets/models/animals/SK_Megaloceros_Textured.glb", "diet": "prey", "health": 220,

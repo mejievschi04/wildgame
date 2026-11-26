@@ -29,6 +29,11 @@ func _stand_at(p: Player, t: TreeNode, side: Vector3) -> void:
 	p.global_position = t.global_position + side.normalized() * 1.5 + Vector3.UP * 0.2
 
 
+func _sticks() -> int:
+	return tree.get_nodes_in_group("pickup").filter(func(n: Node) -> bool:
+		return n is WorldPickup and (n as WorldPickup).stack.id == &"stick").size()
+
+
 func test_fall_is_physical_and_lands() -> void:
 	var s: GameSession = await _boot()
 	var p := s.player
@@ -39,6 +44,7 @@ func test_fall_is_physical_and_lands() -> void:
 		t.on_hit(p, axe)
 	eq(t.stage, TreeNode.Stage.STANDING, "still standing before the last hit")
 	check(t.get_status_text() != "", "notch progress shown")
+	var sticks_before := _sticks()
 	t.on_hit(p, axe)
 	eq(t.stage, TreeNode.Stage.FALLING, "falling")
 	check(t.fall_dir.dot(Vector3(-1, 0, 0)) > 0.9, "falls away from the chopper")
@@ -49,6 +55,9 @@ func test_fall_is_physical_and_lands() -> void:
 		max_angle = maxf(max_angle, t.fall_angle)
 		frames += 1
 	eq(t.stage, TreeNode.Stage.FALLEN, "landed")
+	var shed := _sticks() - sticks_before
+	check(shed >= TreeNode.TWIGS_MIN and shed <= TreeNode.TWIGS_MAX,
+		"the crown sheds %d-%d twigs when it hits the ground (%d)" % [TreeNode.TWIGS_MIN, TreeNode.TWIGS_MAX, shed])
 	check(frames > 90 and frames < 480, "fall takes a realistic 1.5–8 s (%d frames)" % frames)
 	near(t.fall_angle, t.final_angle, 0.01, "rests at the landing angle")
 	check(t.final_angle > deg_to_rad(50.0), "lands near horizontal (%.0f°)" % rad_to_deg(t.final_angle))

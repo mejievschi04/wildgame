@@ -6,12 +6,16 @@ const GAME_SCENE := "res://scenes/game.tscn"
 
 ## Save data the next GameSession applies on _ready (empty = new game).
 var pending_save: Dictionary = {}
+var pending_opening := false
 var current_slot := "slot1"
 var _loading: LoadingScreen
 
 
-func new_game() -> void:
+func new_game(with_opening := false) -> void:
+	if _loading:
+		return
 	pending_save = {}
+	pending_opening = with_opening
 	_enter_game()
 
 
@@ -21,11 +25,14 @@ func continue_game() -> bool:
 
 
 func load_slot(slot: String) -> bool:
+	if _loading:
+		return false
 	var data := SaveManager.load_game(slot)
 	if data.is_empty():
 		Events.toast(TranslationServer.translate("MSG_LOAD_FAILED"), &"danger")
 		return false
 	pending_save = data
+	pending_opening = false
 	if slot != "autosave":
 		current_slot = slot
 	_enter_game()
@@ -76,4 +83,8 @@ func _enter_game() -> void:
 	while not _loading.caught_up():
 		await tree.process_frame
 	_loading.finish()
+	await _loading.finished
 	_loading = null
+	var session := tree.current_scene as GameSession
+	if session:
+		session.play_opening()

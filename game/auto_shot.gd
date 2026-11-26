@@ -4,7 +4,7 @@ extends Node
 ## Usage: godot --path . -- --autoshot=/abs/out.png [--shot-frames=120] [--shot-hour=21.5] [--shot-scenario=inventory]
 ## Scenarios: none, inventory, journal, pause, camp (lit fire + bed in view), kit (starter items), prompt (aim at sticks),
 ## tribe (Neanderthal clan + two sapiens in a row), tribelife (a camp at work / asleep; SHOT_CAMP=hunters|clan|gatherers),
-## flow (menu → new game through the loading screen; run on main_menu.tscn), keyart (menu art, SHOT_HERD / SHOT_FIRE), build (hut + lean-to + blueprint + active ghost), buildmenu (radial menu), fauna (all species, live), spear / club / bow / axe / knife (weapon in hand; bow mid-draw unless SHOT_REST, SHOT_AIM, SHOT_HOLD), river (main river valley from the bank), house (3/4 view of the build demo), farm (garden beds + wild plants).
+## flow (menu → new game through the loading screen; run on main_menu.tscn), keyart (menu art, SHOT_HERD / SHOT_FIRE), build (hut + lean-to + blueprint + active ghost), buildmenu (radial menu), fauna (all species, live), spear / club / bow / axe / knife (weapon in hand; bow mid-draw unless SHOT_REST, SHOT_AIM, SHOT_HOLD), arrows (arrows shot into a deer from the side), river (main river valley from the bank), house (3/4 view of the build demo), farm (garden beds + wild plants).
 
 var out_path := ""
 var frames := 120
@@ -352,14 +352,48 @@ func _ready() -> void:
 		p.global_position = session.world.ground_point(view.x, view.z) + Vector3.UP * 0.3
 		p.look_at(Vector3(best.global_position.x + vd * 0.3, p.global_position.y, best.global_position.z))
 		p.rotation = Vector3(0, p.rotation.y, 0)
-		p.head.rotation.x = 0.15
+		p.head.rotation.x = float(_env("pitch")) if _env("pitch") != "" else 0.15
+		if _env("alt") != "":
+			p.global_position.y += float(_env("alt"))
+			p.set_physics_process(false)
+		if _env("twigs") != "":  # SHOT_TWIGS=1: after the landing, look down at the twigs the crown shed (no bucking)
+			get_tree().create_timer(7.0).timeout.connect(func() -> void:
+				var sum := Vector3.ZERO
+				var count := 0
+				for n in get_tree().get_nodes_in_group("pickup"):
+					if n is WorldPickup and (n as WorldPickup).stack.id == &"stick" \
+							and (n as Node3D).global_position.distance_to(best.global_position) < 30.0:
+						var q := (n as Node3D).global_position
+						print("TWIG above_ground=%.2f" % (q.y - session.world.height_at(q.x, q.z)))
+						sum += q
+						count += 1
+				if count == 0:
+					return
+				var mid := sum / count
+				var eye := mid + best.fall_dir.cross(Vector3.UP) * 9.0 - best.fall_dir * 4.0
+				var up := 7.0
+				if _env("near") != "":  # SHOT_NEAR=1: eye level, 3 m from the twig nearest the stump
+					var pick: Vector3 = Vector3.INF
+					for n in get_tree().get_nodes_in_group("pickup"):
+						var q := (n as Node3D).global_position
+						if n is WorldPickup and (n as WorldPickup).stack.id == &"stick" and q.y > ForestWorld.WATER_LEVEL + 0.3 \
+								and q.distance_to(best.global_position) < pick.distance_to(best.global_position):
+							pick = q
+					mid = pick
+					eye = mid + (mid - best.global_position).normalized().cross(Vector3.UP) * 3.0
+					up = 1.4
+				p.set_physics_process(false)
+				p.global_position = session.world.ground_point(eye.x, eye.z) + Vector3.UP * up
+				p.look_at(Vector3(mid.x, p.global_position.y, mid.z))
+				p.rotation = Vector3(0, p.rotation.y, 0)
+				p.head.rotation.x = -0.6 if _env("near") == "" else -0.35)
 		print("FELL ", best.node_id, " ", best.species, " h=", best.height, " cut=", best.cut_h)
 		var buck := func() -> void:
 			if best.stage == TreeNode.Stage.FALLEN:
 				var at := p.global_position
 				best.on_hit(p, axe)
 				print("FELL hit limb=", best.limb, " remaining=", best.remaining)
-		for t in [6.0, 7.0, 9.0, 10.0, 11.0, 12.0, 13.0]:
+		for t in ([] if _env("twigs") != "" else [6.0, 7.0, 9.0, 10.0, 11.0, 12.0, 13.0]):
 			get_tree().create_timer(t).timeout.connect(buck)
 	if scenario == "chop":
 		var best: TreeNode = null
@@ -484,6 +518,90 @@ func _ready() -> void:
 		p.look_at(Vector3(wf.foot.x, p.global_position.y, wf.foot.z))
 		p.rotation = Vector3(0, p.rotation.y, 0)
 		p.head.rotation.x = float(_env("pitch")) if _env("pitch") != "" else 0.12
+	if scenario == "landmark":  # SHOT_KIND=mammoth|totem|stones|old_camp|embers: stand 12 m from the nearest of that kind
+		var want := StringName(_env("kind") if _env("kind") != "" else "mammoth")
+		var best: Vector3 = Vector3.INF
+		var counts := {}
+		for e: Array in session.world.landmarks.placed:
+			counts[e[0]] = int(counts.get(e[0], 0)) + 1
+			if e[0] == want and (best == Vector3.INF or (e[1] as Vector3).length() < best.length()):
+				best = e[1]
+		print("LANDMARKS ", session.world.landmarks.placed.size(), " ", counts, " target=", best)
+		if best != Vector3.INF:
+			var dist := float(_env("dist")) if _env("dist") != "" else 12.0
+			var at := best + Vector3(dist * 0.8, 0, dist * 0.6)
+			var veg := session.world.get_node_or_null("Vegetation") as Vegetation
+			if veg:
+				veg._stream_near(Vector2(best.x, best.z))
+			p.global_position = session.world.ground_point(at.x, at.z) + Vector3.UP * 0.3
+			p.look_at(Vector3(best.x, p.global_position.y, best.z))
+			p.rotation = Vector3(0, p.rotation.y, 0)
+			p.head.rotation.x = float(_env("pitch")) if _env("pitch") != "" else -0.05
+	if scenario == "deadwood":  # the nearest dry twig bush, 3.5 m ahead (SHOT_DIST)
+		var best: Node3D = null
+		for n: Node in get_tree().get_nodes_in_group("resource_node"):
+			if n is ResourceNode and (n as ResourceNode).kind == &"deadwood" and (best == null
+					or (n as Node3D).global_position.distance_to(p.global_position) < best.global_position.distance_to(p.global_position)):
+				best = n
+		print("DEADWOOD count=", get_tree().get_nodes_in_group("resource_node").filter(func(n: Node) -> bool:
+			return n is ResourceNode and (n as ResourceNode).kind == &"deadwood").size(), " nearest=", best.global_position if best else Vector3.INF)
+		if best:
+			var dist := float(_env("dist")) if _env("dist") != "" else 3.5
+			var at := best.global_position + Vector3(dist, 0, 0.8)
+			p.global_position = session.world.ground_point(at.x, at.z) + Vector3.UP * 0.2
+			p.look_at(Vector3(best.global_position.x, p.global_position.y, best.global_position.z))
+			p.head.rotation.x = -0.2
+	if scenario == "building":  # SHOT_NAME (e.g. FamilyShelter, LookoutTower) seen from SHOT_DIST m before its door,
+		# SHOT_SIDE m to the side, SHOT_ALT m up; SHOT_CITY=Kharum|North|Varkai|Aruun|PlayerCampMarker narrows the search
+		var scope: Node = session.world.camps
+		if _env("city") != "":
+			scope = session.world.camps.find_child(_env("city"), true, false)
+		var b := scope.find_child(_env("name") if _env("name") != "" else "GatheringShelter", true, false) as Node3D
+		print("BUILDING ", b.get_path() if b else "none", " at ", b.global_position if b else Vector3.INF)
+		if b:
+			var dist := float(_env("dist")) if _env("dist") != "" else 12.0
+			var side := float(_env("side")) if _env("side") != "" else 4.0
+			var at := b.global_position + b.global_basis.z * dist + b.global_basis.x * side
+			p.global_position = session.world.ground_point(at.x, at.z) + Vector3.UP * 0.2
+			if _env("alt") != "":
+				p.global_position.y += float(_env("alt"))
+				p.set_physics_process(false)
+			p.look_at(Vector3(b.global_position.x, p.global_position.y, b.global_position.z))
+			p.head.rotation.x = float(_env("pitch")) if _env("pitch") != "" else 0.05
+	if scenario == "raid":  # a night war party: SHOT_DIST m off (default 35), SHOT_FACTION, SHOT_SIZE; use --shot-hour
+		session.world.wildlife.enabled = false
+		var r := session.world.raids
+		r.enabled = false
+		var f := StringName(_env("faction")) if _env("faction") != "" else &"varkai"
+		var party := r.start(f, int(_env("size")) if _env("size") != "" else 4)
+		var dist := float(_env("dist")) if _env("dist") != "" else 35.0
+		var ahead := -p.global_transform.basis.z
+		for i in party.size():
+			var side := ahead.cross(Vector3.UP) * (float(i) - (party.size() - 1) * 0.5) * 3.5
+			var at := p.global_position + ahead * (dist + (i % 2) * 4.0) + side
+			party[i].global_position = session.world.ground_point(at.x, at.z) + Vector3.UP * 0.1
+		print("RAID ", f, " ", party.size(), " phase ", r.phase, " at ", party.map(func(n: HumanNPC) -> Vector3: return n.global_position - p.global_position))
+	if scenario == "arrows":  # arrows shot from the right into a deer standing 4.5 m ahead, and into the ground
+		session.world.wildlife.enabled = false
+		var fwd := -p.global_transform.basis.z
+		var at := p.global_position + fwd * 4.5
+		var deer: Animal = session.world.wildlife.spawn(&"deer", session.world.ground_point(at.x, at.z) + Vector3.UP * 0.2)
+		deer.rotation.y = p.rotation.y + PI * 0.5
+		deer.set_physics_process(false)
+		p.head.rotation.x = -0.18
+		get_tree().create_timer(0.5).timeout.connect(func() -> void:
+			var c := deer.global_position + Vector3.UP * 1.0
+			var side := p.global_transform.basis.x
+			for k in 5:
+				var a := ThrownSpear.new()
+				session.world.pickups_root.add_child(a)
+				a.drag = Player.ARROW_DRAG
+				a.stick_speed = 11.0
+				var tgt := c + side * (k - 2) * 0.22 + Vector3.UP * (0.1 if k % 2 else -0.15)
+				if k == 4:
+					tgt = session.world.ground_point(c.x, c.z) + side * 1.2 + fwd * -1.0
+				var from := tgt + side * 8.0 + fwd * 1.5 + Vector3.UP * 0.8
+				a.launch(ItemStack.new(&"arrow", 1), from, (tgt - from).normalized() * 42.0, p))
 	if scenario in ["spear", "club", "bow", "axe", "knife"]:
 		session.world.wildlife.enabled = false
 		var weapon := StringName({"axe": "stone_axe", "knife": "flint_knife"}.get(scenario, scenario))
@@ -593,6 +711,9 @@ func _process(delta: float) -> void:
 		if m and v.size() >= 6:
 			m.position = Vector3(v[0], v[1], v[2])
 			m.rotation_degrees = Vector3(v[3], v[4], v[5])
+			var hand := m.get_node_or_null("Hand") as Node3D
+			if hand:  # the hand turns round the handle with the new pose, as HandModels.build does
+				hand.basis = HandModels.hand_basis(p.get("_hand_item_id"), m.basis).scaled(hand.scale)
 	if _n > frames - 120:
 		_fps_samples.append(1.0 / maxf(delta, 0.0001))
 	var session := get_parent() as GameSession

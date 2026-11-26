@@ -1,0 +1,155 @@
+{
+  "asset": {
+    "generator": "Khronos glTF Blender I/O v5.3.43",
+    "version": "2.0"
+  },
+  "scene": 0,
+  "scenes": [
+    {
+      "name": "Scene",
+      "nodes": [
+        0
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "mesh": 0,
+      "name": "SM_Jungle_Tripo"
+    }
+  ],
+  "materials": [
+    {
+      "name": "tripo_mat_c430ddce-7189-4d27-b2dd-9fd8219d8bf2",
+      "normalTexture": {
+        "index": 0
+      },
+      "pbrMetallicRoughness": {
+        "baseColorTexture": {
+          "index": 1
+        },
+        "metallicRoughnessTexture": {
+          "index": 2
+        }
+      }
+    }
+  ],
+  "meshes": [
+    {
+      "name": "SM_Jungle_Tripo",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 0,
+            "NORMAL": 1,
+            "TEXCOORD_0": 2
+          },
+          "indices": 3,
+          "material": 0
+        }
+      ]
+    }
+  ],
+  "textures": [
+    {
+      "sampler": 0,
+      "source": 0
+    },
+    {
+      "sampler": 0,
+      "source": 1
+    },
+    {
+      "sampler": 0,
+      "source": 2
+    }
+  ],
+  "images": [
+    {
+      "name": "tropical_tree_3d_model_normal",
+      "uri": "textures/T_Jungle_Tripo_normal.jpg"
+    },
+    {
+      "name": "tropical_tree_3d_model_basecolor",
+      "uri": "textures/T_Jungle_Tripo_basecolor.jpg"
+    },
+    {
+      "name": "tropical_tree_3d_model_rm",
+      "uri": "textures/T_Jungle_Tripo_rm.jpg"
+    }
+  ],
+  "accessors": [
+    {
+      "bufferView": 0,
+      "componentType": 5126,
+      "count": 25947,
+      "max": [
+        4.983994007110596,
+        19.893722534179688,
+        4.329469680786133
+      ],
+      "min": [
+        -4.992906093597412,
+        0.015791194513440132,
+        -4.255422115325928
+      ],
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 1,
+      "componentType": 5126,
+      "count": 25947,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 2,
+      "componentType": 5126,
+      "count": 25947,
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 3,
+      "componentType": 5123,
+      "count": 50901,
+      "type": "SCALAR"
+    }
+  ],
+  "bufferViews": [
+    {
+      "buffer": 0,
+      "byteLength": 311364,
+      "byteOffset": 0,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteLength": 311364,
+      "byteOffset": 311364,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteLength": 207576,
+      "byteOffset": 622728,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteLength": 101802,
+      "byteOffset": 830304,
+      "target": 34963
+    }
+  ],
+  "samplers": [
+    {
+      "magFilter": 9729,
+      "minFilter": 9987
+    }
+  ],
+  "buffers": [
+    {
+      "byteLength": 932108,
+      "uri": "SM_Jungle_Tripo.bin"
+    }
+  ]
+}

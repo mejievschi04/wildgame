@@ -1,0 +1,340 @@
+{
+ "North_Banner": {
+  "footprint": [
+   0.5,
+   0.5
+  ],
+  "height": 4.93,
+  "shape": "post",
+  "tris": 1144
+ },
+ "North_Canopy": {
+  "footprint": [
+   4.4,
+   5.4
+  ],
+  "height": 3.52,
+  "shape": "open",
+  "tris": 4992
+ },
+ "North_Fence": {
+  "footprint": [
+   4.0,
+   0.5
+  ],
+  "height": 2.53,
+  "shape": "wall",
+  "tris": 1970
+ },
+ "North_FenceB": {
+  "footprint": [
+   4.0,
+   0.5
+  ],
+  "height": 3.12,
+  "shape": "wall",
+  "tris": 2438
+ },
+ "North_Gate": {
+  "footprint": [
+   6.0,
+   1.0
+  ],
+  "height": 4.82,
+  "shape": "gate",
+  "tris": 1860
+ },
+ "North_Hall": {
+  "footprint": [
+   8.0,
+   11.8
+  ],
+  "height": 6.3,
+  "shape": "round",
+  "tris": 18307
+ },
+ "North_House": {
+  "footprint": [
+   6.0,
+   6.9
+  ],
+  "height": 4.8,
+  "shape": "round",
+  "tris": 13379
+ },
+ "North_Hut": {
+  "footprint": [
+   4.8,
+   4.8
+  ],
+  "height": 4.0,
+  "shape": "round",
+  "tris": 11071
+ },
+ "North_Tower": {
+  "footprint": [
+   5.4,
+   5.4
+  ],
+  "height": 10.65,
+  "shape": "round",
+  "tris": 45075
+ },
+ "Player_Banner": {
+  "footprint": [
+   0.5,
+   0.5
+  ],
+  "height": 4.2,
+  "shape": "post",
+  "tris": 767
+ },
+ "Player_Canopy": {
+  "footprint": [
+   4.4,
+   5.4
+  ],
+  "height": 3.6,
+  "shape": "open",
+  "tris": 5320
+ },
+ "Player_Fence": {
+  "footprint": [
+   4.0,
+   0.5
+  ],
+  "height": 2.96,
+  "shape": "wall",
+  "tris": 2492
+ },
+ "Player_FenceB": {
+  "footprint": [
+   4.0,
+   0.5
+  ],
+  "height": 2.98,
+  "shape": "wall",
+  "tris": 2620
+ },
+ "Player_Gate": {
+  "footprint": [
+   6.0,
+   1.0
+  ],
+  "height": 5.15,
+  "shape": "gate",
+  "tris": 1990
+ },
+ "Player_Hall": {
+  "footprint": [
+   8.0,
+   11.0
+  ],
+  "height": 8.63,
+  "shape": "rect",
+  "tris": 39934
+ },
+ "Player_House": {
+  "footprint": [
+   5.0,
+   6.4
+  ],
+  "height": 5.72,
+  "shape": "rect",
+  "tris": 20574
+ },
+ "Player_Hut": {
+  "footprint": [
+   5.4,
+   5.4
+  ],
+  "height": 3.61,
+  "shape": "round",
+  "smoke": [
+   -0.012,
+   3.439,
+   -0.408
+  ],
+  "tris": 35080
+ },
+ "Player_Ruin": {
+  "footprint": [
+   5.0,
+   6.4
+  ],
+  "height": 5.32,
+  "shape": "rect",
+  "tris": 17704
+ },
+ "Player_Tower": {
+  "footprint": [
+   5.4,
+   5.4
+  ],
+  "height": 10.65,
+  "shape": "round",
+  "tris": 45075
+ },
+ "Red_Banner": {
+  "footprint": [
+   0.5,
+   0.5
+  ],
+  "height": 4.2,
+  "shape": "post",
+  "tris": 875
+ },
+ "Red_Canopy": {
+  "footprint": [
+   4.4,
+   5.4
+  ],
+  "height": 3.52,
+  "shape": "open",
+  "tris": 3972
+ },
+ "Red_Fence": {
+  "footprint": [
+   4.0,
+   0.5
+  ],
+  "height": 2.97,
+  "shape": "wall",
+  "tris": 2492
+ },
+ "Red_FenceB": {
+  "footprint": [
+   4.0,
+   0.5
+  ],
+  "height": 2.95,
+  "shape": "wall",
+  "tris": 2620
+ },
+ "Red_Gate": {
+  "footprint": [
+   6.0,
+   1.0
+  ],
+  "height": 5.75,
+  "shape": "gate",
+  "tris": 2316
+ },
+ "Red_Hall": {
+  "footprint": [
+   8.0,
+   11.5
+  ],
+  "height": 8.52,
+  "shape": "rect",
+  "tris": 16736
+ },
+ "Red_House": {
+  "footprint": [
+   5.0,
+   6.6
+  ],
+  "height": 5.56,
+  "shape": "rect",
+  "tris": 4304
+ },
+ "Red_Hut": {
+  "footprint": [
+   4.0,
+   5.0
+  ],
+  "height": 4.76,
+  "shape": "rect",
+  "tris": 3266
+ },
+ "Red_Tower": {
+  "footprint": [
+   5.4,
+   5.4
+  ],
+  "height": 10.65,
+  "shape": "round",
+  "tris": 45075
+ },
+ "Stone_Banner": {
+  "footprint": [
+   0.5,
+   0.5
+  ],
+  "height": 4.76,
+  "shape": "post",
+  "tris": 1168
+ },
+ "Stone_Canopy": {
+  "footprint": [
+   4.4,
+   5.4
+  ],
+  "height": 3.41,
+  "shape": "open",
+  "tris": 3972
+ },
+ "Stone_Fence": {
+  "footprint": [
+   4.0,
+   0.5
+  ],
+  "height": 2.24,
+  "shape": "wall",
+  "tris": 3816
+ },
+ "Stone_FenceB": {
+  "footprint": [
+   4.0,
+   0.5
+  ],
+  "height": 2.29,
+  "shape": "wall",
+  "tris": 4400
+ },
+ "Stone_Gate": {
+  "footprint": [
+   6.0,
+   1.0
+  ],
+  "height": 5.31,
+  "shape": "gate",
+  "tris": 2380
+ },
+ "Stone_Hall": {
+  "footprint": [
+   8.0,
+   11.5
+  ],
+  "height": 7.66,
+  "shape": "rect",
+  "tris": 56274
+ },
+ "Stone_House": {
+  "footprint": [
+   5.2,
+   6.6
+  ],
+  "height": 4.73,
+  "shape": "rect",
+  "tris": 45516
+ },
+ "Stone_Hut": {
+  "footprint": [
+   5.2,
+   5.2
+  ],
+  "height": 4.3,
+  "shape": "round",
+  "tris": 10971
+ },
+ "Stone_Tower": {
+  "footprint": [
+   5.4,
+   5.4
+  ],
+  "height": 10.65,
+  "shape": "round",
+  "tris": 44995
+ }
+}

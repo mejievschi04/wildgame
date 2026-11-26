@@ -4,12 +4,14 @@ extends RefCounted
 ## alpha-scissor foliage gets translucency (backlight) and soft shadows-friendly settings.
 ## Art lists live here so gameplay code asks for "a spruce" rather than a file path.
 
+const JUNGLE_TREE := "res://assets/models/trees/SM_Jungle_Tripo.gltf"
+const TREE_MODEL_SCALE := 1.3
 const TREES := {
 	&"spruce": ["res://assets/models/trees/SM_Spruce_01.gltf", "res://assets/models/trees/SM_Spruce_02.gltf",
 		"res://assets/models/trees/SM_Spruce_03.gltf"],
 	&"pine": ["res://assets/models/trees/SM_Pine_01.gltf", "res://assets/models/trees/SM_Pine_02.gltf"],
 	&"alder": ["res://assets/models/trees/SM_Alder_01.gltf", "res://assets/models/trees/SM_Alder_02.gltf"],
-	&"jungle": ["res://assets/models/trees/SM_Jungle_01.gltf", "res://assets/models/trees/SM_Jungle_02.gltf"],
+	&"jungle": [JUNGLE_TREE],
 	&"palm": ["res://assets/models/trees/SM_Palm_01.gltf", "res://assets/models/trees/SM_Palm_02.gltf"],
 	&"stump": ["res://assets/models/trees/SM_Stump_01.gltf", "res://assets/models/trees/SM_Stump_02.gltf"],
 	&"dead_trunk": ["res://assets/models/trees/SM_DeadTrunk_01.gltf"],
@@ -47,6 +49,12 @@ static var _icons: Dictionary = {}
 const FOLIAGE_SHADER := preload("res://world/shaders/foliage.gdshader")
 
 
+## The far LOD of a tree model (tools/blender/gen_trees.py writes <name>_LOD.gltf beside it), or "" if it has none.
+static func lod_path(path: String) -> String:
+	var p := path.get_basename() + "_LOD." + path.get_extension()
+	return p if ResourceLoader.exists(p) else ""
+
+
 static func pick(list: Array, key: String) -> String:
 	return list[absi(hash(key)) % list.size()]
 
@@ -64,7 +72,7 @@ static func instance(path: String) -> Node3D:
 		push_error("AssetLib: cannot load %s" % path)
 		return Node3D.new()
 	var n: Node3D = ps.instantiate()
-	var profile: StringName = &"tree" if "/trees/" in path else &"ground"
+	var profile: StringName = &"tree" if "/trees/" in path else (&"building" if "/buildings/" in path else &"ground")
 	for mi: MeshInstance3D in n.find_children("*", "MeshInstance3D", true, false):
 		for s in mi.mesh.get_surface_count():
 			var m := mi.mesh.surface_get_material(s)
@@ -88,7 +96,7 @@ static func mesh(path: String) -> Mesh:
 ## Alpha-scissor materials become wind-animated foliage ShaderMaterials.
 ## profile: &"tree" (tall, slow sway) or &"ground" (grass/ferns/shrubs, small flutter).
 static func tuned(m: Material, profile: StringName = &"ground") -> Material:
-	if not m is BaseMaterial3D:
+	if not m is BaseMaterial3D or profile == &"building":  # banners stay cloth, not swaying foliage
 		return m
 	var key := [m, profile]
 	if _tuned.has(key):
@@ -113,7 +121,7 @@ static func tuned(m: Material, profile: StringName = &"ground") -> Material:
 			f.set_shader_parameter("crown", true)
 			f.set_shader_parameter("crown_center", 15.0 if "Jungle" in mname else (8.5 if "Palm" in mname else (8.0 if conifer else 10.0)))
 			f.set_shader_parameter("crown_radius", 5.0 if "Jungle" in mname else (3.5 if "Palm" in mname else (3.0 if conifer else 4.0)))
-			f.set_shader_parameter("color_mul", Vector3(1.0, 1.05, 0.95) if tropical else (Vector3(0.78, 0.9, 0.66) if not conifer else Vector3(0.85, 0.95, 0.8)))
+			f.set_shader_parameter("color_mul", Vector3(1.0, 1.05, 0.95) if tropical else (Vector3(0.82, 0.92, 0.7) if not conifer else Vector3(0.95, 1.05, 0.88)))
 			f.set_shader_parameter("backlight_color", Color(0.32, 0.38, 0.14))
 		else:
 			f.set_shader_parameter("sway", 0.12)

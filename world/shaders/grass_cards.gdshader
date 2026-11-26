@@ -80,10 +80,10 @@ void vertex() {
 	float col = 0.0;
 	float hmul = 1.0;
 	if (forest_floor) {
-		// ferns in drifts, sedge, bilberry carpets, spruce saplings here and there
-		float fern = smoothstep(0.45, 0.65, texture(macro_noise, wrapped * 0.02 + vec2(0.2, 0.9)).r);
-		col = r2 < fern * 0.25 ? 0.0 : (r2 < 0.6 ? 2.0 : 1.0);
-		if (hash(inst.xz + 41.0) < 0.015) col = 3.0;
+		// sedge and bilberry carpets. No fern or spruce-sapling card: a frond or a little spruce painted on a flat card
+		// reads as a ladder standing in the ground whenever it faces the camera; the 3D ferns and the groves' 3D
+		// saplings (Vegetation) stand in for them.
+		col = r2 < 0.6 ? 2.0 : 1.0;
 		hmul = col == 0.0 ? 1.05 : (col == 3.0 ? 2.4 : (col == 2.0 ? 0.85 : 1.15));
 	} else {
 		if (r2 < dryness * 0.75) col = 2.0;
@@ -113,10 +113,14 @@ void vertex() {
 		if (col == 4.0 && tn > 0.4) { col = 0.0; hmul = 1.0; }       // no reed beds on the tundra
 		hmul = mix(hmul, hmul * 1.35, jg);
 	}
-	v_tundra = tn;
+	v_tundra = max(tn, taiga_at(wrapped));
 	v_col = col;
 	v_dry = dryness;
 	v_tint = 0.85 + 0.3 * hash(inst.xz + 5.0);
+	// under the snow of the cold north only a few dry stalks poke through (none on the glacier)
+	float tg = taiga_at(wrapped);
+	want *= (1.0 - 0.88 * tg) * (1.0 - glacier_at(wrapped));
+	if (tg > 0.5) { col = 2.0; hmul *= 0.8; }
 	float keep = step(r1, want);
 	for (int i = 0; i < 12; i++) {
 		if (bare[i].z > 0.0 && distance(wrapped, bare[i].xy) < bare[i].z) {

@@ -9,13 +9,13 @@ signal closed
 const MIN_ZOOM := 1.0
 const MAX_ZOOM := 7.0
 ## Unexplored land: a faded, smoky hide you can just make out the relief through (not a black void).
-const FOG_COLOR := Color(0.36, 0.29, 0.22, 0.86)
+const FOG_COLOR := Color(0.10, 0.12, 0.16, 0.34)
 
 var player: Player
 var _view: Control  # the map canvas (clips, draws everything)
 var _map_tex: Texture2D
 var _fog_tex: ImageTexture
-var _zoom := 3.2
+var _zoom := 1.30
 var _center := Vector2(0.5, 0.5)  # map uv at the middle of the view
 var _drag := false
 var _dragged := 0.0
@@ -47,12 +47,16 @@ func _ready() -> void:
 	top.offset_top = 24
 	top.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(top)
-	top.add_child(UITheme.label(Loc.t("MAP_TITLE"), "HeadingLabel"))
-	var sp := Control.new()
-	sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	top.add_child(sp)
-	var hint := UITheme.label(Loc.t("MAP_HINT", {"key": InputSetup.label(&"map")}), "MutedLabel")
-	top.add_child(hint)
+	top.add_child(UITheme.label("WILDBOUND   /   HARTA LUMII", "HeadingLabel"))
+	var hint := UITheme.label("Derulează pentru zoom · Trage pentru deplasare · Clic pentru reper · F revine la poziția ta", "SmallLabel")
+	hint.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
+	hint.offset_top = -46
+	hint.offset_bottom = -18
+	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hint.add_theme_color_override("font_outline_color", Color(0.04, 0.04, 0.03))
+	hint.add_theme_constant_override("outline_size", 7)
+	add_child(hint)
 	_info = UITheme.label("", "SmallLabel")
 	_info.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
 	_info.offset_left = -520
@@ -77,7 +81,7 @@ func open() -> void:
 			_map_tex = ImageTexture.create_from_image(img)
 		_loading.visible = false
 	_fog_tex = ImageTexture.create_from_image(MapData.fog_image(player.world.map_fog))
-	_center = _clamp_center(MapData.to_uv(player.global_position.x, player.global_position.z))
+	_center = _clamp_center(_center)
 	UITheme.show_animated(self, true)
 	_view.queue_redraw()
 
@@ -213,15 +217,15 @@ func _draw_map() -> void:
 		v.draw_rect(Rect2(tl, span), Color(0.7, 0.6, 0.45))
 	if _fog_tex:
 		v.draw_texture_rect(_fog_tex, Rect2(tl, span), false, FOG_COLOR)
-	_draw_grid(tl, span)
-	_draw_regions()
-	_draw_camps()
-	_draw_regional_bases()
+	if _zoom > 2.7:
+		_draw_camps()
+	_draw_key_places()
 	_draw_fires()
 	_draw_waypoint()
 	_draw_player()
 	_draw_compass()
 	_draw_scale()
+	_draw_legend()
 	var w := player.world
 	var hint := ""
 	if _hover_uv.x >= 0.0 and _hover_uv.x <= 1.0 and _hover_uv.y >= 0.0 and _hover_uv.y <= 1.0:
@@ -235,48 +239,16 @@ func _draw_map() -> void:
 	_info.text = hint
 
 
-## Faint graticule every 500 m, like a surveyed hide.
-func _draw_grid(tl: Vector2, span: Vector2) -> void:
-	var col := Color(0.2, 0.14, 0.08, 0.18)
-	var e := MapData.extent()
-	var step := 500.0
-	var k := -e
-	while k <= e + 1.0:
-		var t := (k + e) / (2.0 * e)
-		_view.draw_line(Vector2(tl.x + t * span.x, tl.y), Vector2(tl.x + t * span.x, tl.y + span.y), col, 1.0)
-		_view.draw_line(Vector2(tl.x, tl.y + t * span.y), Vector2(tl.x + span.x, tl.y + t * span.y), col, 1.0)
-		k += step
-
-
-func _draw_regions() -> void:
-	var font := get_theme_default_font()  # the display font lacks some Cyrillic capitals
-	var w := player.world
-	for r: StringName in ForestWorld.REGIONS:
-		var c: Vector2 = ForestWorld.REGIONS[r]
-		if r == &"aruun":
-			c += Vector2(0, -260)  # keep the label off the start valley's markers
-		var known := MapData.explored(w.map_fog, c.x, c.y) or r == &"aruun"
-		var p := _world_to_screen(c.x, c.y)
-		var name := Loc.t("REGION_%s" % String(r).to_upper())
-		var fs := int(clampf(15.0 + _zoom * 4.0, 16.0, 34.0))
-		var sz := font.get_string_size(name, HORIZONTAL_ALIGNMENT_LEFT, -1, fs)
-		var base: Dictionary = Camps.REGIONAL_BASES.get(String(r), {})
-		if not base.is_empty():
-			var site := Camps.site(base)
-			var marker := _world_to_screen(site.x, site.y)
-			if absf(p.x - marker.x) < sz.x * 0.5 + 14.0 and absf(p.y - marker.y) < 42.0:
-				p.y = marker.y - fs - 10.0
-		var col := Color(0.2, 0.12, 0.07, 0.78) if known else Color(0.72, 0.64, 0.52, 0.45)
-		_view.draw_string(font, p - Vector2(sz.x * 0.5, -fs * 0.35), name, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, col)
-
-
 func _draw_camps() -> void:
 	var w := player.world
 	if w.factions == null:
 		return
 	var font := get_theme_default_font()
 	for f: StringName in w.factions.defs.keys():
-		var c := Camps.site(w.factions.def_of(f))
+		var def := w.factions.def_of(f)
+		if not def.has("camp"):
+			continue
+		var c := Camps.site(def)
 		if not MapData.explored(w.map_fog, c.x, c.y):
 			continue
 		var p := _world_to_screen(c.x, c.y)
@@ -293,33 +265,86 @@ func _draw_camps() -> void:
 		_view.draw_string(font, p + Vector2(-sz.x * 0.5, 30), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color(0.15, 0.1, 0.06))
 
 
-func _draw_regional_bases() -> void:
+func _draw_key_places() -> void:
+	var camp := ForestWorld.SPAWN
+	_place_label(_world_to_screen(camp.x, camp.y), "Tabăra ta", Color("b88c2d"), "camp")
+	var entries := {
+		"kharum": ["Tribul Stâncii", Color("813f31")],
+		"north": ["Tribul Nordului", Color("224a73")],
+		"varkai": ["Tribul Roșu", Color("a34323")],
+		"aruun": ["Ruinele orașului Arun", Color("90765b")],
+	}
+	for id: String in entries:
+		var site := Camps.site(Camps.REGIONAL_BASES[id])
+		_place_label(_world_to_screen(site.x, site.y), entries[id][0], entries[id][1], id)
+
+
+func _place_label(p: Vector2, label: String, color: Color, kind: String) -> void:
+	var font := UITheme.display_font(600, 1)
+	var size := 21
+	var width := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x + 30.0
+	var banner := p - Vector2(0, 23)
+	_draw_marker(banner, color, kind)
+	var rect := Rect2(p + Vector2(-width * 0.5, 1.0), Vector2(width, 31))
+	_view.draw_rect(rect, Color(0.045, 0.039, 0.030, 0.87))
+	_view.draw_string(font, p + Vector2(-width * 0.5 + 15, 23), label,
+		HORIZONTAL_ALIGNMENT_LEFT, -1, size, UITheme.BONE_HI)
+
+
+func _draw_marker(p: Vector2, color: Color, kind: String) -> void:
+	var ink := Color("ebd4ad")
+	if kind == "aruun":
+		_view.draw_colored_polygon(PackedVector2Array([p + Vector2(-17, -9), p + Vector2(-9, -15),
+			p + Vector2(8, -14), p + Vector2(17, -5), p + Vector2(14, 7), p + Vector2(-16, 7)]),
+			color.darkened(0.45))
+		for x in [-10.0, -3.0, 5.0, 11.0]:
+			_view.draw_line(p + Vector2(x, 6), p + Vector2(x + 1.0, -6 - absf(x) * 0.23), ink, 3.0, true)
+		_view.draw_line(p + Vector2(-16, 8), p + Vector2(16, 8), ink, 2.0, true)
+		return
+	var cloth := PackedVector2Array([p + Vector2(-17, -21), p + Vector2(17, -21), p + Vector2(15, 16),
+		p + Vector2(5, 11), p + Vector2(-3, 17), p + Vector2(-9, 12), p + Vector2(-15, 15)])
+	_view.draw_colored_polygon(cloth, color)
+	cloth.append(cloth[0])
+	_view.draw_polyline(cloth, color.darkened(0.5), 1.5, true)
+	_view.draw_line(p + Vector2(-20, -21), p + Vector2(20, -21), ink.darkened(0.32), 2.5, true)
+	match kind:
+		"camp":
+			var tipi := PackedVector2Array([p + Vector2(-8, 6), p + Vector2(0, -13), p + Vector2(8, 6)])
+			_view.draw_polyline(tipi, ink, 2.5, true)
+			_view.draw_line(p + Vector2(-11, 6), p + Vector2(11, 6), ink, 2.0, true)
+		"north":
+			_view.draw_line(p + Vector2(0, 8), p + Vector2(0, -4), ink, 3.0, true)
+			for x: float in [-1.0, 1.0]:
+				_view.draw_polyline(PackedVector2Array([p + Vector2(0, -3), p + Vector2(x * 9, -7),
+					p + Vector2(x * 10, -15)]), ink, 2.2, true)
+				_view.draw_line(p + Vector2(x * 8, -7), p + Vector2(x * 4, -15), ink, 1.8, true)
+		"kharum":
+			_view.draw_colored_polygon(PackedVector2Array([p + Vector2(-11, 6), p + Vector2(-2, -11),
+				p + Vector2(3, -4), p + Vector2(6, -9), p + Vector2(12, 6)]), ink)
+		_:
+			_view.draw_colored_polygon(PackedVector2Array([p + Vector2(-10, -11), p + Vector2(-7, 1),
+				p + Vector2(0, 8), p + Vector2(7, 1), p + Vector2(10, -11), p + Vector2(0, -6)]), ink)
+
+
+func _draw_legend() -> void:
+	if _zoom > 2.7 or _view.size.x < 840:
+		return
+	var origin := Vector2(30, 114)
+	_view.draw_rect(Rect2(origin, Vector2(185, 139)), Color(0.045, 0.039, 0.030, 0.88))
 	var font := get_theme_default_font()
-	var risk_colors := [Color("526e3e"), Color("83743e"), Color("976334"),
-		Color("8e442e"), Color("752b25")]
-	for id: String in Camps.REGIONAL_BASES:
-		var def: Dictionary = Camps.REGIONAL_BASES[id]
-		var level := int(def.level)
-		var site := Camps.site(def)
-		var p := _world_to_screen(site.x, site.y)
-		var corners := PackedVector2Array([p + Vector2(-11, -9), p + Vector2(11, -9),
-			p + Vector2(11, 4), p + Vector2(0, 12), p + Vector2(-11, 4)])
-		_view.draw_colored_polygon(corners, risk_colors[level - 1])
-		corners.append(corners[0])
-		_view.draw_polyline(corners, Color(0.95, 0.82, 0.6), 1.6, true)
-		var rank := str(level)
-		var rank_width := font.get_string_size(rank, HORIZONTAL_ALIGNMENT_LEFT, -1, 14).x
-		_view.draw_string(font, p + Vector2(-rank_width * 0.5, 4), rank,
-			HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color.WHITE)
-		var label := Loc.t("MAP_REGIONAL_BASE", {"name": Loc.t("REGION_" + id.to_upper())})
-		var width := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, 15).x
-		_view.draw_string(font, p + Vector2(-width * 0.5, 29), label,
-			HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color(0.14, 0.09, 0.06))
+	_view.draw_string(font, origin + Vector2(16, 27), "Legendă", HORIZONTAL_ALIGNMENT_LEFT, -1, 20, UITheme.BONE_HI)
+	var labels := ["Tabăra ta", "Trib rival", "Ruine"]
+	var colors := [Color("c99b3f"), Color("ac563d"), Color("c8aa8b")]
+	for i in labels.size():
+		var y := 52.0 + i * 29.0
+		_view.draw_circle(origin + Vector2(22, y - 5), 5.0, colors[i])
+		_view.draw_string(font, origin + Vector2(39, y), labels[i],
+			HORIZONTAL_ALIGNMENT_LEFT, -1, 15, UITheme.BONE)
 
 
 func _draw_fires() -> void:
 	for f: Campfire in get_tree().get_nodes_in_group("campfire"):
-		if f.eternal:
+		if f.eternal or f.structure_id == "player_camp_fire":
 			continue
 		var p := _world_to_screen(f.global_position.x, f.global_position.z)
 		var col := Color(0.95, 0.5, 0.12) if f.is_lit() else Color(0.35, 0.3, 0.26)
@@ -364,7 +389,7 @@ func _draw_compass() -> void:
 	_view.draw_colored_polygon(PackedVector2Array([c + Vector2(0, -30), c + Vector2(7, 0), c + Vector2(-7, 0)]), Color(0.75, 0.2, 0.12))
 	_view.draw_colored_polygon(PackedVector2Array([c + Vector2(0, 30), c + Vector2(7, 0), c + Vector2(-7, 0)]), ink)
 	var font := get_theme_default_font()
-	var n := Loc.t("MAP_NORTH")
+	var n := "N"
 	var sz := font.get_string_size(n, HORIZONTAL_ALIGNMENT_LEFT, -1, 18)
 	_view.draw_string(font, c + Vector2(-sz.x * 0.5, -40), n, HORIZONTAL_ALIGNMENT_LEFT, -1, 18, ink)
 

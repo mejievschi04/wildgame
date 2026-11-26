@@ -58,11 +58,11 @@ func _ready() -> void:
 	environment.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
 	environment.tonemap_mode = Environment.TONE_MAPPER_AGX
 	environment.tonemap_exposure = 1.0
-	environment.tonemap_agx_contrast = 1.45  # deeper shadows and richer mid-tones than the neutral AgX curve
+	environment.tonemap_agx_contrast = 1.3  # richer mid-tones than the neutral AgX curve (1.45 crushed forest shade to black)
 	environment.ssao_enabled = true
 	environment.ssao_radius = 0.85
-	environment.ssao_intensity = 1.25
-	environment.ssao_light_affect = 0.12  # keep contact shadows soft rather than ink-like
+	environment.ssao_intensity = 1.7
+	environment.ssao_light_affect = 0.22  # contact shadows also in sunlight: grass roots, rocks and trunks sit in the ground
 	environment.ssao_detail = 0.38
 	# Bounced light: screen-space indirect (medium+) and SDFGI (high) — warm light off the ground onto bodies.
 	environment.ssil_enabled = true
@@ -71,26 +71,27 @@ func _ready() -> void:
 	environment.sdfgi_use_occlusion = true
 	environment.sdfgi_cascades = 4
 	environment.sdfgi_min_cell_size = 0.2
-	environment.sdfgi_energy = 0.9
+	environment.sdfgi_energy = 1.2  # light bounced off the sunlit ground and trunks fills the shade under a canopy
 	# Film-like grade (as in Far Cry Primal / The Forest): warm sunlit highlights, cool teal shadows, lush greens.
 	environment.adjustment_enabled = true
-	environment.adjustment_contrast = 1.06
-	environment.adjustment_saturation = 1.16
+	environment.adjustment_contrast = 1.1
+	environment.adjustment_saturation = 1.04  # 1.16 turned the meadows a toxic yellow-green
 	environment.adjustment_color_correction = _grade_lut()
 	environment.volumetric_fog_enabled = true
 	environment.volumetric_fog_density = 0.006
-	environment.volumetric_fog_length = 90.0
-	environment.volumetric_fog_anisotropy = 0.6
+	environment.volumetric_fog_length = 140.0
+	environment.volumetric_fog_anisotropy = 0.72  # forward scatter: shafts of light through the canopy toward the sun
+	environment.volumetric_fog_ambient_inject = 0.12
 	environment.volumetric_fog_sky_affect = 0.0
 	environment.glow_enabled = true
-	environment.glow_intensity = 0.45
-	environment.glow_bloom = 0.03
-	environment.glow_hdr_threshold = 1.1  # only real highlights (fire, sun on water) bloom
+	environment.glow_intensity = 0.6
+	environment.glow_bloom = 0.05
+	environment.glow_hdr_threshold = 1.0  # sunlit snow, water glints and fire bloom softly
 	environment.fog_enabled = true
 	environment.fog_density = 0.006
 	environment.fog_sky_affect = 0.35
 	environment.fog_sun_scatter = 0.25  # the haze glows warm toward the sun
-	environment.fog_aerial_perspective = 0.55  # distant hills dissolve into the sky colour
+	environment.fog_aerial_perspective = 0.8  # distant hills dissolve into the sky colour: layers of depth
 	environment.fog_height = ForestWorld.WATER_LEVEL + 2.0
 	environment.fog_height_density = 0.0
 	var we := WorldEnvironment.new()
@@ -244,8 +245,8 @@ func update_visuals() -> void:
 	sun.visible = elev > -0.05
 	# Strong warm key light vs. a dimmer blue sky fill: the contrast that reads as "real daylight".
 	# High sun is a bit gentler than low golden light (keeps midday from washing out).
-	sun.light_energy = lerpf(2.4, 1.9, clampf(elev, 0.0, 1.0)) * day_k * (1.0 - 0.75 * cloud)
-	sun.light_color = Color(1.0, 0.89, 0.72).lerp(Color(1.0, 0.55, 0.24), dusk_k * 0.85)
+	sun.light_energy = lerpf(2.8, 2.3, clampf(elev, 0.0, 1.0)) * day_k * (1.0 - 0.75 * cloud)
+	sun.light_color = Color(1.0, 0.86, 0.66).lerp(Color(1.0, 0.55, 0.24), dusk_k * 0.85)  # a warm sun over cool shade
 	# Moon: crosses the sky through the night, light and brightness follow its phase.
 	var m_elev := moon_elevation()
 	var m_up := smoothstep(-0.02, 0.1, m_elev)
@@ -277,12 +278,14 @@ func update_visuals() -> void:
 	# Overcast: the cloud undersides go a heavier grey.
 	sky_material.set_shader_parameter("cloud_shade", Color(0.52, 0.58, 0.68).lerp(Color(0.42, 0.45, 0.5), cloud))
 	# Overcast days lose the sun but gain sky light.
-	environment.ambient_light_energy = lerpf(0.35, 0.52, day_k) * (1.0 + 0.6 * cloud)
+	# (0.62 by day: under a dense spruce canopy the shade otherwise went near black)
+	environment.ambient_light_energy = lerpf(0.35, 0.8, day_k) * (1.0 + 0.4 * cloud)  # the blue sky lights the shade
 	# Distance takes the sky's blue (aerial perspective), warmer toward evening.
 	environment.fog_light_color = hor.lerp(day_top, 0.25 * day_k).darkened(0.05)
-	environment.fog_density = lerpf(0.006, 0.0002, day_k) + fog_extra + cloud * 0.0015  # clear air: see for kilometres
+	# day: a light haze that layers the distance (near trees crisp, far ridges paling into blue), still kilometres
+	environment.fog_density = lerpf(0.006, 0.00045, day_k) + fog_extra + cloud * 0.0015
 	environment.volumetric_fog_albedo = Color(1.0, 0.96, 0.9).lerp(hor, 0.4)
-	environment.volumetric_fog_density = lerpf(0.012, 0.0016, day_k) + 0.007 * dusk_k * day_k  # shafts at low sun
+	environment.volumetric_fog_density = lerpf(0.012, 0.0035, day_k) + 0.007 * dusk_k * day_k  # shafts through the trees
 	# Valley mist: thick in the early morning and at dusk, burnt off by midday.
 	var morning := clampf(1.0 - absf(time_hours - 6.5) / 3.0, 0.0, 1.0)
 	var evening := clampf(1.0 - absf(time_hours - 20.0) / 2.5, 0.0, 1.0)

@@ -51,6 +51,19 @@ var limb := 0
 
 ## Trunk cross-sections per tree asset: [[y, cx, cz, r], ...] (unscaled model space, sorted by y).
 static var _trunk_profiles: Dictionary = {}
+## Measured slices for the jungle tree, whose irregular mesh has no modeled bark rings.
+## The last three columns are the generated bark UV, facet count and facet rotation.
+const JUNGLE_TRUNK_PROFILE := [
+	[0.45, 0.08, 0.11, 1.30, 0.60, 16, 0.0],
+	[0.80, 0.10, 0.14, 1.12, 0.28, 16, 0.0],
+	[1.10, 0.12, 0.19, 1.02, 0.01, 16, 0.0],
+	[1.60, 0.12, 0.16, 0.76, -0.44, 16, 0.0],
+	[2.00, 0.04, 0.18, 0.66, -0.80, 16, 0.0],
+	[3.00, 0.06, 0.16, 0.53, -1.70, 16, 0.0],
+	[5.00, 0.05, 0.17, 0.45, -3.50, 16, 0.0],
+	[8.00, 0.08, 0.16, 0.39, -6.20, 16, 0.0],
+	[11.00, 0.10, 0.22, 0.34, -8.90, 16, 0.0],
+]
 static var _chip_mesh: Mesh
 static var _chip_mat: Material
 static var _bark_chip_mat: Material
@@ -79,11 +92,12 @@ func _build(s: float) -> void:
 	_holder = holder
 	_tree_path = AssetLib.pick(AssetLib.TREES[species], node_id)
 	_tree = AssetLib.instance(_tree_path)
-	_size = s
-	_tree.scale = Vector3.ONE * s
+	_size = s * AssetLib.TREE_MODEL_SCALE
+	_tree.scale = Vector3.ONE * _size
 	_tree.position.y = -SINK  # root flare into the ground so the base never floats on a slope
 	holder.add_child(_tree)
-	height = maxf(AssetLib.aabb(_tree).size.y * s, 6.0)
+	height = maxf(AssetLib.aabb(_tree).size.y * _size, 6.0)
+	_add_lod()
 	# Stump = scanned root flare + a bark post up to the cut + fresh-wood cut face.
 	_stump = Node3D.new()
 	add_child(_stump)
@@ -172,6 +186,8 @@ func _bark_v(y: float) -> float:
 
 
 func _trunk_profile() -> Array:
+	if _tree_path == AssetLib.JUNGLE_TREE:
+		return JUNGLE_TRUNK_PROFILE
 	if _trunk_profiles.has(_tree_path):
 		return _trunk_profiles[_tree_path]
 	var rings := {}
@@ -346,10 +362,66 @@ func notch_depth() -> float:
 	return k * NOTCH_MAX * _trunk_r
 
 
+## Far LOD: the detailed model up to LOD_DIST, the same tree with far fewer, bigger leaf cards beyond (crossfaded).
+## Once the tree is worked on, only the detailed model is used (chopping and felling rebuild its meshes).
+const LOD_DIST := 40.0
+## Beyond this the real tree fades out: FarForest's impostors carry the forest from FarForest.BEGIN (95 m) on.
+const FAR_DIST := 105.0
+var _tree_lod: Node3D
+var _tree_shadow: Node3D  # near the camera the shadow is cast by the cheap LOD (the detailed crown costs ~8×)
+
+
+func _add_lod() -> void:
+	var lp := AssetLib.lod_path(_tree_path)
+	if lp == "":
+		return
+	_tree_lod = AssetLib.instance(lp)
+	_tree_shadow = AssetLib.instance(lp)
+	for n: Node3D in [_tree_lod, _tree_shadow]:
+		n.scale = _tree.scale
+		n.position = _tree.position
+		_tree.get_parent().add_child(n)
+	for mi: GeometryInstance3D in _tree.find_children("*", "GeometryInstance3D", true, false):
+		mi.visibility_range_end = LOD_DIST
+		mi.visibility_range_end_margin = 6.0
+		mi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	# shadows are drawn only out to the quality's shadow distance (65 m on medium): only trees within it cast one,
+	# all through the cheap LOD (behind the camera too: every caster counts in the shadow pass)
+	for mi: GeometryInstance3D in _tree_shadow.find_children("*", "GeometryInstance3D", true, false):
+		mi.visibility_range_end = shadow_reach()
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
+	for mi: GeometryInstance3D in _tree_lod.find_children("*", "GeometryInstance3D", true, false):
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		mi.visibility_range_begin = LOD_DIST
+		mi.visibility_range_begin_margin = 6.0
+		mi.visibility_range_end = FAR_DIST
+		mi.visibility_range_end_margin = 10.0
+		mi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
+
+
+## How far trees cast shadows: just past the sun's shadow distance for the quality setting.
+static func shadow_reach() -> float:
+	return float(Settings.quality().shadow_dist) + 10.0
+
+
+func _drop_lod() -> void:
+	if _tree_lod == null:
+		return
+	_tree_lod.queue_free()
+	_tree_shadow.queue_free()
+	_tree_lod = null
+	_tree_shadow = null
+	for mi: GeometryInstance3D in _tree.find_children("*", "GeometryInstance3D", true, false):
+		mi.visibility_range_end = 0.0
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+
+
 func _enter_cut_mode() -> void:
 	if _cut_mode:
 		return
 	_cut_mode = true
+	_drop_lod()
 	var meshes := _tree.find_children("*", "MeshInstance3D", true, false)
 	if not meshes.is_empty():
 		_bark_mi = meshes[0]
@@ -742,6 +814,9 @@ static var _section_mats: Dictionary = {}
 ## Bark for our cut section: the model's material with a softer normal map. Our smooth lathe catches light
 ## differently from the model's faceted trunk; at full strength the band reads darker than the bark above it.
 func _section_bark() -> Material:
+	if _tree_path == AssetLib.JUNGLE_TREE:
+		# Generated logs use wrapping UVs, while the jungle tree uses a baked atlas.
+		return Graybox.tex("Log", Color(0.8, 0.75, 0.7), 1.0)
 	var b := _bark_src as BaseMaterial3D
 	if b == null:
 		return _bark_src
@@ -1206,6 +1281,7 @@ func _impact() -> void:
 	var b := Basis(_axis(), final_angle)
 	var tip := base + b * Vector3(0, height - cut_h, 0)
 	Sfx.play(&"tree_landing", base.lerp(tip, 0.6), 2.0, 0.04)
+	_shed_twigs(base, tip)
 	for k in [0.35, 0.6, 0.85]:
 		_dust(base.lerp(tip, k), k > 0.5)
 	if world and world.player:
@@ -1217,6 +1293,31 @@ func _impact() -> void:
 		var seg := _segment_distance(Vector2(p.global_position.x, p.global_position.z), Vector2(base.x, base.z), Vector2(tip.x, tip.z))
 		if seg < 1.3 and p.has_method("take_hit"):
 			p.take_hit(FALL_DAMAGE, &"tree", 0.3, base)
+
+
+## Twigs the crown snaps off when it hits the ground: TWIGS_MIN..TWIGS_MAX sticks thrown out of the crown, falling
+## and tumbling as real pickups to either side of the trunk (only a live fall, not a load or a time skip).
+const TWIGS_MIN := 10
+const TWIGS_MAX := 20
+
+
+func _shed_twigs(base: Vector3, tip: Vector3) -> void:
+	var world := _world()
+	if world == null:
+		return
+	var side := fall_dir.cross(Vector3.UP).normalized()
+	var crown_r := clampf(height * 0.2, 2.0, 5.0)  # they snap off and land around the crown's edge, in sight
+	var n := randi_range(TWIGS_MIN, TWIGS_MAX)
+	for i in n:
+		var along := base.lerp(tip, randf_range(0.35, 1.05))
+		var lateral := (1.0 if i % 2 == 0 else -1.0) * maxf(_trunk_r + 0.5, randf_range(crown_r * 0.75, crown_r * 1.4))
+		var at := along + side * lateral
+		at.y = world.height_at(at.x, at.z) + randf_range(0.8, 2.6)
+		var twig := world.spawn_pickup(ItemStack.new(&"stick", 1), at)
+		twig.rotation = Vector3(randf() * TAU, randf() * TAU, randf() * TAU)
+		twig.linear_velocity = side * signf(lateral) * randf_range(0.5, 2.5) + fall_dir * randf_range(0.0, 1.5) \
+			+ Vector3.UP * randf_range(0.5, 2.0)
+		twig.angular_velocity = Vector3(randf_range(-8, 8), randf_range(-8, 8), randf_range(-8, 8))
 
 
 static func _segment_distance(p: Vector2, a: Vector2, b: Vector2) -> float:
